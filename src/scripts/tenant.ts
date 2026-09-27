@@ -10,6 +10,8 @@
  *   npm run tenant -- doc --slug maius --id 3f2a --off | --on | --auto
  *   npm run tenant -- alerts --slug maius        (bilgi çelişkisi uyarıları)
  *   npm run tenant -- list
+ *   npm run tenant -- admin --email sen@ornek.com --name "Ad Soyad"   (yönetici + şifre linki)
+ *   npm run tenant -- invite --slug maius --email sahip@maius.info --role owner   (davet linki)
  *
  * Günler: 0=pazar ... 6=cumartesi
  */
@@ -21,6 +23,7 @@ import { exitIfLocked, openDatabase } from "../db/client.js";
 import {
   knowledgeAlerts,
   knowledgeDocs,
+  users,
   resolveSettings,
   shopifyStores,
   tenants,
@@ -28,6 +31,7 @@ import {
   type BusinessHours,
 } from "../db/schema.js";
 import { encryptSecret } from "../lib/crypto.js";
+import { createInvite, createResetToken, normalizeEmail } from "../auth/service.js";
 import { isEnabled } from "../knowledge/base.js";
 import { syncStoreKnowledge } from "../knowledge/sync.js";
 import { createShopifyApi } from "../shopify/client.js";
@@ -48,6 +52,8 @@ const { values: args } = parseArgs({
     "display-phone": { type: "string" },
     shop: { type: "string" },
     id: { type: "string" },
+    email: { type: "string" },
+    role: { type: "string" },
     on: { type: "boolean" },
     off: { type: "boolean" },
     auto: { type: "boolean" },
@@ -62,6 +68,8 @@ function required(name: keyof typeof args): string {
   if (typeof v !== "string" || !v) throw new Error(`--${name} gerekli`);
   return v;
 }
+
+const publicUrl = () => (config.APP_URL ?? `http://localhost:${config.PORT}`).replace(/\/$/, "");
 
 function parseHours(value: string): BusinessHours {
   const match = /^([0-6](?:,[0-6])*)\s+(\d{2}:\d{2})-(\d{2}:\d{2})$/.exec(value.trim());
@@ -157,6 +165,22 @@ try {
     const tenant = await tenantBySlug();
     const alerts = await db.select().from(knowledgeAlerts).where(eq(knowledgeAlerts.tenantId, tenant.id));
     console.table(alerts.map((a) => ({ durum: a.status, konu: a.topic, açıklama: a.description, tarih: a.createdAt })));
+  } else if (command === "admin") {
+    // Platform yöneticisi: tüm mağazaları görür. Şifre linkle belirlenir, komut satırında şifre dolaşmaz.
+    const email = normalizeEmail(required("email"));
+    const [user] = await db
+      .insert(users)
+      .values({ email, name: required("name"), isSuperAdmin: true })
+      .onConflictDoUpdate({ target: users.email, set: { isSuperAdmin: true } })
+      .returning();
+    const token = await createResetToken(db, user!.id, null);
+    console.log(`Yönetici hazır: ${email}\nŞifre belirleme linki (24 saat geçerli):\n${publicUrl()}/sifre/${token}`);
+  } else if (command === "invite") {
+    const tenant = await tenantBySlug();
+    const role = args.role ?? "owner";
+    if (role !== "owner" && role !== "agent") throw new Error("--role owner ya da agent olmalı");
+    const token = await createInvite(db, { tenantId: tenant.id, email: required("email"), role, createdBy: null });
+    console.log(`${tenant.name} için ${role === "owner" ? "sahip" : "çalışan"} daveti (7 gün geçerli):\n${publicUrl()}/davet/${token}`);
   } else if (command === "list") {
     const rows = await db
       .select({
@@ -172,7 +196,7 @@ try {
       .leftJoin(shopifyStores, eq(shopifyStores.tenantId, tenants.id));
     console.table(rows);
   } else {
-    console.log("Komutlar: upsert | whatsapp | shopify-link | sync | docs | doc | alerts | list  (ayrıntı: src/scripts/tenant.ts)");
+    console.log("Komutlar: upsert | whatsapp | shopify-link | sync | docs | doc | alerts | admin | invite | list  (ayrıntı: src/scripts/tenant.ts)");
   }
 } finally {
   await close();

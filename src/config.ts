@@ -29,7 +29,9 @@ const schema = z.object({
 export type Config = z.infer<typeof schema>;
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
-  const parsed = schema.safeParse(env);
+  // .env.example'daki gibi boş bırakılan satırlar (APP_URL=) "tanımlı değil" sayılır.
+  const filled = Object.fromEntries(Object.entries(env).filter(([, v]) => v !== undefined && v.trim() !== ""));
+  const parsed = schema.safeParse(filled);
   if (!parsed.success) {
     const problems = parsed.error.issues.map((i) => `  - ${i.path.join(".")}: ${i.message}`).join("\n");
     throw new Error(`Eksik ya da hatalı ortam değişkenleri (.env):\n${problems}`);

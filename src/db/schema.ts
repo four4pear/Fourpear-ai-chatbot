@@ -245,6 +245,74 @@ export const media = pgTable("media", {
   createdAt: createdAt(),
 });
 
+// ---------------------------------------------------------------------------
+// Panel hesapları
+
+/** Panel kullanıcısı. Bir kişi birden fazla mağazada olabilir (memberships). */
+export const users = pgTable("users", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  /** Küçük harfe çevrilmiş e-posta */
+  email: text("email").notNull().unique(),
+  name: text("name").notNull(),
+  /** scrypt özeti (bkz. auth/password.ts); şifre hiç belirlenmediyse null */
+  passwordHash: text("password_hash"),
+  /** Platform yöneticisi: tüm mağazaları görür. */
+  isSuperAdmin: boolean("is_super_admin").notNull().default(false),
+  createdAt: createdAt(),
+  lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
+});
+
+/** owner: mağaza sahibi (ayarlar, istatistik, ekip) · agent: çalışan (sadece sohbetler) */
+export type MemberRole = "owner" | "agent";
+
+export const memberships = pgTable(
+  "memberships",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    tenantId: uuid("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+    role: text("role").$type<MemberRole>().notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("memberships_user_tenant_idx").on(t.userId, t.tenantId)],
+);
+
+/** Giriş oturumları. Çerezdeki anahtarın kendisi değil, SHA-256 özeti saklanır. */
+export const sessions = pgTable(
+  "sessions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    tokenHash: text("token_hash").notNull().unique(),
+    userAgent: text("user_agent"),
+    createdAt: createdAt(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [index("sessions_user_idx").on(t.userId)],
+);
+
+/**
+ * Tek kullanımlık linkler. invite: mağazaya katılma (7 gün) · reset: şifre belirleme (24 saat).
+ * Linkteki anahtarın yalnızca özeti saklanır.
+ */
+export const authTokens = pgTable("auth_tokens", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  kind: text("kind").$type<"invite" | "reset">().notNull(),
+  tokenHash: text("token_hash").notNull().unique(),
+  email: text("email").notNull(),
+  /** invite: katılınacak mağaza ve rol */
+  tenantId: uuid("tenant_id").references(() => tenants.id, { onDelete: "cascade" }),
+  role: text("role").$type<MemberRole>(),
+  /** reset: şifresi belirlenecek kullanıcı */
+  userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }),
+  createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+  createdAt: createdAt(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  usedAt: timestamp("used_at", { withTimezone: true }),
+});
+
+export type User = typeof users.$inferSelect;
+export type Membership = typeof memberships.$inferSelect;
 export type Tenant = typeof tenants.$inferSelect;
 export type WhatsappAccount = typeof whatsappAccounts.$inferSelect;
 export type Customer = typeof customers.$inferSelect;

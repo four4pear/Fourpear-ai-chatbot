@@ -48,7 +48,22 @@ if (config.SHOPIFY_API_KEY && config.SHOPIFY_API_SECRET && config.APP_URL) {
   console.warn("Shopify ayarları (SHOPIFY_API_KEY, SHOPIFY_API_SECRET, APP_URL) eksik: Shopify kurulumu ve bilgi senkronu kapalı.");
 }
 
-const { app, queue } = createApp(config, deps, shopifyRoutes);
+const localUrl = `http://localhost:${config.PORT}`;
+const publicUrl = (config.APP_URL ?? localUrl).replace(/\/$/, "");
+const panel = {
+  db,
+  publicUrl,
+  // Panel aynı adresten açılır; geliştirmede Vite (5173) de izinli.
+  allowedOrigins: [
+    new URL(publicUrl).origin,
+    localUrl,
+    ...(process.env.NODE_ENV === "production" ? [] : ["http://localhost:5173"]),
+  ],
+  secureCookies: publicUrl.startsWith("https://"),
+  log: console,
+};
+
+const { app, queue } = createApp(config, deps, shopifyRoutes, panel);
 
 const server = app.listen(config.PORT, () => {
   console.log(`Sunucu hazır: http://localhost:${config.PORT} (webhook: /webhook/whatsapp, model: ${config.CLAUDE_MODEL})`);

@@ -1,5 +1,6 @@
 import { createHmac, randomBytes } from "node:crypto";
 import { describe, expect, it } from "vitest";
+import { loadConfig } from "../src/config.js";
 import { businessStatus } from "../src/core/business-hours.js";
 import { startOfToday, toClaudeMessages } from "../src/core/conversation.js";
 import { decryptSecret, encryptSecret } from "../src/lib/crypto.js";
@@ -73,6 +74,21 @@ describe("gün başlangıcı", () => {
     // 2026-09-25 01:30 İstanbul = 2026-09-24 22:30 UTC
     const start = startOfToday("Europe/Istanbul", new Date("2026-09-24T22:30:00Z"));
     expect(start.toISOString()).toBe("2026-09-24T21:00:00.000Z");
+  });
+});
+
+describe("ayarlar (.env)", () => {
+  const required = { MASTER_KEY: randomBytes(32).toString("base64"), WHATSAPP_APP_SECRET: "x", WHATSAPP_VERIFY_TOKEN: "y" };
+
+  it("boş bırakılan isteğe bağlı satırları tanımsız sayar", () => {
+    const config = loadConfig({ ...required, APP_URL: "", DATABASE_URL: " ", SHOPIFY_API_KEY: "", PORT: "" });
+    expect(config.APP_URL).toBeUndefined();
+    expect(config.DATABASE_URL).toBeUndefined();
+    expect(config.PORT).toBe(3000);
+  });
+
+  it("boş bırakılan zorunlu satırı açıkça bildirir", () => {
+    expect(() => loadConfig({ ...required, WHATSAPP_APP_SECRET: "" })).toThrow("WHATSAPP_APP_SECRET");
   });
 });
 

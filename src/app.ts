@@ -3,6 +3,7 @@ import type { Config } from "./config.js";
 import { handleInbound, type Deps } from "./core/conversation.js";
 import { KeyedQueue } from "./core/queue.js";
 import { registerShopifyRoutes, type ShopifyRouteDeps } from "./shopify/routes.js";
+import { registerPanelApi, type PanelApiDeps } from "./panel/api.js";
 import { isValidSignature } from "./whatsapp/signature.js";
 import { extractInboundEvents, type WaWebhookPayload } from "./whatsapp/types.js";
 
@@ -10,8 +11,11 @@ export function createApp(
   config: Pick<Config, "WHATSAPP_APP_SECRET" | "WHATSAPP_VERIFY_TOKEN">,
   deps: Deps,
   shopify?: ShopifyRouteDeps,
+  panel?: PanelApiDeps,
 ) {
   const app = express();
+  // Railway gibi bir vekil sunucunun arkasında gerçek istemci IP'si (giriş deneme sınırı için).
+  app.set("trust proxy", 1);
   // Aynı müşterinin mesajları sırayla işlenir.
   const queue = new KeyedQueue((err, key) => deps.log.error(`Mesaj işlenemedi (${key})`, err));
 
@@ -55,6 +59,7 @@ export function createApp(
   });
 
   if (shopify) registerShopifyRoutes(app, shopify);
+  if (panel) registerPanelApi(app, panel);
 
   return { app, queue };
 }
