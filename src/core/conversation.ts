@@ -1,5 +1,5 @@
 import type Anthropic from "@anthropic-ai/sdk";
-import { and, count, desc, eq, gte } from "drizzle-orm";
+import { and, count, desc, eq, gte, notInArray } from "drizzle-orm";
 import type { DB } from "../db/client.js";
 import {
   conversations,
@@ -43,11 +43,18 @@ export type InboundOutcome =
   | "human_mode"
   | "daily_limit"
   | "unsupported_type"
+  | "ignored"
   | "replied"
   | "handed_off";
 
 /** Lina'nın okuyabildiği mesaj tipleri; diğerleri sabit metinle cevaplanır. */
 const UNDERSTOOD_TYPES = new Set(["text", "image"]);
+/**
+ * Cevap beklemeyen olaylar: emoji tepkisi, sticker (çoğunlukla teşekkür), WhatsApp sistem
+ * bildirimi (ör. numara değişti), sohbeti ilk açma. Panelde görünsün diye kaydedilir;
+ * cevaplanmaz, günlük sınıra sayılmaz, Lina'nın geçmişine girmez.
+ */
+export const SILENT_TYPES = ["reaction", "sticker", "system", "request_welcome"];
 const CLAUDE_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 /** Token maliyetini sınırlamak için geçmişte görsel olarak gönderilecek son fotoğraf sayısı. */
@@ -91,6 +98,9 @@ export async function handleInbound(deps: Deps, event: InboundEvent): Promise<In
   // Meta aynı webhook'u tekrar gönderebilir.
   if (inserted.length === 0) return "duplicate";
   const messageId = inserted[0]!.id;
+
+  // "Yazıyor…" göstergesi de gönderilmez: müşteri cevap bekleyip boşa kalmasın.
+  if (SILENT_TYPES.includes(message.type)) return "ignored";
 
   await db
     .update(conversations)
@@ -207,6 +217,7 @@ async function countCustomerMessagesToday(db: DB, conversationId: string, timeZo
       and(
         eq(messages.conversationId, conversationId),
         eq(messages.sender, "customer"),
+        notInArray(messages.type, SILENT_TYPES),
         gte(messages.createdAt, startOfToday(timeZone, now)),
       ),
     );
@@ -282,7 +293,7 @@ async function loadHistory(db: DB, conversationId: string, limit: number): Promi
 export function toClaudeMessages(rows: HistoryRow[]): Anthropic.MessageParam[] {
   const out: { role: "user" | "assistant"; content: Anthropic.ContentBlockParam[] }[] = [];
   for (const row of rows) {
-    if (row.sender === "system") continue;
+    if (row.sender === "system" || SILENT_TYPES.includes(row.type)) continue;
     const role = row.sender === "customer" ? "user" : "assistant";
     const blocks: Anthropic.ContentBlockParam[] = [];
 

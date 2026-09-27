@@ -352,6 +352,23 @@ describe("sabit metinler ve ayarlar", () => {
     expect(sent.map((s) => s.text)).toEqual(["Sesli mesaj dinleyemiyorum, yazar mısınız?"]);
   });
 
+  it("emoji tepkisine ve sistem bildirimine cevap vermez ama kaydeder", async () => {
+    await post(payload({ type: "reaction", reaction: { message_id: "wamid.out.1", emoji: "👍" } }));
+    await post(payload({ type: "system", system: { body: "Müşteri numarasını değiştirdi" } }));
+    await post(payload({ type: "sticker", sticker: { id: "st1", mime_type: "image/webp" } }));
+    expect(sent).toHaveLength(0);
+    const stored = await database.db.select().from(messages).where(eq(messages.sender, "customer"));
+    expect(stored.map((m) => m.type).sort()).toEqual(["reaction", "sticker", "system"]);
+  });
+
+  it("tepkiler günlük sınıra sayılmaz ve Lina'nın geçmişine girmez", async () => {
+    await setSettings({ dailyMessageLimit: 1 });
+    await post(payload({ type: "reaction", reaction: { message_id: "x", emoji: "❤️" } }));
+    await post(text("merhaba"));
+    expect(sent.map((s) => s.text)).toEqual(["Merhaba, nasıl yardımcı olabilirim?"]);
+    expect(linaCalls[0]!.messages).toEqual([{ role: "user", content: [{ type: "text", text: "merhaba" }] }]);
+  });
+
   it("tanımsız numaraya gelen mesajı yok sayar", async () => {
     await post(payload({ type: "text", text: { body: "selam" } }, "999"));
     expect(sent).toHaveLength(0);

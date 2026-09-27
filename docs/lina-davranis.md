@@ -87,7 +87,7 @@ Mağaza mesai saatlerini panelden girer.
 - Fotoğraf indirilir ve saklanır (ekip panelde görür).
 - Lina fotoğrafı görür ve yorumlar (ör. hasar teyidi, "bu ürün sizde var mı?").
 - Açıklama (caption) varsa mesaj olarak değerlendirilir.
-- Ses, video, belge, sticker, konum: Faz 4'e kadar desteklenmiyor (sabit metin, §7).
+- Ses, video, belge, konum: Faz 4'e kadar desteklenmiyor (sabit metin, §7). Sticker cevaplanmaz (§8).
 
 ## 7. Sabit metinler (mağaza panelden düzenleyebilir; varsayılanlar)
 | Anahtar | Ne zaman | Varsayılan metin |
@@ -98,6 +98,7 @@ Mağaza mesai saatlerini panelden girer.
 
 ## 8. Diğer
 - Bot kapalıyken hiç cevap verilmez (mesajlar panelde görünür).
+- Emoji tepkisi (👍), sticker, WhatsApp sistem bildirimleri ve sohbeti ilk açma bildirimi cevaplanmaz; kaydedilir, günlük sınıra sayılmaz, Lina'nın geçmişine girmez.
 - Müşteri başına günlük limit: 200 (mağaza değiştirebilir).
 - Devir kaydında ekip için: sebep + 1-3 cümlelik özet + toplanan bilgiler (sipariş no, ürün, talep).
 
