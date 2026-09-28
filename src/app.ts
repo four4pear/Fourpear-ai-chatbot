@@ -4,6 +4,7 @@ import { handleInbound, type Deps } from "./core/conversation.js";
 import { KeyedQueue } from "./core/queue.js";
 import { registerShopifyRoutes, type ShopifyRouteDeps } from "./shopify/routes.js";
 import { registerPanelApi, type PanelApiDeps } from "./panel/api.js";
+import { DEFAULT_PANEL_DIST, registerPanelStatic } from "./panel/static.js";
 import { isValidSignature } from "./whatsapp/signature.js";
 import { extractInboundEvents, type WaWebhookPayload } from "./whatsapp/types.js";
 
@@ -59,7 +60,10 @@ export function createApp(
   });
 
   if (shopify) registerShopifyRoutes(app, shopify);
-  if (panel) registerPanelApi(app, panel);
+  if (panel) {
+    registerPanelApi(app, panel);
+    registerPanelStatic(app, panel.distDir ?? DEFAULT_PANEL_DIST, deps.log);
+  }
 
   return { app, queue };
 }

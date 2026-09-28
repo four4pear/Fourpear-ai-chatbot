@@ -28,6 +28,8 @@ export type PanelApiDeps = {
   /** https'te true: çerez sadece şifreli bağlantıda gönderilir. */
   secureCookies: boolean;
   log: Pick<Console, "info" | "warn" | "error">;
+  /** Derlenmiş panel klasörü (varsayılan: panel/dist). */
+  distDir?: string;
 };
 
 export const SESSION_COOKIE = "lina_session";

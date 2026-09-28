@@ -112,7 +112,7 @@ export async function createResetToken(db: DB, userId: string, createdBy: string
 /** Linkin geçerli olup olmadığı ve sayfada gösterilecek bilgiler. */
 export async function describeToken(db: DB, token: string, now = new Date()) {
   const [row] = await db
-    .select({ t: authTokens, tenantName: tenants.name })
+    .select({ t: authTokens, tenantName: tenants.name, tenantSlug: tenants.slug })
     .from(authTokens)
     .leftJoin(tenants, eq(tenants.id, authTokens.tenantId))
     .where(and(eq(authTokens.tokenHash, tokenHash(token)), isNull(authTokens.usedAt), gt(authTokens.expiresAt, now)));
@@ -122,6 +122,7 @@ export async function describeToken(db: DB, token: string, now = new Date()) {
     kind: row.t.kind,
     email: row.t.email,
     tenantName: row.tenantName,
+    tenantSlug: row.tenantSlug,
     role: row.t.role,
     /** Davet edilen kişinin zaten hesabı varsa isim/şifre sorulmaz; giriş yapması yeterli. */
     hasAccount: Boolean(existing),

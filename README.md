@@ -39,6 +39,22 @@ npm test                    # 53 test, gerçek API çağırmaz
 npm run dev
 ```
 
+### Panel (mağaza ekibi)
+
+```bash
+npm run build && npm start          # sunucu + panel: http://localhost:3000
+# ya da geliştirirken iki terminalde:
+npm run dev                          # sunucu (3000)
+npm run dev:panel                    # panel, canlı yenileme (http://localhost:5173)
+```
+İlk giriş için kendinize yönetici hesabı açın ve çıkan linkten şifrenizi belirleyin:
+```bash
+npm run tenant -- admin --email sen@ornek.com --name "Ad Soyad"
+npm run tenant -- invite --slug maius --email sahip@maius.info --role owner   # mağaza sahibi daveti
+```
+Adresler: `/giris`, `/davet/<link>`, `/sifre/<link>`, `/m/<mağaza>/bekleyenler`, `/yonetici`.
+Panel kodu `panel/` klasöründe (React + Vite); derlenmiş hali `panel/dist` sunucudan verilir.
+
 ### Lina ile terminalden konuşma (WhatsApp gerekmez)
 
 ```bash
