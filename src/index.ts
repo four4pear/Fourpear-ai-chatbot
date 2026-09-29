@@ -1,18 +1,43 @@
 import "dotenv/config";
 import Anthropic from "@anthropic-ai/sdk";
+import { and, eq, isNull } from "drizzle-orm";
 import { createApp } from "./app.js";
 import { loadConfig } from "./config.js";
 import { exitIfLocked, openDatabase } from "./db/client.js";
+import { resolveSettings, shopifyStores, tenants } from "./db/schema.js";
 import { llmFromClient } from "./agents/runner.js";
 import { syncAllStores, syncStoreKnowledge } from "./knowledge/sync.js";
+import { archiveAllTenants } from "./archive/sync.js";
+import { shopifyOrderSource } from "./orders/shopify.js";
+import { returnsProviderFor } from "./returns/provider.js";
 import { createShopifyApi } from "./shopify/client.js";
 import { createWhatsAppClient } from "./whatsapp/client.js";
+import { EventBus } from "./core/events.js";
+import { findUnansweredConversations, type Deps } from "./core/conversation.js";
+
+/** Düzenli işler üst üste binmesin: önceki çalışma bitmeden yenisi başlamaz. */
+function exclusive(task: () => Promise<unknown>): () => Promise<void> {
+  let running = false;
+  return async () => {
+    if (running) return;
+    running = true;
+    try {
+      await task();
+    } finally {
+      running = false;
+    }
+  };
+}
 
 const config = loadConfig();
 const { db, close } = await openDatabase({ databaseUrl: config.DATABASE_URL, pgliteDir: config.PGLITE_DIR }).catch(exitIfLocked);
 
-const deps = {
+// WhatsApp tarafı ile panel aynı olay kanalını paylaşır (canlı güncelleme).
+const events = new EventBus();
+
+const deps: Deps = {
   db,
+  events,
   llm: llmFromClient(new Anthropic()),
   wa: createWhatsAppClient(config.GRAPH_API_VERSION),
   model: config.CLAUDE_MODEL,
@@ -20,6 +45,8 @@ const deps = {
   historyLimit: config.HISTORY_LIMIT,
   timeZone: config.TZ,
   log: console,
+  // İade sistemi bağlı mağazada Lina iade talebinin durumunu okur (yalnızca okuma).
+  returnsFor: (tenantId) => returnsProviderFor(db, config.MASTER_KEY, tenantId),
 };
 
 let shopifyRoutes;
@@ -40,13 +67,27 @@ if (config.SHOPIFY_API_KEY && config.SHOPIFY_API_SECRET && config.APP_URL) {
     syncStore: (store: Parameters<typeof syncStoreKnowledge>[2]) => syncStoreKnowledge(db, shopify, store),
     log: console,
   };
+  // Uygulaması kurulu mağazada sipariş uzmanı açılır (docs/lina-davranis.md §3).
+  deps.orderSourceFor = async (tenantId) => {
+    const [row] = await db
+      .select({ store: shopifyStores, settings: tenants.settings })
+      .from(shopifyStores)
+      .innerJoin(tenants, eq(tenants.id, shopifyStores.tenantId))
+      .where(and(eq(shopifyStores.tenantId, tenantId), isNull(shopifyStores.uninstalledAt)));
+    return row ? shopifyOrderSource(shopify, row.store, { countryCode: resolveSettings(row.settings).phoneCountryCode }) : null;
+  };
   // Shopify sayfa/politika değişikliği için bildirim göndermiyor: düzenli kontrol.
-  const runSync = () => syncAllStores(db, shopify, console).catch((err) => console.error("Bilgi senkronu", err));
+  const runSync = exclusive(() => syncAllStores(db, shopify, console).catch((err) => console.error("Bilgi senkronu", err)));
   void runSync();
   syncTimer = setInterval(runSync, config.KNOWLEDGE_SYNC_MINUTES * 60 * 1000);
 } else {
   console.warn("Shopify ayarları (SHOPIFY_API_KEY, SHOPIFY_API_SECRET, APP_URL) eksik: Shopify kurulumu ve bilgi senkronu kapalı.");
 }
+
+// Kampanya arşivi: ürün ve site yazıları tarihleriyle saklanır (Shopify uygulaması gerekmez).
+const runArchive = exclusive(() => archiveAllTenants(db, console).catch((err) => console.error("Arşiv", err)));
+void runArchive();
+const archiveTimer = setInterval(runArchive, config.ARCHIVE_SYNC_MINUTES * 60 * 1000);
 
 const localUrl = `http://localhost:${config.PORT}`;
 const publicUrl = (config.APP_URL ?? localUrl).replace(/\/$/, "");
@@ -61,9 +102,19 @@ const panel = {
   ],
   secureCookies: publicUrl.startsWith("https://"),
   log: console,
+  wa: deps.wa,
+  masterKey: config.MASTER_KEY,
+  events,
 };
 
-const { app, queue } = createApp(config, deps, shopifyRoutes, panel);
+const { app, queue, scheduler } = createApp(config, deps, shopifyRoutes, panel);
+
+// Sunucu bir bekleme sırasında kapandıysa: son 10 dk'da cevapsız kalan müşteriler yeniden sıraya alınır.
+const unanswered = await findUnansweredConversations(db, new Date(Date.now() - 10 * 60 * 1000));
+for (const conversationId of unanswered) {
+  scheduler.onCustomerMessage(conversationId, { delayMs: 5_000, maxWaitMs: 5_000 });
+}
+if (unanswered.length) console.log(`Cevapsız kalan ${unanswered.length} konuşma yeniden sıraya alındı.`);
 
 const server = app.listen(config.PORT, () => {
   console.log(`Sunucu hazır: http://localhost:${config.PORT} (webhook: /webhook/whatsapp, model: ${config.CLAUDE_MODEL})`);
@@ -72,6 +123,9 @@ const server = app.listen(config.PORT, () => {
 async function shutdown() {
   console.log("Kapanıyor, bekleyen mesajlar tamamlanıyor...");
   clearInterval(syncTimer);
+  clearInterval(archiveTimer);
+  // Bekleyen cevaplar bir sonraki açılışta yeniden kurulur (findUnansweredConversations).
+  scheduler.stop();
   server.close();
   await queue.idle();
   await close();

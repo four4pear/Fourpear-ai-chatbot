@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   boolean,
   customType,
@@ -30,6 +31,20 @@ export type TenantSettings = {
   texts: Partial<Record<FixedTextKey, string>>;
   /** Web arama aracının erişebileceği alan adları (Faz 4). */
   allowedSearchDomains: string[];
+  /**
+   * Art arda mesajlar: müşterinin son mesajından sonra bu kadar beklenir, gelen mesajlar
+   * tek cevapta birleştirilir (docs/lina-davranis.md "Art arda mesajlar").
+   */
+  replyDelaySeconds: number;
+  /** Durmadan yazan müşteri için üst sınır: ilk cevapsız mesajdan en fazla bu kadar sonra cevap. */
+  maxReplyWaitSeconds: number;
+  /** Müşterinin iade/değişim talebini kendisi açtığı form (ör. Kolay İade); boşsa yok. */
+  returnsFormUrl: string;
+  /**
+   * Shopify'da ülke kodu olmadan yazılmış telefonların ülkesi (ör. "0532…" → 90). Sipariş sahipliği
+   * doğrulanırken kullanılır; yanlışsa başka ülkeden bir numara yanlış kişiyle eşleşebilir.
+   */
+  phoneCountryCode: string;
 };
 
 export const defaultTenantSettings: TenantSettings = {
@@ -38,6 +53,10 @@ export const defaultTenantSettings: TenantSettings = {
   businessHours: { days: [1, 2, 3, 4, 5], start: "09:00", end: "18:00" },
   texts: {},
   allowedSearchDomains: [],
+  replyDelaySeconds: 30,
+  maxReplyWaitSeconds: 180,
+  returnsFormUrl: "",
+  phoneCountryCode: "90",
 };
 
 /** Eski kayıtlarda eksik olabilecek alanları varsayılanlarla tamamlar. */
@@ -105,11 +124,17 @@ export const conversations = pgTable(
     customerId: uuid("customer_id").notNull().references(() => customers.id, { onDelete: "cascade" }),
     whatsappAccountId: uuid("whatsapp_account_id").notNull().references(() => whatsappAccounts.id),
     status: text("status").$type<ConversationStatus>().notNull().default("bot"),
+    /** Konuşmayı devralan ekip üyesi (status "human" iken). */
+    assignedUserId: uuid("assigned_user_id").references(() => users.id, { onDelete: "set null" }),
+    assignedAt: timestamp("assigned_at", { withTimezone: true }),
     lastCustomerMessageAt: timestamp("last_customer_message_at", { withTimezone: true }),
     createdAt: createdAt(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [uniqueIndex("conversations_customer_idx").on(t.customerId)],
+  (t) => [
+    uniqueIndex("conversations_customer_idx").on(t.customerId),
+    index("conversations_tenant_updated_idx").on(t.tenantId, t.updatedAt),
+  ],
 );
 
 export type MessageSender = "customer" | "bot" | "agent" | "system";
@@ -121,8 +146,13 @@ export const messages = pgTable(
     tenantId: uuid("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
     conversationId: uuid("conversation_id").notNull().references(() => conversations.id, { onDelete: "cascade" }),
     sender: text("sender").$type<MessageSender>().notNull(),
-    /** WhatsApp mesaj tipi: text, image, audio, ... */
+    /**
+     * WhatsApp mesaj tipi: text, image, audio, ...
+     * "note": panelde görünen iç not (devraldı, bota geri verdi); müşteriye gitmez.
+     */
     type: text("type").notNull().default("text"),
+    /** sender "agent" ise mesajı yazan ekip üyesi. */
+    authorUserId: uuid("author_user_id").references(() => users.id, { onDelete: "set null" }),
     text: text("text"),
     /** WhatsApp mesaj kimliği; gelen mesajlarda tekrar işlemeyi önler. */
     waMessageId: text("wa_message_id").unique(),
@@ -167,6 +197,7 @@ export const handoffs = pgTable(
     status: text("status").$type<"open" | "resolved">().notNull().default("open"),
     createdAt: createdAt(),
     resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+    resolvedBy: uuid("resolved_by").references(() => users.id, { onDelete: "set null" }),
   },
   (t) => [index("handoffs_tenant_status_idx").on(t.tenantId, t.status)],
 );
@@ -231,6 +262,113 @@ export const knowledgeAlerts = pgTable(
     createdAt: createdAt(),
   },
   (t) => [index("knowledge_alerts_tenant_idx").on(t.tenantId, t.status)],
+);
+
+/**
+ * product: bir ürünün açıklaması, etiketleri ve fiyatları (ref = Shopify ürün kimliği)
+ * site: sitenin görünen kampanya yazıları, ör. üst bant ya da ana sayfa afişi (ref = tema bölümü)
+ */
+export type ArchiveKind = "product" | "site";
+
+export type ArchivedVariant = { id: string; title: string; price: string; compareAtPrice: string | null };
+
+export type ArchiveData = {
+  handle?: string;
+  tags?: string[];
+  variants?: ArchivedVariant[];
+  /** site: tema bölümünün türü, ör. announcement-bar, countdown */
+  section?: string;
+};
+
+/**
+ * Kampanya arşivi (docs/lina-davranis.md "Kampanya yazıları"): ürün ve site yazılarının tarihli
+ * sürümleri. Yazı değişince eskisi silinmez, bitiş tarihiyle kalır; siparişle ilgili cevaplarda
+ * sipariş tarihindeki sürüm kullanılır.
+ */
+export const textArchive = pgTable(
+  "text_archive",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+    kind: text("kind").$type<ArchiveKind>().notNull(),
+    ref: text("ref").notNull(),
+    title: text("title").notNull(),
+    content: text("content").notNull(),
+    data: jsonb("data").$type<ArchiveData>().notNull().default({}),
+    /** Başlık, yazı ve verinin özeti; aynıysa yeni sürüm açılmaz. */
+    hash: text("hash").notNull(),
+    /** Bu sürümün ilk ve son görüldüğü an. */
+    firstSeenAt: timestamp("first_seen_at", { withTimezone: true }).notNull(),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull(),
+    /** Yazı değiştiğinde ya da ürün/bölüm kalktığında dolar; boşsa güncel sürüm. */
+    endedAt: timestamp("ended_at", { withTimezone: true }),
+  },
+  (t) => [
+    index("text_archive_ref_idx").on(t.tenantId, t.kind, t.ref, t.firstSeenAt),
+    uniqueIndex("text_archive_current_idx").on(t.tenantId, t.kind, t.ref).where(sql`${t.endedAt} is null`),
+  ],
+);
+
+/**
+ * Sipariş konularında ekibe bildirim (docs/lina-davranis.md "Ekibe bildirimler"). Bu konularda
+ * konuşma devredilmez; her sipariş sorusu kaydedilir, önemliler panelde sesli uyarıyla gelir.
+ */
+/** lookup_failed: sipariş sistemine ulaşılamadı (ör. Shopify hatası); müşterinin isteği ekibe kalır. */
+export const IMPORTANT_KINDS = ["complaint", "cancel_request", "change_request", "lookup_failed", "delay", "no_tracking"] as const;
+export const RECORD_KINDS = ["return_request", "return_status", "unverified", "order_question"] as const;
+/** Önem sırasıyla: bir cevapta birden fazla konu varsa bildirimin türü ilk sıradaki olur. */
+export const NOTIFICATION_KINDS = [...IMPORTANT_KINDS, ...RECORD_KINDS] as const;
+export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
+
+export type NotificationDetails = {
+  /** Bu cevaptaki bütün bildirim türleri (önem sırasıyla). */
+  kinds?: NotificationKind[];
+  /** Ekip için kısa açıklamalar, ör. "Gecikme: Lavin Etek (Siyah), planlanan 25 Eylül 2026". */
+  issues?: string[];
+  /** Lina'nın cevabı WhatsApp'a gönderilemedi: müşteri cevapsız kaldı. */
+  replyFailed?: boolean;
+};
+
+export const notifications = pgTable(
+  "notifications",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+    conversationId: uuid("conversation_id").notNull().references(() => conversations.id, { onDelete: "cascade" }),
+    kind: text("kind").$type<NotificationKind>().notNull(),
+    /** Önemli bildirim: panelde sesli uyarı ve tarayıcı bildirimi. */
+    important: boolean("important").notNull(),
+    orderNames: jsonb("order_names").$type<string[]>().notNull().default([]),
+    /** Müşterinin yazdıkları ve Lina'nın cevabı (ekip için). */
+    question: text("question").notNull(),
+    answer: text("answer").notNull(),
+    details: jsonb("details").$type<NotificationDetails>().notNull().default({}),
+    status: text("status").$type<"open" | "done">().notNull().default("open"),
+    createdAt: createdAt(),
+    doneAt: timestamp("done_at", { withTimezone: true }),
+    doneBy: uuid("done_by").references(() => users.id, { onDelete: "set null" }),
+  },
+  (t) => [index("notifications_tenant_idx").on(t.tenantId, t.status, t.createdAt)],
+);
+
+/** returns_mcp: mağazanın iade sistemi (ör. Kolay İade paneli), MCP üzerinden yalnızca okuma. */
+export type IntegrationKind = "returns_mcp";
+
+/** Mağazanın dış sistem bağlantıları. Anahtar şifreli saklanır (bkz. lib/crypto.ts). */
+export const integrations = pgTable(
+  "integrations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+    kind: text("kind").$type<IntegrationKind>().notNull(),
+    /** Gizli olmayan ayarlar, ör. { url, store } */
+    config: jsonb("config").$type<Record<string, string>>().notNull().default({}),
+    secretEnc: text("secret_enc"),
+    enabled: boolean("enabled").notNull().default(true),
+    createdAt: createdAt(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("integrations_tenant_kind_idx").on(t.tenantId, t.kind)],
 );
 
 /** Müşterinin gönderdiği fotoğraflar (ekip panelde görür, Lina okur). */
@@ -320,3 +458,6 @@ export type Conversation = typeof conversations.$inferSelect;
 export type Message = typeof messages.$inferSelect;
 export type ShopifyStore = typeof shopifyStores.$inferSelect;
 export type KnowledgeDoc = typeof knowledgeDocs.$inferSelect;
+export type ArchivedText = typeof textArchive.$inferSelect;
+export type Notification = typeof notifications.$inferSelect;
+export type Integration = typeof integrations.$inferSelect;

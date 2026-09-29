@@ -1,8 +1,14 @@
+import { simulate } from "./simulator.js";
+import type { Deps } from "../core/conversation.js";
 import express, { type Express, type NextFunction, type Request, type Response } from "express";
 import { and, eq, ne } from "drizzle-orm";
 import type { DB } from "../db/client.js";
 import { memberships, tenants, users, type MemberRole, type User } from "../db/schema.js";
 import { FailureLimiter } from "../auth/rate-limit.js";
+import type { EventBus } from "../core/events.js";
+import type { WhatsAppSender } from "../whatsapp/client.js";
+import { registerConversationRoutes } from "./conversations.js";
+import { registerNotificationRoutes } from "./notifications.js";
 import {
   AuthError,
   SESSION_TTL_MS,
@@ -20,6 +26,7 @@ import {
 } from "../auth/service.js";
 
 export type PanelApiDeps = {
+  simulatorDeps?: Deps;
   db: DB;
   /** Davet/sıfırlama linklerinin başı, ör. https://panel.ornek.com */
   publicUrl: string;
@@ -30,11 +37,25 @@ export type PanelApiDeps = {
   log: Pick<Console, "info" | "warn" | "error">;
   /** Derlenmiş panel klasörü (varsayılan: panel/dist). */
   distDir?: string;
+  /** Ekibin müşteriye cevap göndermesi için. */
+  wa: WhatsAppSender;
+  /** Mağaza WhatsApp token'larını çözmek için. */
+  masterKey: string;
+  /** Canlı güncelleme sinyalleri (WhatsApp tarafıyla aynı nesne olmalı). */
+  events: EventBus;
+  now?: () => Date;
+  /** Canlı bağlantının oturum kontrol aralığı (test için kısaltılabilir). */
+  heartbeatMs?: number;
+  /** Ekip devralınca Lina'nın bekleyen cevabını iptal eder (createApp bağlar). */
+  cancelPendingReply?: (conversationId: string) => void;
 };
 
 export const SESSION_COOKIE = "lina_session";
 
-type Locals = { user?: User; sessionToken?: string };
+export type Locals = { user?: User; sessionToken?: string; role?: MemberRole };
+
+/** Adresteki kimlikler: geçersiz biçim veritabanına gitmeden "bulunamadı" olur. */
+export const isUuid = (v: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
 
 function readCookie(req: Request, name: string): string | undefined {
   for (const part of (req.get("cookie") ?? "").split(";")) {
@@ -45,7 +66,7 @@ function readCookie(req: Request, name: string): string | undefined {
 }
 
 /** Express 5'te parametre tipi string | string[] olabilir. */
-const param = (req: Request, name: string) => String(req.params[name]);
+export const param = (req: Request, name: string) => String(req.params[name]);
 
 const emailOk = (email: unknown): email is string => typeof email === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
 const isRole = (r: unknown): r is MemberRole => r === "owner" || r === "agent";
@@ -99,7 +120,8 @@ export function registerPanelApi(app: Express, deps: PanelApiDeps) {
   /** Mağazaya erişim: üye değilse 404 (mağazanın varlığı bile belli olmasın), sahip gerekiyorsa 403. */
   const requireTenant = (need: MemberRole) => async (req: Request, res: Response, next: NextFunction) => {
     const user = (res.locals as Locals).user!;
-    const role = await roleIn(db, user, param(req, "tenantId"));
+    const tenantId = param(req, "tenantId");
+    const role = isUuid(tenantId) ? await roleIn(db, user, tenantId) : null;
     if (!role) {
       res.status(404).json({ error: "Bulunamadı" });
       return;
@@ -108,6 +130,7 @@ export function registerPanelApi(app: Express, deps: PanelApiDeps) {
       res.status(403).json({ error: "Bu işlem için mağaza sahibi olmalısınız" });
       return;
     }
+    (res.locals as Locals).role = role;
     next();
   };
 
@@ -244,6 +267,24 @@ export function registerPanelApi(app: Express, deps: PanelApiDeps) {
     const token = await createResetToken(db, userId, requester.id);
     res.json({ link: `${deps.publicUrl}/sifre/${token}`, expiresInHours: 24 });
   });
+
+  const testing = new Set<string>();
+  api.post("/tenants/:tenantId/test", requireUser, requireTenant("owner"), async (req, res) => {
+    if (!deps.simulatorDeps) return res.status(503).json({ error: "Test sohbeti kullanılamıyor" });
+    const history = req.body?.history;
+    if (!Array.isArray(history) || history.length < 1 || history.length > 40 || history.some((m: any, i: number) =>
+      !m || m.role !== (i % 2 === 0 ? "user" : "assistant") || typeof m.text !== "string" || !m.text.trim() || m.text.length > 4000
+    ) || history.at(-1).role !== "user") return res.status(400).json({ error: "Geçersiz sohbet. En fazla 20 mesaj deneyebilirsiniz; ardından yeni sohbet açın." });
+    const key = `${(res.locals as Locals).user!.id}:${param(req, "tenantId")}`;
+    if (testing.has(key) || testing.size >= 4) return res.status(429).json({ error: "Devam eden cevabın tamamlanmasını bekleyin." });
+    testing.add(key);
+    try {
+      res.json(await simulate(deps.simulatorDeps, param(req, "tenantId"), history, req.body.demo === true));
+    } finally { testing.delete(key); }
+  });
+
+  registerConversationRoutes(api, deps, { requireUser, requireTenant });
+  registerNotificationRoutes(api, deps, { requireUser, requireTenant });
 
   api.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
     deps.log.error("Panel API hatası", err);

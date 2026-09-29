@@ -8,7 +8,8 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { askKnowledgeAgent } from "../src/agents/knowledge.js";
 import type { Llm } from "../src/agents/runner.js";
 import { openDatabase, type Database } from "../src/db/client.js";
-import { knowledgeAlerts, knowledgeDocs, shopifyStores, tenants, type ShopifyStore } from "../src/db/schema.js";
+import { agentRuns, knowledgeAlerts, knowledgeDocs, shopifyStores, tenants, textArchive, type ShopifyStore } from "../src/db/schema.js";
+import { recordSnapshot } from "../src/archive/archive.js";
 import { decryptSecret, encryptSecret } from "../src/lib/crypto.js";
 import { loadKnowledge, readLegalDoc } from "../src/knowledge/base.js";
 import { htmlToText } from "../src/knowledge/html.js";
@@ -178,6 +179,28 @@ describe("bilgi senkronu", () => {
     } finally {
       await database.db.update(tenants).set({ notes: "" }).where(eq(tenants.id, tenantId));
       await database.db.update(shopifyStores).set({ uninstalledAt: null }).where(eq(shopifyStores.id, store.id));
+    }
+  });
+
+  it("arşivden gelen kampanya özeti Shopify senkronunda silinmez, kaynakların sonunda yer alır", async () => {
+    const store = await createStore();
+    await database.db.insert(knowledgeDocs).values({
+      tenantId,
+      source: "campaign",
+      externalId: "digest",
+      title: "Güncel kampanya ve duyuru yazıları",
+      content: "Sitenin görünen yazıları (üst bant, ana sayfa):\n- 3.000 TL ve üzeri siparişlerde ücretsiz kargo",
+      kind: "core",
+      autoEnabled: true,
+    });
+    try {
+      await syncStoreKnowledge(database.db, fakeShopify, store);
+      const kb = await loadKnowledge(database.db, (await database.db.select().from(tenants).where(eq(tenants.id, tenantId)))[0]!);
+      const titles = kb!.core.map((d) => d.title);
+      expect(titles.slice(0, 2)).toEqual(["Mağaza künyesi", "Kargo"]);
+      expect(titles.at(-1)).toBe("Güncel kampanya ve duyuru yazıları");
+    } finally {
+      await database.db.delete(knowledgeDocs).where(eq(knowledgeDocs.source, "campaign"));
     }
   });
 
@@ -436,5 +459,45 @@ describe("Shopify adresleri", () => {
     await new Promise((r) => setTimeout(r, 50));
     const [store] = await database.db.select().from(shopifyStores);
     expect(store!.uninstalledAt).not.toBeNull();
+  });
+
+  it("mağaza verisi silme bildirimi: bilgiler, arşiv ve kurulum silinir; vitrinden yeniden veri toplanmaz", async () => {
+    await createStore();
+    await database.db.update(tenants).set({ domain: "maiusonline.com" }).where(eq(tenants.id, tenantId));
+    await recordSnapshot(database.db, tenantId, "site", [{ ref: "bant", title: "announcement-bar", content: "Kargo bedava", data: {} }], new Date());
+    await database.db.insert(knowledgeDocs).values({
+      tenantId,
+      source: "campaign",
+      externalId: "digest",
+      title: "Güncel kampanya ve duyuru yazıları",
+      content: "- Kargo bedava",
+      kind: "core",
+      autoEnabled: true,
+    });
+    // Sipariş uzmanının siparişten türettiği kayıt; Lina'nın kendi kaydı dokunulmadan kalır.
+    await database.db.insert(agentRuns).values([
+      { tenantId, agent: "order", model: "m", input: "MO-1271 nerede?", output: "Sipariş #MO-1271 kargoda (Yurtiçi, takip 123)" },
+      { tenantId, agent: "lina", model: "m", input: "merhaba", output: "Merhaba" },
+    ]);
+    const body = JSON.stringify({ shop_id: 1, shop_domain: "maius.myshopify.com" });
+    const res = await fetch(`${base}/webhook/shopify`, {
+      method: "POST",
+      headers: {
+        "x-shopify-hmac-sha256": createHmac("sha256", APP.apiSecret).update(body).digest("base64"),
+        "x-shopify-topic": "shop/redact",
+        "x-shopify-shop-domain": "maius.myshopify.com",
+      },
+      body,
+    });
+    expect(res.status).toBe(200);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(await database.db.select().from(shopifyStores)).toHaveLength(0);
+    expect(await database.db.select().from(textArchive).where(eq(textArchive.tenantId, tenantId))).toHaveLength(0);
+    expect(await database.db.select().from(knowledgeDocs).where(eq(knowledgeDocs.tenantId, tenantId))).toHaveLength(0);
+    const [tenant] = await database.db.select().from(tenants).where(eq(tenants.id, tenantId));
+    expect(tenant!.domain).toBeNull();
+    const runs = await database.db.select().from(agentRuns).where(eq(agentRuns.tenantId, tenantId));
+    expect(runs.find((r) => r.agent === "order")).toMatchObject({ input: null, output: null });
+    expect(runs.find((r) => r.agent === "lina")).toMatchObject({ input: "merhaba", output: "Merhaba" });
   });
 });

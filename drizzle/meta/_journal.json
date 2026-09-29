@@ -36,6 +36,41 @@
       "when": 1790509178899,
       "tag": "0004_panel_auth",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1790582794407,
+      "tag": "0005_panel_conversations",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1790587652318,
+      "tag": "0006_reply_delay_defaults",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1790595335790,
+      "tag": "0007_text_archive",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1790598483999,
+      "tag": "0008_notifications_integrations",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1790672099464,
+      "tag": "0009_steep_deathstrike",
+      "breakpoints": true
     }
   ]
 }

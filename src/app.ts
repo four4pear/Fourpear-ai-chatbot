@@ -1,7 +1,8 @@
 import express from "express";
 import type { Config } from "./config.js";
-import { handleInbound, type Deps } from "./core/conversation.js";
+import { ingestInbound, respond, type Deps } from "./core/conversation.js";
 import { KeyedQueue } from "./core/queue.js";
+import { ReplyScheduler } from "./core/reply-scheduler.js";
 import { registerShopifyRoutes, type ShopifyRouteDeps } from "./shopify/routes.js";
 import { registerPanelApi, type PanelApiDeps } from "./panel/api.js";
 import { DEFAULT_PANEL_DIST, registerPanelStatic } from "./panel/static.js";
@@ -17,8 +18,17 @@ export function createApp(
   const app = express();
   // Railway gibi bir vekil sunucunun arkasında gerçek istemci IP'si (giriş deneme sınırı için).
   app.set("trust proxy", 1);
-  // Aynı müşterinin mesajları sırayla işlenir.
+  // Aynı müşterinin mesajları sırayla alınır.
   const queue = new KeyedQueue((err, key) => deps.log.error(`Mesaj işlenemedi (${key})`, err));
+  // Art arda mesajlar: müşteri susunca hepsine tek cevap (docs/lina-davranis.md).
+  const scheduler = new ReplyScheduler({
+    respond: async (conversationId, ctl) => {
+      const outcome = await respond(deps, conversationId, ctl);
+      deps.log.info(`[${conversationId}] cevap → ${outcome}`);
+    },
+    refreshTyping: (t) => deps.wa.markReadAndTyping({ ...t.wa, messageId: t.messageId }),
+    log: deps.log,
+  });
 
   app.get("/health", (_req, res) => {
     res.json({ ok: true });
@@ -53,17 +63,27 @@ export function createApp(
     res.sendStatus(200);
     for (const event of extractInboundEvents(payload)) {
       queue.push(`${event.phoneNumberId}:${event.message.from}`, async () => {
-        const outcome = await handleInbound(deps, event);
-        deps.log.info(`[${event.phoneNumberId}] ${event.message.from} ${event.message.type} → ${outcome}`);
+        const result = await ingestInbound(deps, event);
+        deps.log.info(`[${event.phoneNumberId}] ${event.message.from} ${event.message.type} → ${result.outcome}`);
+        if (result.outcome === "queued") {
+          scheduler.onCustomerMessage(result.conversationId, {
+            delayMs: deps.replyDelayOverrideMs ?? result.delayMs,
+            maxWaitMs: result.maxWaitMs,
+            typing: result.typing,
+          });
+        } else if (result.outcome === "daily_limit") {
+          scheduler.cancel(result.conversationId);
+        }
       });
     }
   });
 
   if (shopify) registerShopifyRoutes(app, shopify);
   if (panel) {
-    registerPanelApi(app, panel);
+    // Ekip konuşmayı devralınca Lina'nın bekleyen/hazırlanan cevabı iptal edilir.
+    registerPanelApi(app, { ...panel, simulatorDeps: deps, cancelPendingReply: (id) => scheduler.cancel(id) });
     registerPanelStatic(app, panel.distDir ?? DEFAULT_PANEL_DIST, deps.log);
   }
 
-  return { app, queue };
+  return { app, queue, scheduler };
 }

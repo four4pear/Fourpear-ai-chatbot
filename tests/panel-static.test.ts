@@ -5,6 +5,7 @@ import type { AddressInfo } from "node:net";
 import type { Server } from "node:http";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createApp } from "../src/app.js";
+import { EventBus } from "../src/core/events.js";
 import type { Deps } from "../src/core/conversation.js";
 import { openDatabase, type Database } from "../src/db/client.js";
 
@@ -26,6 +27,9 @@ beforeAll(async () => {
     publicUrl: "http://panel.test",
     allowedOrigins: ["http://panel.test"],
     secureCookies: false,
+    wa: { sendText: async () => [], markReadAndTyping: async () => {}, downloadMedia: async () => ({ data: Buffer.alloc(0), mimeType: "image/jpeg" }) },
+    masterKey: Buffer.alloc(32).toString("base64"),
+    events: new EventBus(),
     log,
     distDir: dist,
   });

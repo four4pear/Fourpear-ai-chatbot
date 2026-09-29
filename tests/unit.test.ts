@@ -1,5 +1,8 @@
 import { createHmac, randomBytes } from "node:crypto";
+import type Anthropic from "@anthropic-ai/sdk";
 import { describe, expect, it } from "vitest";
+import { describeLlmError, runAgent, type Llm } from "../src/agents/runner.js";
+import type { DB } from "../src/db/client.js";
 import { loadConfig } from "../src/config.js";
 import { businessStatus } from "../src/core/business-hours.js";
 import { startOfToday, toClaudeMessages } from "../src/core/conversation.js";
@@ -16,6 +19,61 @@ describe("imza doğrulama", () => {
   it("eksik/bozuk başlığı reddeder", () => {
     expect(isValidSignature(body, undefined, "secret")).toBe(false);
     expect(isValidSignature(body, "sha256=abc", "secret")).toBe(false);
+  });
+});
+
+describe("yapay zekâ hataları", () => {
+  it("ekibin anlayacağı kısa sebebe çevrilir", () => {
+    const apiError = (status: number, message: string) => Object.assign(new Error(message), { status });
+    expect(describeLlmError(apiError(400, "Your credit balance is too low to access the Anthropic API."))).toContain("kredisi bitti");
+    expect(describeLlmError(apiError(401, "invalid x-api-key"))).toBe("yapay zekâ anahtarı geçersiz");
+    expect(describeLlmError(apiError(429, "rate limited"))).toBe("yapay zekâ kullanım sınırına takıldı");
+    expect(describeLlmError(apiError(529, "Overloaded"))).toBe("yapay zekâ servisi geçici olarak yanıt vermiyor");
+    expect(describeLlmError(new Error("beklenmeyen"))).toBe("teknik hata");
+  });
+
+  it("uzman aracının hatası sessiz kalmaz, kayda düşer", async () => {
+    const warnings: string[] = [];
+    let step = 0;
+    const llm: Llm = {
+      async create() {
+        step++;
+        const content =
+          step === 1
+            ? [{ type: "tool_use", id: "t1", name: "get_order", input: {} }]
+            : [{ type: "text", text: "tamam", citations: null }];
+        return {
+          id: "m",
+          type: "message",
+          role: "assistant",
+          model: "x",
+          content,
+          stop_reason: step === 1 ? "tool_use" : "end_turn",
+          stop_sequence: null,
+          usage: { input_tokens: 1, output_tokens: 1 },
+        } as unknown as Anthropic.Message;
+      },
+    };
+    const db = { insert: () => ({ values: async () => {} }) } as unknown as DB;
+    const result = await runAgent(
+      { db, llm, model: "x", tenantId: "t", conversationId: null, log: { warn: (m: string) => warnings.push(m) } },
+      {
+        agent: "order",
+        system: "s",
+        messages: [{ role: "user", content: "?" }],
+        effort: "low",
+        tools: [
+          {
+            definition: { name: "get_order", input_schema: { type: "object", properties: {} } },
+            run: async () => {
+              throw new Error("Shopify GraphQL hatası (403): Access denied for phone field");
+            },
+          },
+        ],
+      },
+    );
+    expect(result.text).toBe("tamam");
+    expect(warnings).toEqual(["[order] get_order aracı hata verdi: Shopify GraphQL hatası (403): Access denied for phone field"]);
   });
 });
 
@@ -48,23 +106,20 @@ describe("mesaj bölme", () => {
 });
 
 describe("geçmiş dönüştürme", () => {
-  it("rolleri birleştirir, sistem mesajlarını atlar, user ile başlar", () => {
+  it("rolleri birleştirir, notları ve tepkileri atlar, otomatik mesajları tutar, user ile başlar", () => {
     const out = toClaudeMessages([
       { sender: "bot", text: "önceki", type: "text" },
       { sender: "customer", text: "a", type: "text" },
       { sender: "customer", text: null, type: "image" },
+      { sender: "customer", text: null, type: "reaction" },
+      { sender: "system", text: "Ayşe konuşmayı devraldı", type: "note" },
       { sender: "system", text: "limit", type: "text" },
       { sender: "agent", text: "ekip cevabı", type: "text" },
     ]);
     expect(out).toEqual([
-      {
-        role: "user",
-        content: [
-          { type: "text", text: "a" },
-          { type: "text", text: "[müşteri fotoğraf gönderdi]" },
-        ],
-      },
-      { role: "assistant", content: [{ type: "text", text: "(Mağaza ekibi yazdı) ekip cevabı" }] },
+      // Art arda müşteri mesajları tek yazı gibi: tek metin bloğunda satır satır.
+      { role: "user", content: [{ type: "text", text: "a\n[müşteri fotoğraf gönderdi]" }] },
+      { role: "assistant", content: [{ type: "text", text: "limit\n(Mağaza ekibi yazdı) ekip cevabı" }] },
     ]);
   });
 });

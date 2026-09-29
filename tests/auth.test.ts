@@ -3,6 +3,7 @@ import type { Server } from "node:http";
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createApp } from "../src/app.js";
+import { EventBus } from "../src/core/events.js";
 import type { Deps } from "../src/core/conversation.js";
 import { openDatabase, type Database } from "../src/db/client.js";
 import { memberships, tenants, users } from "../src/db/schema.js";
@@ -26,6 +27,9 @@ function startApp() {
     publicUrl: "http://panel.test",
     allowedOrigins: [ORIGIN],
     secureCookies: false,
+    wa: { sendText: async () => [], markReadAndTyping: async () => {}, downloadMedia: async () => ({ data: Buffer.alloc(0), mimeType: "image/jpeg" }) },
+    masterKey: Buffer.alloc(32).toString("base64"),
+    events: new EventBus(),
     log: { info() {}, warn() {}, error() {} },
   });
   const server: Server = app.listen(0);
@@ -230,4 +234,14 @@ describe("şifre sıfırlama", () => {
     expect((await app.call("POST", `/api/tokens/${token}/accept`, { body: { password: "yonetici-sifresi-1" } })).status).toBe(200);
     expect((await login("ilk@platform.test", "yonetici-sifresi-1")).status).toBe(200);
   });
+  it("test sohbeti oturum, mağaza ve sahip yetkisini kontrol eder", async () => {
+    const url = `/api/tenants/${tenantA}/test`;
+    expect((await app.call("POST", url)).status).toBe(401);
+    // A dedicated user keeps this check independent of password-reset scenarios above.
+    await createUser("test-agent@maius.test", { memberOf: [[tenantA, "agent"]] });
+    const member = await login("test-agent@maius.test");
+    expect((await app.call("POST", url, { cookie: member.cookie })).status).toBe(403);
+    expect((await app.call("POST", `/api/tenants/${tenantB}/test`, { cookie: member.cookie })).status).toBe(404);
+  });
+
 });

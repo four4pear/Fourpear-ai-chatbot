@@ -4,12 +4,13 @@ import { ChartIcon, ChatIcon, InboxIcon, SettingsIcon, ShieldIcon } from "./icon
 import { Link, navigate } from "./router";
 import { rememberStore, useSession } from "./session";
 
-export type SectionKey = "bekleyenler" | "sohbetler" | "istatistik" | "ayarlar";
+export type SectionKey = "bekleyenler" | "sohbetler" | "istatistik" | "ayarlar" | "test";
 
 export const SECTIONS: { key: SectionKey; label: string; ownerOnly: boolean; Icon: () => ReactNode }[] = [
   { key: "bekleyenler", label: "Bekleyenler", ownerOnly: false, Icon: InboxIcon },
   { key: "sohbetler", label: "Tüm sohbetler", ownerOnly: false, Icon: ChatIcon },
   { key: "istatistik", label: "İstatistik", ownerOnly: true, Icon: ChartIcon },
+  { key: "test", label: "Lina’yı test et", ownerOnly: true, Icon: ChatIcon },
   { key: "ayarlar", label: "Ayarlar", ownerOnly: true, Icon: SettingsIcon },
 ];
 

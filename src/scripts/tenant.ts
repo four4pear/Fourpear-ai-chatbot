@@ -13,14 +13,28 @@
  *   npm run tenant -- admin --email sen@ornek.com --name "Ad Soyad"   (yönetici + şifre linki)
  *   npm run tenant -- invite --slug maius --email sahip@maius.info --role owner   (davet linki)
  *
+ * İade:
+ *   npm run tenant -- upsert --slug maius --returns-url https://iade.betulsaday.com   (Lina'nın vereceği iade formu)
+ *   npm run tenant -- upsert --slug maius --phone-country 90   (Shopify'da ülke kodsuz yazılan telefonların ülkesi)
+ *   npm run tenant -- returns --slug maius --url https://iade.betulsaday.com/mcp.php --store maius
+ *        (iade sistemi bağlantısı; anahtar gizli sorulur, bağlantı test edilir)
+ *   npm run tenant -- returns --slug maius --test | --off
+ *
+ * Kampanya arşivi (ürün ve site yazılarının tarihli kopyaları):
+ *   npm run tenant -- archive --slug maius       (vitrinden şimdi güncelle)
+ *   npm run tenant -- archive-import --slug maius --products urunler.json [--home anasayfa.html] [--at 2026-09-28T13:51:00+03:00]
+ *   npm run tenant -- archive-show --slug maius [--title "Lavin Etek"]
+ *
  * Günler: 0=pazar ... 6=cumartesi
  */
 import "dotenv/config";
+import { readFile, stat } from "node:fs/promises";
 import { parseArgs } from "node:util";
 import { and, eq, sql } from "drizzle-orm";
 import { loadConfig } from "../config.js";
 import { exitIfLocked, openDatabase } from "../db/client.js";
 import {
+  integrations,
   knowledgeAlerts,
   knowledgeDocs,
   users,
@@ -30,12 +44,17 @@ import {
   whatsappAccounts,
   type BusinessHours,
 } from "../db/schema.js";
-import { encryptSecret } from "../lib/crypto.js";
+import { decryptSecret, encryptSecret } from "../lib/crypto.js";
+import { promptSecret } from "../lib/prompt.js";
+import { ALLOWED_TOOLS, DANGEROUS_TOOLS, McpClient } from "../returns/kolay-iade.js";
 import { createInvite, createResetToken, normalizeEmail } from "../auth/service.js";
 import { isEnabled } from "../knowledge/base.js";
 import { syncStoreKnowledge } from "../knowledge/sync.js";
 import { createShopifyApi } from "../shopify/client.js";
 import { createInstallToken, isValidShopDomain } from "../shopify/oauth.js";
+import { currentTexts, recordSnapshot, refreshCampaignDoc, versionsByTitle, type RecordResult } from "../archive/archive.js";
+import { parseProductsJson, productSnapshot, siteTextsOf } from "../archive/storefront.js";
+import { archiveTenant, describeRun } from "../archive/sync.js";
 
 const [command, ...rest] = process.argv.slice(2);
 const { values: args } = parseArgs({
@@ -57,6 +76,15 @@ const { values: args } = parseArgs({
     on: { type: "boolean" },
     off: { type: "boolean" },
     auto: { type: "boolean" },
+    products: { type: "string", multiple: true },
+    home: { type: "string" },
+    at: { type: "string" },
+    title: { type: "string" },
+    "returns-url": { type: "string" },
+    "phone-country": { type: "string" },
+    url: { type: "string" },
+    store: { type: "string" },
+    test: { type: "boolean" },
   },
 });
 
@@ -77,6 +105,32 @@ function parseHours(value: string): BusinessHours {
   return { days: match[1]!.split(",").map(Number), start: match[2]!, end: match[3]! };
 }
 
+const formatDate = (d: Date) => d.toLocaleString("tr-TR", { timeZone: config.TZ, dateStyle: "short", timeStyle: "short" });
+const formatRecord = (r: RecordResult) => `${r.added} yeni, ${r.changed} değişen, ${r.unchanged} aynı, ${r.ended} kalkan`;
+
+/** Kopyanın tarihi: --at verilmediyse dosyanın kaydedildiği an. */
+async function snapshotTime(file: string): Promise<Date> {
+  if (!args.at) return (await stat(file)).mtime;
+  const at = new Date(args.at);
+  if (Number.isNaN(at.getTime())) throw new Error("--at geçerli bir tarih olmalı, ör. 2026-09-28T13:51:00+03:00");
+  return at;
+}
+
+/** İade sistemi bağlantı testi: anahtar hangi araçları görebiliyor? */
+async function testReturnsConnection(url: string, key: string) {
+  const tools = await new McpClient({ url, key }).listTools();
+  console.log(`Bağlantı tamam. Anahtarın görebildiği araç sayısı: ${tools.length}`);
+  const missing = ALLOWED_TOOLS.filter((t) => !tools.includes(t));
+  if (missing.length) console.log(`⚠️ Lina'nın kullandığı araçlar görünmüyor: ${missing.join(", ")}`);
+  const risky = tools.filter((t) => DANGEROUS_TOOLS.includes(t));
+  if (risky.length) {
+    console.log(
+      `⚠️ Bu anahtar yazma/yönetim araçlarını da görebiliyor (${risky.join(", ")}). Lina bunları asla çağırmaz, ` +
+        "ama anahtar çalınırsa diye panelden yalnızca talep_ara ve talep_detay ile kısıtlanması önerilir.",
+    );
+  }
+}
+
 async function tenantBySlug() {
   const [tenant] = await db.select().from(tenants).where(eq(tenants.slug, required("slug")));
   if (!tenant) throw new Error("Mağaza bulunamadı; önce 'upsert' çalıştırın");
@@ -87,25 +141,66 @@ try {
   if (command === "upsert") {
     const slug = required("slug");
     const [existing] = await db.select().from(tenants).where(eq(tenants.slug, slug));
+    const returnsUrl = args["returns-url"];
+    if (returnsUrl && !/^https:\/\/\S+$/.test(returnsUrl)) throw new Error("--returns-url https:// ile başlamalı");
+    const phoneCountry = args["phone-country"];
+    if (phoneCountry !== undefined && !/^\d{1,3}$/.test(phoneCountry)) throw new Error("--phone-country ülke kodu olmalı, ör. 90");
+    const settingsChange = {
+      ...(args.hours && { businessHours: parseHours(args.hours) }),
+      ...(returnsUrl !== undefined && { returnsFormUrl: returnsUrl }),
+      ...(phoneCountry !== undefined && { phoneCountryCode: phoneCountry }),
+    };
     const fields = {
       ...(args.name && { name: args.name }),
       ...(args.domain && { domain: args.domain }),
       ...(args["bot-name"] && { botName: args["bot-name"] }),
       ...(args.notes !== undefined && { notes: args.notes }),
-      ...(args.hours && {
-        settings: { ...resolveSettings(existing?.settings), businessHours: parseHours(args.hours) },
-      }),
+      ...(Object.keys(settingsChange).length && { settings: { ...resolveSettings(existing?.settings), ...settingsChange } }),
     };
     const [tenant] = await db
       .insert(tenants)
       .values({ slug, name: args.name ?? slug, ...fields })
       .onConflictDoUpdate({ target: tenants.slug, set: Object.keys(fields).length ? fields : { slug } })
       .returning();
-    const hours = resolveSettings(tenant!.settings).businessHours;
+    const settings = resolveSettings(tenant!.settings);
+    const hours = settings.businessHours;
     console.log(
       `Mağaza kaydedildi: ${tenant!.name} (${tenant!.slug}), mesai ${hours.days.join(",")} ${hours.start}-${hours.end}, ` +
-        `notlar ${tenant!.notes.length} karakter`,
+        `notlar ${tenant!.notes.length} karakter, iade formu ${settings.returnsFormUrl || "yok"}`,
     );
+  } else if (command === "returns") {
+    // İade sistemi bağlantısı (yalnızca okuma). Anahtar gizli sorulur; komut satırında dolaşmaz.
+    const tenant = await tenantBySlug();
+    const where = and(eq(integrations.tenantId, tenant.id), eq(integrations.kind, "returns_mcp"));
+    const [existing] = await db.select().from(integrations).where(where);
+    if (args.off) {
+      if (!existing) throw new Error("Bu mağazada iade sistemi bağlantısı yok");
+      await db.update(integrations).set({ enabled: false, updatedAt: new Date() }).where(where);
+      console.log("İade sistemi bağlantısı kapatıldı; Lina iade durumunu artık okumaz.");
+    } else if (args.test) {
+      if (!existing?.secretEnc) throw new Error("Bu mağazada iade sistemi bağlantısı yok");
+      await testReturnsConnection(existing.config.url!, decryptSecret(existing.secretEnc, config.MASTER_KEY));
+    } else {
+      const url = required("url");
+      const store = required("store");
+      if (!/^https:\/\/\S+$/.test(url)) throw new Error("--url https:// ile başlamalı");
+      const key = await promptSecret("İade sistemi anahtarı (yazdığınız görünmez, sonra Enter): ");
+      if (!key) throw new Error("Anahtar boş olamaz");
+      await testReturnsConnection(url, key);
+      const values = {
+        tenantId: tenant.id,
+        kind: "returns_mcp" as const,
+        config: { url, store },
+        secretEnc: encryptSecret(key, config.MASTER_KEY),
+        enabled: true,
+        updatedAt: new Date(),
+      };
+      await db
+        .insert(integrations)
+        .values(values)
+        .onConflictDoUpdate({ target: [integrations.tenantId, integrations.kind], set: values });
+      console.log(`İade sistemi ${tenant.slug} mağazasına bağlandı (mağaza kodu: ${store}). Anahtar şifreli saklandı.`);
+    }
   } else if (command === "whatsapp") {
     const tenant = await tenantBySlug();
     const values = {
@@ -181,6 +276,44 @@ try {
     if (role !== "owner" && role !== "agent") throw new Error("--role owner ya da agent olmalı");
     const token = await createInvite(db, { tenantId: tenant.id, email: required("email"), role, createdBy: null });
     console.log(`${tenant.name} için ${role === "owner" ? "sahip" : "çalışan"} daveti (7 gün geçerli):\n${publicUrl()}/davet/${token}`);
+  } else if (command === "archive") {
+    // Sunucu açıkken arşiv kendiliğinden güncellenir; kapalıyken bu komutla.
+    const run = await archiveTenant(db, await tenantBySlug());
+    console.log(`Arşiv güncellendi. ${describeRun(run)}`);
+    for (const e of run.errors) console.error(`Hata: ${e}`);
+  } else if (command === "archive-import") {
+    const tenant = await tenantBySlug();
+    if (!args.products?.length && !args.home) throw new Error("--products <dosya> ve/veya --home <dosya> belirtin");
+    if (args.products?.length) {
+      const items = [];
+      for (const file of args.products) items.push(...parseProductsJson(await readFile(file, "utf8")).map(productSnapshot));
+      const seenAt = await snapshotTime(args.products[0]!);
+      const r = await recordSnapshot(db, tenant.id, "product", items, seenAt);
+      console.log(`Ürünler (${formatDate(seenAt)}): ${formatRecord(r)}`);
+    }
+    if (args.home) {
+      const seenAt = await snapshotTime(args.home);
+      const site = siteTextsOf(await readFile(args.home, "utf8"));
+      const r = await recordSnapshot(db, tenant.id, "site", site.items, seenAt, { allowEmpty: site.authoritative });
+      console.log(`Site yazıları (${formatDate(seenAt)}): ${formatRecord(r)}`);
+    }
+    await refreshCampaignDoc(db, tenant.id);
+  } else if (command === "archive-show") {
+    const tenant = await tenantBySlug();
+    if (args.title) {
+      const versions = await versionsByTitle(db, tenant.id, "product", args.title);
+      if (!versions.length) console.log("Arşivde bu başlıkla ürün yok");
+      for (const v of versions) {
+        const until = v.endedAt ? formatDate(v.endedAt) : "güncel";
+        console.log(`\n${v.title}: ${formatDate(v.firstSeenAt)} → ${until} (son görülme ${formatDate(v.lastSeenAt)})`);
+        console.log(`  ${v.content.replace(/\s+/g, " ").slice(0, 400)}`);
+      }
+    } else {
+      const products = await currentTexts(db, tenant.id, "product");
+      const site = await currentTexts(db, tenant.id, "site");
+      console.log(`Arşivde güncel ${products.length} ürün ve ${site.length} site yazısı var.`);
+      for (const s of site) console.log(`- ${s.title}: ${s.content.replace(/\s+/g, " ").slice(0, 200)}`);
+    }
   } else if (command === "list") {
     const rows = await db
       .select({
@@ -196,7 +329,9 @@ try {
       .leftJoin(shopifyStores, eq(shopifyStores.tenantId, tenants.id));
     console.table(rows);
   } else {
-    console.log("Komutlar: upsert | whatsapp | shopify-link | sync | docs | doc | alerts | admin | invite | list  (ayrıntı: src/scripts/tenant.ts)");
+    console.log(
+      "Komutlar: upsert | whatsapp | shopify-link | sync | docs | doc | alerts | admin | invite | list | returns | archive | archive-import | archive-show  (ayrıntı: src/scripts/tenant.ts)",
+    );
   }
 } finally {
   await close();

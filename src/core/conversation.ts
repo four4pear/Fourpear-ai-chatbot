@@ -1,5 +1,5 @@
 import type Anthropic from "@anthropic-ai/sdk";
-import { and, count, desc, eq, gte, notInArray } from "drizzle-orm";
+import { and, count, desc, eq, gte, inArray, ne, notInArray } from "drizzle-orm";
 import type { DB } from "../db/client.js";
 import {
   conversations,
@@ -16,12 +16,17 @@ import {
   type WhatsappAccount,
 } from "../db/schema.js";
 import { runLina, type HandoffRequest } from "../agents/lina.js";
-import type { Llm } from "../agents/runner.js";
+import type { OrderFindings } from "../agents/orders.js";
+import { CancelledError, describeLlmError, type Llm } from "../agents/runner.js";
 import { decryptSecret } from "../lib/crypto.js";
+import type { OrderSource } from "../orders/types.js";
+import type { ReturnsProvider } from "../returns/provider.js";
 import type { WhatsAppSender } from "../whatsapp/client.js";
 import type { InboundEvent, WaIncomingMessage } from "../whatsapp/types.js";
 import { loadKnowledge } from "../knowledge/base.js";
 import { businessStatus } from "./business-hours.js";
+import type { EventBus } from "./events.js";
+import { recordOrderNotification } from "./notifications.js";
 import { fixedText } from "./texts.js";
 
 export type Deps = {
@@ -34,18 +39,44 @@ export type Deps = {
   timeZone: string;
   log: Pick<Console, "info" | "warn" | "error">;
   now?: () => Date;
+  /** Panellere canlı sinyal (yoksa sinyal gönderilmez). */
+  events?: EventBus;
+  /** Mağaza ayarı yerine kullanılacak bekleme (testler ve `npm run chat -- --bekleme`). */
+  replyDelayOverrideMs?: number;
+  /** Mağazanın siparişleri (Shopify uygulaması kuruluysa); yoksa sipariş uzmanı kapalıdır. */
+  orderSourceFor?: (tenantId: string) => Promise<OrderSource | null>;
+  /** Mağazanın iade sistemi bağlantısı (varsa, yalnızca okuma). */
+  returnsFor?: (tenantId: string) => Promise<ReturnsProvider | null>;
 };
 
-export type InboundOutcome =
-  | "unknown_number"
-  | "duplicate"
+/** Gelen mesajın alınma sonucu. "queued": cevap zamanlayıcıya bırakıldı (bkz. reply-scheduler.ts). */
+export type IngestResult =
+  | { outcome: "unknown_number" | "duplicate" }
+  | { outcome: "ignored" | "bot_disabled" | "human_mode" | "daily_limit"; conversationId: string }
+  | {
+      outcome: "queued";
+      conversationId: string;
+      tenantId: string;
+      /** Mağaza ayarı: son mesajdan sonra bekleme ve üst sınır. */
+      delayMs: number;
+      maxWaitMs: number;
+      /** Bekleme boyunca "yazıyor…" göstergesini yenilemek için. */
+      typing: { wa: WaTarget; messageId: string };
+    };
+
+/** Toplu cevabın sonucu. "cancelled": hazırlanırken yeni mesaj geldi ya da ekip devraldı; gönderilmedi. */
+export type RespondOutcome =
+  | "gone"
   | "bot_disabled"
   | "human_mode"
-  | "daily_limit"
+  | "nothing"
   | "unsupported_type"
-  | "ignored"
+  | "cancelled"
   | "replied"
   | "handed_off";
+
+/** Zamanlayıcının cevaba verdiği kontrol: iptal sinyali ve "hâlâ en güncel mi?" sorusu. */
+export type RespondControl = { signal: AbortSignal; isCurrent: () => boolean };
 
 /** Lina'nın okuyabildiği mesaj tipleri; diğerleri sabit metinle cevaplanır. */
 const UNDERSTOOD_TYPES = new Set(["text", "image"]);
@@ -60,10 +91,14 @@ const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 /** Token maliyetini sınırlamak için geçmişte görsel olarak gönderilecek son fotoğraf sayısı. */
 const MAX_IMAGES_IN_HISTORY = 3;
 
-type WaTarget = { phoneNumberId: string; accessToken: string; to: string };
+export type WaTarget = { phoneNumberId: string; accessToken: string; to: string };
 
-/** WhatsApp'tan gelen tek bir müşteri mesajını uçtan uca işler (bkz. docs/lina-davranis.md). */
-export async function handleInbound(deps: Deps, event: InboundEvent): Promise<InboundOutcome> {
+/**
+ * WhatsApp'tan gelen bir müşteri mesajını alır: kaydeder, okundu + "yazıyor…" gösterir,
+ * fotoğrafı saklar ve kontrolleri yapar. Lina'yı çağırmaz: cevap, müşteri susunca
+ * zamanlayıcı üzerinden `respond` ile toplu verilir (docs/lina-davranis.md "Art arda mesajlar").
+ */
+export async function ingestInbound(deps: Deps, event: InboundEvent): Promise<IngestResult> {
   const { db } = deps;
   const now = deps.now?.() ?? new Date();
 
@@ -74,19 +109,20 @@ export async function handleInbound(deps: Deps, event: InboundEvent): Promise<In
     .where(eq(whatsappAccounts.phoneNumberId, event.phoneNumberId));
   if (!row) {
     deps.log.warn(`Tanımsız phone_number_id için mesaj geldi: ${event.phoneNumberId}`);
-    return "unknown_number";
+    return { outcome: "unknown_number" };
   }
   const { account, tenant } = row;
   const settings = resolveSettings(tenant.settings);
   const { message } = event;
 
   const conversation = await findOrCreateConversation(db, tenant, account, message.from, event.contactName);
+  const conversationId = conversation.id;
 
   const inserted = await db
     .insert(messages)
     .values({
       tenantId: tenant.id,
-      conversationId: conversation.id,
+      conversationId,
       sender: "customer",
       type: message.type,
       text: messageText(message),
@@ -96,16 +132,19 @@ export async function handleInbound(deps: Deps, event: InboundEvent): Promise<In
     .onConflictDoNothing({ target: messages.waMessageId })
     .returning({ id: messages.id });
   // Meta aynı webhook'u tekrar gönderebilir.
-  if (inserted.length === 0) return "duplicate";
+  if (inserted.length === 0) return { outcome: "duplicate" };
   const messageId = inserted[0]!.id;
 
   // "Yazıyor…" göstergesi de gönderilmez: müşteri cevap bekleyip boşa kalmasın.
-  if (SILENT_TYPES.includes(message.type)) return "ignored";
+  if (SILENT_TYPES.includes(message.type)) {
+    deps.events?.publish(tenant.id, { type: "message", conversationId });
+    return { outcome: "ignored", conversationId };
+  }
 
   await db
     .update(conversations)
     .set({ lastCustomerMessageAt: now, updatedAt: now })
-    .where(eq(conversations.id, conversation.id));
+    .where(eq(conversations.id, conversationId));
 
   const accessToken = decryptSecret(account.accessTokenEnc, deps.masterKey);
   const wa: WaTarget = { phoneNumberId: account.phoneNumberId, accessToken, to: message.from };
@@ -115,58 +154,183 @@ export async function handleInbound(deps: Deps, event: InboundEvent): Promise<In
   if (message.type === "image" && message.image?.id) {
     await storeImage(deps, tenant.id, messageId, accessToken, message.image.id);
   }
+  // Fotoğraf kaydedildikten sonra: panel mesajı açtığında fotoğraf da hazır olsun.
+  deps.events?.publish(tenant.id, { type: "message", conversationId });
 
-  if (!settings.botEnabled) return "bot_disabled";
+  if (!settings.botEnabled) return { outcome: "bot_disabled", conversationId };
   // Ekipten biri devraldıysa Lina susar. Devir kuyruğunda ("waiting") cevap vermeye devam eder.
-  if (conversation.status === "human") return "human_mode";
+  if (conversation.status === "human") return { outcome: "human_mode", conversationId };
 
-  const todayCount = await countCustomerMessagesToday(db, conversation.id, deps.timeZone, now);
+  const todayCount = await countCustomerMessagesToday(db, conversationId, deps.timeZone, now);
   const limit = settings.dailyMessageLimit;
   if (todayCount > limit) {
     // Uyarı sadece sınır ilk aşıldığında bir kez gönderilir.
     if (todayCount === limit + 1) await sendAndStore(deps, tenant, conversation, wa, fixedText(settings, "dailyLimit"), "system");
-    return "daily_limit";
+    return { outcome: "daily_limit", conversationId };
   }
 
-  if (!UNDERSTOOD_TYPES.has(message.type)) {
+  return {
+    outcome: "queued",
+    conversationId,
+    tenantId: tenant.id,
+    delayMs: settings.replyDelaySeconds * 1000,
+    maxWaitMs: settings.maxReplyWaitSeconds * 1000,
+    typing: { wa, messageId: message.id },
+  };
+}
+
+/**
+ * Son cevaptan bu yana gelen bütün müşteri mesajlarına tek cevap verir.
+ * Göndermeden hemen önce hâlâ en güncel olduğu ve ekibin devralmadığı yeniden kontrol edilir;
+ * değilse cevap gönderilmez ("cancelled"). Böylece cevaplar asla karışmaz.
+ */
+export async function respond(deps: Deps, conversationId: string, ctl: RespondControl): Promise<RespondOutcome> {
+  const { db } = deps;
+  const now = deps.now?.() ?? new Date();
+
+  const [row] = await db
+    .select({ conversation: conversations, tenant: tenants, account: whatsappAccounts, waId: customers.waId })
+    .from(conversations)
+    .innerJoin(tenants, eq(tenants.id, conversations.tenantId))
+    .innerJoin(whatsappAccounts, eq(whatsappAccounts.id, conversations.whatsappAccountId))
+    .innerJoin(customers, eq(customers.id, conversations.customerId))
+    .where(eq(conversations.id, conversationId));
+  if (!row) return "gone";
+  const { conversation, tenant, account, waId } = row;
+  const settings = resolveSettings(tenant.settings);
+  if (!settings.botEnabled) return "bot_disabled";
+  if (conversation.status === "human") return "human_mode";
+
+  const batch = await unansweredCustomerMessages(db, conversationId);
+  if (batch.length === 0) return "nothing";
+
+  const wa: WaTarget = {
+    phoneNumberId: account.phoneNumberId,
+    accessToken: decryptSecret(account.accessTokenEnc, deps.masterKey),
+    to: waId,
+  };
+  // Hazırlanırken yeni mesaj geldiyse ya da ekip devraldıysa bu cevap artık gönderilmez.
+  const stillOurs = async () => {
+    if (!ctl.isCurrent() || ctl.signal.aborted) return false;
+    const [fresh] = await db.select({ status: conversations.status }).from(conversations).where(eq(conversations.id, conversationId));
+    return fresh?.status !== "human";
+  };
+
+  // Toplu mesajda Lina'nın okuyabileceği bir şey yoksa (sadece ses/video…) sabit metin bir kez.
+  if (!batch.some((m) => UNDERSTOOD_TYPES.has(m.type))) {
+    if (!(await stillOurs())) return "cancelled";
     await sendAndStore(deps, tenant, conversation, wa, fixedText(settings, "unsupported"), "system");
     return "unsupported_type";
   }
 
-  const [history, firstContact, openHandoff, knowledge] = await Promise.all([
-    loadHistory(db, conversation.id, deps.historyLimit),
-    isFirstContact(db, conversation.id),
-    findOpenHandoff(db, conversation.id),
+  // Sipariş ve iade bağlantısı alınamazsa Lina onlarsız çalışır (sipariş sorularında devreder).
+  const optional = <T>(task: Promise<T> | undefined, what: string): Promise<T | null> =>
+    (task ?? Promise.resolve(null)).catch((err: unknown) => {
+      deps.log.error(`${what} alınamadı (tenant=${tenant.slug})`, err);
+      return null;
+    });
+  const [history, firstContact, openHandoff, knowledge, orderSource, returns] = await Promise.all([
+    loadHistory(db, conversationId, deps.historyLimit),
+    isFirstContact(db, conversationId),
+    findOpenHandoff(db, conversationId),
     loadKnowledge(db, tenant),
+    optional(deps.orderSourceFor?.(tenant.id), "Sipariş kaynağı"),
+    optional(deps.returnsFor?.(tenant.id), "İade sistemi bağlantısı"),
   ]);
   const turn = {
     firstContact,
     business: businessStatus(settings.businessHours, deps.timeZone, now),
     openHandoff: openHandoff && { reason: openHandoff.reason, summary: openHandoff.summary },
   };
-  const ctx = { db, llm: deps.llm, model: deps.model, tenantId: tenant.id, conversationId: conversation.id };
-  const lastText = messageText(message) ?? `[${message.type}]`;
+  const ctx = { db, llm: deps.llm, model: deps.model, tenantId: tenant.id, conversationId, signal: ctl.signal, log: deps.log };
+  const orders = orderSource ? { source: orderSource, waId, timeZone: deps.timeZone, now, returns } : null;
+  const lastText = batch.map((m) => m.text ?? `[${MEDIA_LABELS[m.type] ?? m.type}]`).join(" / ");
 
   let reply: string;
   let handoff: HandoffRequest | null;
+  let orderFindings: OrderFindings | null = null;
   try {
-    const result = await runLina(ctx, tenant, history, turn, knowledge);
+    const result = await runLina(ctx, tenant, history, turn, knowledge, orders);
     if (result.kind === "failed") {
       reply = fixedText(settings, "failure");
-      handoff = { reason: "other", summary: `Asistan cevap üretemedi (stop_reason: ${result.stopReason}). Son mesaj: "${lastText}"` };
+      handoff = { reason: "other", summary: `Asistan cevap üretemedi (stop_reason: ${result.stopReason}). Mesajlar: "${lastText}"` };
     } else {
       reply = result.text;
       handoff = result.handoff;
+      orderFindings = result.orders;
     }
   } catch (err) {
-    deps.log.error(`Lina çalışırken hata (tenant=${tenant.slug})`, err);
+    // İptal bir hata değildir: özür mesajı yok, devir yok.
+    if (err instanceof CancelledError || ctl.signal.aborted) return "cancelled";
+    // Sebep panelde devir notunda da görünür (ör. kredi bittiyse ekip bunu hemen anlar).
+    const reason = describeLlmError(err);
+    deps.log.error(`Lina çalışırken hata (tenant=${tenant.slug}): ${reason}`, err);
     reply = fixedText(settings, "failure");
-    handoff = { reason: "other", summary: `Teknik hata nedeniyle cevap verilemedi. Son mesaj: "${lastText}"` };
+    handoff = { reason: "other", summary: `Cevap verilemedi (${reason}). Mesajlar: "${lastText}"` };
   }
 
-  if (handoff) await recordHandoff(db, tenant.id, conversation.id, handoff, openHandoff, now);
-  await sendAndStore(deps, tenant, conversation, wa, reply, "bot");
+  if (!(await stillOurs())) return "cancelled";
+  if (handoff) {
+    await recordHandoff(db, tenant.id, conversationId, handoff, openHandoff, now);
+    // Yeni devirde panelde sesli uyarı/bildirim; mevcut devre eklenen talepte sadece güncelleme.
+    deps.events?.publish(tenant.id, { type: openHandoff ? "conversation" : "handoff", conversationId });
+  }
+  const delivery = await sendAndStore(deps, tenant, conversation, wa, reply, "bot");
+  // Sipariş konularında devir yok: ekibe bildirim (docs/lina-davranis.md "Ekibe bildirimler").
+  if (orderFindings) {
+    await recordOrderNotification(deps, {
+      tenantId: tenant.id,
+      conversationId,
+      findings: orderFindings,
+      question: lastText,
+      answer: reply,
+      replySent: delivery.sent,
+    }).catch((err: unknown) => deps.log.error(`Bildirim kaydedilemedi (tenant=${tenant.slug})`, err));
+  }
   return handoff ? "handed_off" : "replied";
+}
+
+/**
+ * Son giden mesajdan (Lina, ekip ya da otomatik metin) sonra gelen müşteri mesajları, eskiden yeniye.
+ * Panel notları ve tepki/sticker gibi sessiz olaylar sayılmaz.
+ */
+async function unansweredCustomerMessages(db: DB, conversationId: string) {
+  const recent = await db
+    .select({ sender: messages.sender, type: messages.type, text: messages.text })
+    .from(messages)
+    .where(and(eq(messages.conversationId, conversationId), ne(messages.type, "note")))
+    .orderBy(desc(messages.createdAt))
+    .limit(50);
+  const batch: typeof recent = [];
+  for (const m of recent) {
+    if (m.sender !== "customer") break;
+    if (!SILENT_TYPES.includes(m.type)) batch.push(m);
+  }
+  return batch.reverse();
+}
+
+/**
+ * Sunucu yeniden başlarken bekleme sırasında kalmış konuşmalar: son mesajı `since`'den sonra
+ * gelmiş, cevapsız müşteri mesajı olan ve ekipte olmayanlar. Açılışta zamanlayıcıya alınır.
+ */
+export async function findUnansweredConversations(db: DB, since: Date): Promise<string[]> {
+  const latest = await db
+    .selectDistinctOn([messages.conversationId], {
+      conversationId: messages.conversationId,
+      sender: messages.sender,
+      type: messages.type,
+      createdAt: messages.createdAt,
+    })
+    .from(messages)
+    .where(and(ne(messages.type, "note"), notInArray(messages.type, SILENT_TYPES), gte(messages.createdAt, since)))
+    .orderBy(messages.conversationId, desc(messages.createdAt));
+  const candidates = latest.filter((m) => m.sender === "customer").map((m) => m.conversationId);
+  if (candidates.length === 0) return [];
+  const rows = await db
+    .select({ id: conversations.id })
+    .from(conversations)
+    .where(and(inArray(conversations.id, candidates), ne(conversations.status, "human")));
+  return rows.map((r) => r.id);
 }
 
 function messageText(message: WaIncomingMessage): string | null {
@@ -287,13 +451,15 @@ async function loadHistory(db: DB, conversationId: string, limit: number): Promi
 }
 
 /**
- * Kayıtlı mesajları Claude formatına çevirir: müşteri → user, bot/ekip → assistant.
+ * Kayıtlı mesajları Claude formatına çevirir: müşteri → user; Lina, ekip ve otomatik mesajlar → assistant.
  * Art arda aynı roldeki mesajlar birleştirilir; geçmiş her zaman user ile başlar.
  */
 export function toClaudeMessages(rows: HistoryRow[]): Anthropic.MessageParam[] {
   const out: { role: "user" | "assistant"; content: Anthropic.ContentBlockParam[] }[] = [];
   for (const row of rows) {
-    if (row.sender === "system" || SILENT_TYPES.includes(row.type)) continue;
+    // Panel notları iç nottur; tepki/sticker cevap beklemez. Otomatik mesajlar (sabit metinler)
+    // müşterinin gördüğü mesajlardır: Lina tekrar etmesin diye geçmişte yer alır.
+    if (row.type === "note" || SILENT_TYPES.includes(row.type)) continue;
     const role = row.sender === "customer" ? "user" : "assistant";
     const blocks: Anthropic.ContentBlockParam[] = [];
 
@@ -312,18 +478,37 @@ export function toClaudeMessages(rows: HistoryRow[]): Anthropic.MessageParam[] {
         blocks.push({ type: "text", text: row.text ? `[müşteri fotoğraf gönderdi] ${row.text}` : "[müşteri fotoğraf gönderdi]" });
       }
     } else {
-      let text = row.text ?? `[müşteri ${row.type} gönderdi]`;
+      let text = row.text ?? `[müşteri ${MEDIA_LABELS[row.type] ?? row.type} gönderdi]`;
       if (row.sender === "agent") text = `(Mağaza ekibi yazdı) ${text}`;
       blocks.push({ type: "text", text });
     }
 
     const last = out.at(-1);
-    if (last?.role === role) last.content.push(...blocks);
-    else out.push({ role, content: blocks });
+    if (last?.role !== role) {
+      out.push({ role, content: blocks });
+      continue;
+    }
+    // Art arda mesajlar tek yazı gibi: ardışık metinler satır satır tek blokta birleşir.
+    for (const block of blocks) {
+      const prev = last.content.at(-1);
+      if (block.type === "text" && prev?.type === "text") prev.text += `\n${block.text}`;
+      else last.content.push(block);
+    }
   }
   while (out[0]?.role === "assistant") out.shift();
   return out;
 }
+
+/** Lina'nın açamadığı içeriklerin geçmişteki Türkçe adları. */
+const MEDIA_LABELS: Record<string, string> = {
+  audio: "sesli mesaj",
+  video: "video",
+  document: "belge",
+  location: "konum",
+  contacts: "kişi kartı",
+  interactive: "etkileşimli mesaj",
+  button: "buton yanıtı",
+};
 
 /** Açık devir varsa yeni talep ona eklenir; yoksa yeni devir açılır ve konuşma kuyruğa düşer. */
 async function recordHandoff(
@@ -348,7 +533,7 @@ async function recordHandoff(
     .where(and(eq(conversations.id, conversationId), eq(conversations.status, "bot")));
 }
 
-async function sendAndStore(
+function sendAndStore(
   deps: Deps,
   tenant: Tenant,
   conversation: Conversation,
@@ -356,22 +541,67 @@ async function sendAndStore(
   text: string,
   sender: "bot" | "system",
 ) {
-  // Önce kaydet: gönderim başarısız olsa da panelde ne denendiği görünsün.
+  return deliverText(deps, { tenantId: tenant.id, conversationId: conversation.id, wa, text, sender });
+}
+
+export type DeliveryResult = { messageId: string; sent: boolean; error?: string };
+
+/**
+ * Müşteriye WhatsApp mesajı gönderir ve kaydeder (Lina, otomatik metin ya da ekip).
+ * Önce kaydeder: gönderim başarısız olsa da panelde ne denendiği ve hatası görünür.
+ */
+export async function deliverText(
+  deps: Pick<Deps, "db" | "wa" | "log" | "events">,
+  opts: {
+    tenantId: string;
+    conversationId: string;
+    wa: WaTarget;
+    text: string;
+    sender: "bot" | "system" | "agent";
+    authorUserId?: string;
+  },
+): Promise<DeliveryResult> {
   const [stored] = await deps.db
     .insert(messages)
-    .values({ tenantId: tenant.id, conversationId: conversation.id, sender, text })
+    .values({
+      tenantId: opts.tenantId,
+      conversationId: opts.conversationId,
+      sender: opts.sender,
+      text: opts.text,
+      authorUserId: opts.authorUserId ?? null,
+    })
     .returning({ id: messages.id });
+  const messageId = stored!.id;
+  let result: DeliveryResult;
   try {
-    const ids = await deps.wa.sendText({ ...wa, text });
+    const ids = await deps.wa.sendText({ ...opts.wa, text: opts.text });
     await deps.db
       .update(messages)
       .set({ waMessageId: ids[0] ?? null, meta: { waMessageIds: ids } })
-      .where(eq(messages.id, stored!.id));
+      .where(eq(messages.id, messageId));
+    result = { messageId, sent: true };
   } catch (err) {
-    deps.log.error(`WhatsApp mesajı gönderilemedi (tenant=${tenant.slug})`, err);
-    await deps.db
-      .update(messages)
-      .set({ meta: { sendError: err instanceof Error ? err.message : String(err) } })
-      .where(eq(messages.id, stored!.id));
+    const error = err instanceof Error ? err.message : String(err);
+    deps.log.error(`WhatsApp mesajı gönderilemedi (tenant=${opts.tenantId})`, err);
+    await deps.db.update(messages).set({ meta: { sendError: error } }).where(eq(messages.id, messageId));
+    result = { messageId, sent: false, error };
   }
+  deps.events?.publish(opts.tenantId, { type: "message", conversationId: opts.conversationId });
+  return result;
+}
+
+/** Konuşmanın WhatsApp hedefi: hangi numaradan, hangi müşteriye (token çözülmüş). */
+export async function waTargetFor(db: DB, masterKey: string, conversationId: string): Promise<WaTarget> {
+  const [row] = await db
+    .select({ account: whatsappAccounts, waId: customers.waId })
+    .from(conversations)
+    .innerJoin(whatsappAccounts, eq(whatsappAccounts.id, conversations.whatsappAccountId))
+    .innerJoin(customers, eq(customers.id, conversations.customerId))
+    .where(eq(conversations.id, conversationId));
+  if (!row) throw new Error("Konuşma bulunamadı");
+  return {
+    phoneNumberId: row.account.phoneNumberId,
+    accessToken: decryptSecret(row.account.accessTokenEnc, masterKey),
+    to: row.waId,
+  };
 }

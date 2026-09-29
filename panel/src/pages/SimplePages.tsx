@@ -3,6 +3,7 @@ import { Link } from "../router";
 import type { SectionKey } from "../Shell";
 
 const COMING: Record<SectionKey, { title: string; text: string }> = {
+  test: { title: "Lina’yı test et", text: "Test sohbeti" },
   bekleyenler: {
     title: "Bekleyenler",
     text: "Lina'nın ekibe devrettiği konuşmalar burada, en uzun bekleyen en üstte listelenecek.",

@@ -1,0 +1,1 @@
+ALTER TABLE "tenants" ALTER COLUMN "settings" SET DEFAULT '{"botEnabled":true,"dailyMessageLimit":200,"businessHours":{"days":[1,2,3,4,5],"start":"09:00","end":"18:00"},"texts":{},"allowedSearchDomains":[],"replyDelaySeconds":60,"maxReplyWaitSeconds":180}'::jsonb;

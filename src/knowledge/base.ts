@@ -10,7 +10,7 @@ export type KnowledgeBase = {
   legal: KnowledgeDoc[];
 };
 
-const SOURCE_ORDER = { shop: 0, policy: 1, page: 2 } as Record<string, number>;
+const SOURCE_ORDER = { shop: 0, policy: 1, page: 2, campaign: 3 } as Record<string, number>;
 
 export const isEnabled = (d: Pick<KnowledgeDoc, "enabledOverride" | "autoEnabled">) => d.enabledOverride ?? d.autoEnabled;
 

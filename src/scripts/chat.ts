@@ -4,6 +4,11 @@
  *
  *   npm run chat                       (maius mağazası)
  *   npm run chat -- --slug baska-magaza
+ *   npm run chat -- --bekleme 5        (art arda mesaj beklemesi: mağaza ayarı yerine 5 sn)
+ *   npm run chat -- --demo-siparis     (Shopify bağlı değilken deneme siparişleriyle sipariş uzmanı)
+ *
+ * Art arda yazılan satırlar hemen alınır; Lina müşteri susunca hepsine tek cevap verir
+ * (docs/lina-davranis.md "Art arda mesajlar").
  *
  * Mağaza ve Shopify'dan senkronlanmış bilgileri gerçek veritabanından okur, bellekteki
  * bir kopyada çalışır: test konuşmaları gerçek kayıtlara karışmaz.
@@ -13,20 +18,40 @@ import { randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { loadConfig } from "../config.js";
 import path from "node:path";
+import { clearLine, cursorTo } from "node:readline";
 import { createInterface } from "node:readline/promises";
 import { parseArgs } from "node:util";
 import Anthropic from "@anthropic-ai/sdk";
 import { desc, eq, gt, and } from "drizzle-orm";
-import { handleInbound, type Deps } from "../core/conversation.js";
+import { ingestInbound, respond, type Deps, type RespondOutcome } from "../core/conversation.js";
+import { ReplyScheduler } from "../core/reply-scheduler.js";
 import { exitIfLocked, openDatabase } from "../db/client.js";
-import { agentRuns, conversations, customers, handoffs, knowledgeDocs, resolveSettings, tenants, whatsappAccounts } from "../db/schema.js";
+import {
+  agentRuns,
+  conversations,
+  customers,
+  handoffs,
+  knowledgeDocs,
+  notifications,
+  resolveSettings,
+  tenants,
+  textArchive,
+  whatsappAccounts,
+} from "../db/schema.js";
 import { isEnabled } from "../knowledge/base.js";
 import { llmFromClient } from "../agents/runner.js";
 import { encryptSecret } from "../lib/crypto.js";
+import { DEMO_ORDERS_HELP, demoOrderSource } from "../orders/demo.js";
+import { NOTIFICATION_LABELS } from "../panel/notifications.js";
 import type { WhatsAppSender } from "../whatsapp/client.js";
 
 const { values: args } = parseArgs({
-  options: { slug: { type: "string", default: "maius" }, model: { type: "string" } },
+  options: {
+    slug: { type: "string", default: "maius" },
+    model: { type: "string" },
+    bekleme: { type: "string" },
+    "demo-siparis": { type: "boolean" },
+  },
 });
 
 // Claude Sonnet 5 fiyatları ($ / 1M token): girdi 2, çıktı 10; önbellek okuma 0.1x, yazma 1.25x.
@@ -53,22 +78,24 @@ if (!realTenant) {
   process.exit(1);
 }
 const realDocs = await source.db.select().from(knowledgeDocs).where(eq(knowledgeDocs.tenantId, realTenant.id));
+// Kampanya arşivi: sipariş uzmanı ürünlerin sipariş tarihindeki yazısını buradan okur.
+const realArchive = await source.db.select().from(textArchive).where(eq(textArchive.tenantId, realTenant.id));
 await source.close();
 
 const masterKey = randomBytes(32).toString("base64");
 const { db, close } = await openDatabase({});
 const [tenant] = await db.insert(tenants).values(realTenant).returning();
 if (realDocs.length) await db.insert(knowledgeDocs).values(realDocs);
+for (let i = 0; i < realArchive.length; i += 500) await db.insert(textArchive).values(realArchive.slice(i, i + 500));
 await db.insert(whatsappAccounts).values({
   tenantId: tenant!.id,
   phoneNumberId: "sim",
   accessTokenEnc: encryptSecret("sim", masterKey),
 });
 
-const replies: string[] = [];
 const wa: WhatsAppSender = {
   async sendText({ text }) {
-    replies.push(text);
+    say(`\n${c.green(c.bold("Lina:"))} ${text}\n`);
     return [`sim.${Date.now()}`];
   },
   async markReadAndTyping() {},
@@ -96,27 +123,52 @@ const deps: Deps = {
       console.log(c.yellow(`  hata: ${msg}: ${err instanceof Error ? err.message : String(err ?? "")}`)),
   },
   now: () => simulatedNow ?? new Date(),
+  replyDelayOverrideMs: args.bekleme ? Number(args.bekleme) * 1000 : undefined,
+  // Deneme siparişleri o an konuşan simülatör müşterisine aittir.
+  orderSourceFor: args["demo-siparis"] ? async () => demoOrderSource(() => String(customerNo)) : undefined,
 };
+const delaySeconds = deps.replyDelayOverrideMs !== undefined ? deps.replyDelayOverrideMs / 1000 : null;
 
 let customerNo = 905300000001;
 let seq = 0;
 let showAgents = true;
 let totalCost = 0;
 
+/** Müşteri mesajını alır; cevap, müşteri susunca zamanlayıcıdan gelir. */
 async function send(message: Record<string, unknown>) {
-  const since = new Date();
-  replies.length = 0;
-  const outcome = await handleInbound(deps, {
+  const result = await ingestInbound(deps, {
     phoneNumberId: "sim",
     contactName: "Test Müşteri",
     message: { from: String(customerNo), id: `sim.in.${++seq}`, timestamp: "0", ...message } as never,
   });
+  if (result.outcome !== "queued") {
+    if (result.outcome === "daily_limit") scheduler.cancel(result.conversationId);
+    console.log(c.dim(`  (cevap yok: ${result.outcome})`));
+    return;
+  }
+  const seconds = delaySeconds ?? result.delayMs / 1000;
+  const waitingAlready = scheduler.isPending(result.conversationId);
+  scheduler.onCustomerMessage(result.conversationId, {
+    delayMs: seconds * 1000,
+    maxWaitMs: result.maxWaitMs,
+    typing: result.typing,
+  });
+  console.log(
+    c.dim(
+      waitingAlready
+        ? `  (bekleme baştan başladı: ${seconds} sn)`
+        : `  (Lina bekliyor: ${seconds} sn içinde yeni mesaj gelmezse hepsine tek cevap verecek)`,
+    ),
+  );
+}
 
+/** Zamanlayıcı cevap hazırladıktan sonra: uzman çağrıları, devir ve maliyet. */
+async function report(outcome: RespondOutcome, since: Date) {
   const runs = await db.select().from(agentRuns).where(gt(agentRuns.createdAt, since)).orderBy(agentRuns.createdAt);
   if (showAgents) {
-    for (const run of runs.filter((r) => r.agent !== "lina")) {
-      console.log(c.dim(`  ↳ ${run.agent} uzmanına soruldu: ${run.input}`));
-      console.log(c.dim(`    cevap: ${(run.output ?? "").replace(/\n/g, " ").slice(0, 300)}`));
+    for (const run of runs.filter((r) => r.agent !== "lina" && r.error !== "cancelled")) {
+      say(c.dim(`  ↳ ${run.agent} uzmanına soruldu: ${run.input}`));
+      say(c.dim(`    cevap: ${(run.output ?? "").replace(/\n/g, " ").slice(0, 300)}`));
     }
   }
   const cost = runs.reduce(
@@ -130,15 +182,30 @@ async function send(message: Record<string, unknown>) {
     0,
   );
   totalCost += cost;
-
-  for (const text of replies) console.log(`\n${c.green(c.bold("Lina:"))} ${text}\n`);
-  if (!replies.length) console.log(c.dim(`  (cevap yok: ${outcome})`));
+  if (outcome === "cancelled") say(c.yellow("  ✕ Hazırlanan cevap iptal edildi (yeni mesaj geldi ya da ekip devraldı)."));
   if (outcome === "handed_off") {
     const [h] = await db.select().from(handoffs).orderBy(desc(handoffs.createdAt)).limit(1);
-    console.log(c.yellow(`  ⚑ Ekibe devredildi [${h?.reason}]: ${h?.summary}`));
+    say(c.yellow(`  ⚑ Ekibe devredildi [${h?.reason}]: ${h?.summary}`));
   }
-  console.log(c.dim(`  bu mesaj ~$${cost.toFixed(4)} · toplam ~$${totalCost.toFixed(4)}`));
+  for (const n of await db.select().from(notifications).where(gt(notifications.createdAt, since))) {
+    const issues = n.details.issues?.length ? ` · ${n.details.issues.join(" · ")}` : "";
+    say(
+      (n.important ? c.yellow : c.dim)(
+        `  ${n.important ? "🔔 Önemli bildirim" : "✎ Kayıt"} [${NOTIFICATION_LABELS[n.kind]}] ${n.orderNames.join(", ") || (n.kind === "unverified" ? "sipariş doğrulanamadı" : "sipariş henüz seçilmedi")}${issues}`,
+      ),
+    );
+  }
+  say(c.dim(`  bu cevap ~$${cost.toFixed(4)} · toplam ~$${totalCost.toFixed(4)}`));
 }
+
+const scheduler = new ReplyScheduler({
+  respond: async (conversationId, ctl) => {
+    const since = new Date();
+    const outcome = await respond(deps, conversationId, ctl);
+    await report(outcome, since);
+  },
+  log: deps.log,
+});
 
 async function currentConversation() {
   const [row] = await db
@@ -158,7 +225,9 @@ const HELP = `Komutlar:
   /durum                     konuşma durumu ve açık devir
   /yeni                      yeni müşteri (ilk temas)
   /ajan                      uzman çağrılarını göster/gizle
-  /cik                       çık`;
+  /cik                       çık
+
+Art arda yazabilirsiniz: Lina, son mesajınızdan ${delaySeconds !== null ? `${delaySeconds} sn` : "mağaza ayarındaki süre kadar (varsayılan 30 sn)"} sonra hepsine tek cevap verir.`;
 
 const hours = resolveSettings(tenant!.settings).businessHours;
 const active = realDocs.filter(isEnabled);
@@ -176,6 +245,12 @@ console.log(
 if (!active.length && !tenant!.notes) {
   console.log(c.yellow("Uyarı: Bu mağazanın Shopify bilgileri henüz senkronlanmamış; Lina bilgi sorularını ekibe devreder."));
 }
+if (args["demo-siparis"]) {
+  console.log(c.cyan(`Deneme siparişleri (uydurma; ${realArchive.length} arşiv kaydıyla):`));
+  for (const line of DEMO_ORDERS_HELP) console.log(c.dim(`  ${line}`));
+} else {
+  console.log(c.dim("Sipariş uzmanı kapalı (Shopify bağlı değil). Denemek için: npm run chat -- --demo-siparis"));
+}
 console.log(c.dim(HELP) + "\n");
 
 const rl = createInterface({ input: process.stdin, output: process.stdout });
@@ -190,6 +265,19 @@ const showPrompt = () => {
   rl.setPrompt(`${clock}${c.bold("Siz:")} `);
   rl.prompt();
 };
+
+/** Siz yazarken gelen çıktı: satırı temizle, yaz, yazmakta olduğunuzu geri getir. */
+function say(text: string) {
+  if (inputClosed || !process.stdout.isTTY) {
+    console.log(text);
+    return;
+  }
+  clearLine(process.stdout, 0);
+  cursorTo(process.stdout, 0);
+  console.log(text);
+  showPrompt();
+  process.stdout.write(rl.line);
+}
 
 async function handleLine(line: string): Promise<boolean> {
   if (!line.startsWith("/")) {
@@ -216,6 +304,8 @@ async function handleLine(line: string): Promise<boolean> {
     if (!conv) console.log("Önce bir mesaj yazın.");
     else {
       await db.update(conversations).set({ status: cmd === "/devral" ? "human" : "bot" }).where(eq(conversations.id, conv.id));
+      // Panelde olduğu gibi: devralınınca Lina'nın bekleyen cevabı iptal.
+      if (cmd === "/devral") scheduler.cancel(conv.id);
       if (cmd === "/geri") {
         await db
           .update(handoffs)
@@ -243,7 +333,7 @@ async function handleLine(line: string): Promise<boolean> {
 
 try {
   showPrompt();
-  // Satırlar sırayla işlenir; Lina cevap verirken yazılanlar sıraya girer.
+  // Satırlar hemen alınır; Lina'nın cevabı bekleme bitince gelir (bu sırada yazmaya devam edebilirsiniz).
   for await (const raw of rl) {
     const line = raw.trim();
     if (line) {
@@ -255,7 +345,10 @@ try {
     }
     showPrompt();
   }
+  // Borudan gelen denemelerde: bekleyen cevaplar bitsin.
+  if (inputClosed) await scheduler.idle(10 * 60 * 1000);
 } finally {
+  scheduler.stop();
   rl.close();
   await close();
 }

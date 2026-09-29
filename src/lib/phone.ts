@@ -11,6 +11,15 @@ export function normalizePhone(raw: string, defaultCountryCode = "90"): string {
   return digits;
 }
 
+/** Panelde gösterim: 905321234567 → "+90 532 123 45 67"; diğer ülkeler "+<rakamlar>". */
+export function formatPhone(waId: string): string {
+  const d = waId.replace(/\D/g, "");
+  if (d.length === 12 && d.startsWith("90")) {
+    return `+90 ${d.slice(2, 5)} ${d.slice(5, 8)} ${d.slice(8, 10)} ${d.slice(10)}`;
+  }
+  return `+${d}`;
+}
+
 export function samePhone(a: string, b: string): boolean {
   const na = normalizePhone(a);
   return na.length >= 10 && na === normalizePhone(b);

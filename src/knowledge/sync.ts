@@ -147,9 +147,10 @@ export async function syncStoreKnowledge(db: DB, shopify: ShopifyApi, store: Sho
         });
     }
 
-    // Shopify'da artık olmayan (silinen/yayından kaldırılan) içerikler.
+    // Shopify'da artık olmayan (silinen/yayından kaldırılan) içerikler. Kampanya özeti arşivden
+    // gelir (archive/archive.ts), bu senkronun konusu değildir.
     const keep = docs.map((d) => `${d.source}:${d.externalId}`);
-    const stale = existing.filter((d) => !keep.includes(`${d.source}:${d.externalId}`));
+    const stale = existing.filter((d) => d.source !== "campaign" && !keep.includes(`${d.source}:${d.externalId}`));
     if (stale.length) await db.delete(knowledgeDocs).where(inArray(knowledgeDocs.id, stale.map((d) => d.id)));
 
     await db.update(shopifyStores).set({ lastSyncAt: new Date(), lastSyncError: null }).where(eq(shopifyStores.id, store.id));

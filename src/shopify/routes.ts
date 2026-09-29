@@ -2,7 +2,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import express, { type Express } from "express";
 import { and, eq } from "drizzle-orm";
 import type { DB } from "../db/client.js";
-import { customers, knowledgeDocs, shopifyStores, tenants, type ShopifyStore } from "../db/schema.js";
+import { agentRuns, customers, knowledgeDocs, shopifyStores, tenants, textArchive, type ShopifyStore } from "../db/schema.js";
 import { normalizePhone } from "../lib/phone.js";
 import { tokenColumns, type ShopifyApi } from "./client.js";
 import {
@@ -134,9 +134,19 @@ export function registerShopifyRoutes(app: Express, deps: ShopifyRouteDeps) {
         await db.update(shopifyStores).set({ uninstalledAt: new Date() }).where(eq(shopifyStores.id, store.id));
         deps.log.info(`[${shop}] uygulama kaldırıldı`);
       } else if (topic === "shop/redact") {
-        // Kaldırmadan 48 saat sonra gelir: mağazanın Shopify'dan gelen verilerini sil.
-        await db.delete(knowledgeDocs).where(eq(knowledgeDocs.tenantId, store.tenantId));
-        await db.delete(shopifyStores).where(eq(shopifyStores.id, store.id));
+        // Kaldırmadan 48 saat sonra gelir: mağazanın Shopify'dan gelen verilerini sil (hepsi ya da hiçbiri).
+        await db.transaction(async (tx) => {
+          await tx.delete(knowledgeDocs).where(eq(knowledgeDocs.tenantId, store.tenantId));
+          await tx.delete(textArchive).where(eq(textArchive.tenantId, store.tenantId));
+          // Sipariş uzmanının kayıtları Shopify siparişlerinden türetilmiştir (konuşmalar mağazanın kaydı olarak kalır).
+          await tx
+            .update(agentRuns)
+            .set({ input: null, output: null })
+            .where(and(eq(agentRuns.tenantId, store.tenantId), eq(agentRuns.agent, "order")));
+          await tx.delete(shopifyStores).where(eq(shopifyStores.id, store.id));
+          // Kurulum kaydı silinince arşiv "hiç kurulmamış" sanıp vitrinden yeniden veri toplamasın.
+          await tx.update(tenants).set({ domain: null }).where(eq(tenants.id, store.tenantId));
+        });
         deps.log.info(`[${shop}] mağaza verileri silindi (shop/redact)`);
       } else if (topic === "customers/redact") {
         const phone = payload.customer?.phone;

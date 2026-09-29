@@ -4,11 +4,22 @@ import { agentRuns } from "../db/schema.js";
 
 /** Claude'a istek atan asgari arayüz; testlerde sahte model kullanılır. */
 export interface Llm {
-  create(params: Anthropic.MessageCreateParamsNonStreaming): Promise<Anthropic.Message>;
+  /** signal iptal edilince istek yarıda kesilir (müşteri yeni mesaj yazdı). */
+  create(params: Anthropic.MessageCreateParamsNonStreaming, opts?: { signal?: AbortSignal }): Promise<Anthropic.Message>;
 }
 
 export function llmFromClient(client: Anthropic): Llm {
-  return { create: (params) => client.messages.create(params) };
+  return { create: (params, opts) => client.messages.create(params, { signal: opts?.signal }) };
+}
+
+/**
+ * Cevap hazırlanırken müşteri yeni mesaj yazdı: hazırlanan cevap iptal edildi.
+ * Bu bir hata değildir: özür mesajı gönderilmez, konuşma devredilmez.
+ */
+export class CancelledError extends Error {
+  constructor() {
+    super("İptal edildi: müşteri yeni mesaj yazdı");
+  }
 }
 
 export type AgentContext = {
@@ -17,7 +28,24 @@ export type AgentContext = {
   model: string;
   tenantId: string;
   conversationId: string | null;
+  /** İptal sinyali; Lina ve çağırdığı uzmanlar aynı sinyali paylaşır. */
+  signal?: AbortSignal;
+  /** Araç hataları (ör. Shopify erişimi) sessiz kalmasın diye. */
+  log?: Pick<Console, "warn">;
 };
+
+/** Claude isteği hatasının ekip ve kayıtlar için kısa Türkçe açıklaması. */
+export function describeLlmError(err: unknown): string {
+  const status = (err as { status?: number } | null)?.status;
+  const message = err instanceof Error ? err.message : String(err);
+  if (/credit balance is too low/i.test(message)) return "yapay zekâ hesabının kredisi bitti (console.anthropic.com → Plans & Billing)";
+  if (status === 401 || /invalid x-api-key|authentication/i.test(message)) return "yapay zekâ anahtarı geçersiz";
+  if (status === 429) return "yapay zekâ kullanım sınırına takıldı";
+  if (status === 529 || (status !== undefined && status >= 500) || /overloaded/i.test(message)) {
+    return "yapay zekâ servisi geçici olarak yanıt vermiyor";
+  }
+  return "teknik hata";
+}
 
 export type AgentTool = {
   definition: Anthropic.Tool;
@@ -58,19 +86,23 @@ export async function runAgent(ctx: AgentContext, opts: RunOptions): Promise<Age
 
   try {
     for (let i = 0; i < (opts.maxIterations ?? 8); i++) {
-      const response = await ctx.llm.create({
-        model: ctx.model,
-        max_tokens: 16000,
-        // Sistem istemi mağaza başına sabit; önbelleğe alınır.
-        system: [
-          { type: "text", text: opts.system, cache_control: { type: "ephemeral" } },
-          ...(opts.systemContext ? [{ type: "text" as const, text: opts.systemContext }] : []),
-        ],
-        ...(tools.length ? { tools: tools.map((t) => t.definition) } : {}),
-        thinking: { type: "adaptive" },
-        output_config: { effort: opts.effort },
-        messages,
-      });
+      if (ctx.signal?.aborted) throw new CancelledError();
+      const response = await ctx.llm.create(
+        {
+          model: ctx.model,
+          max_tokens: 16000,
+          // Sistem istemi mağaza başına sabit; önbelleğe alınır.
+          system: [
+            { type: "text", text: opts.system, cache_control: { type: "ephemeral" } },
+            ...(opts.systemContext ? [{ type: "text" as const, text: opts.systemContext }] : []),
+          ],
+          ...(tools.length ? { tools: tools.map((t) => t.definition) } : {}),
+          thinking: { type: "adaptive" },
+          output_config: { effort: opts.effort },
+          messages,
+        },
+        { signal: ctx.signal },
+      );
 
       usage.apiCalls++;
       usage.inputTokens += response.usage.input_tokens;
@@ -89,11 +121,19 @@ export async function runAgent(ctx: AgentContext, opts: RunOptions): Promise<Age
       messages.push({ role: "assistant", content: response.content });
       const calls = response.content.filter((b): b is Anthropic.ToolUseBlock => b.type === "tool_use");
       // Tüm araç sonuçları tek bir kullanıcı mesajında döner (paralel araç kullanımı).
-      const toolResults = await Promise.all(calls.map((call) => executeTool(byName.get(call.name), call)));
+      const toolResults = await Promise.all(
+        calls.map((call) =>
+          executeTool(byName.get(call.name), call, (message) => ctx.log?.warn(`[${opts.agent}] ${call.name} aracı hata verdi: ${message}`)),
+        ),
+      );
       messages.push({ role: "user", content: toolResults });
     }
     throw new Error(`${opts.agent} ajanı ${opts.maxIterations ?? 8} turda cevabı tamamlayamadı`);
   } catch (err) {
+    if (ctx.signal?.aborted || err instanceof CancelledError) {
+      error = "cancelled";
+      throw err instanceof CancelledError ? err : new CancelledError();
+    }
     error = err instanceof Error ? err.message : String(err);
     throw err;
   } finally {
@@ -112,14 +152,21 @@ export async function runAgent(ctx: AgentContext, opts: RunOptions): Promise<Age
   }
 }
 
-async function executeTool(tool: AgentTool | undefined, call: Anthropic.ToolUseBlock): Promise<Anthropic.ToolResultBlockParam> {
+async function executeTool(
+  tool: AgentTool | undefined,
+  call: Anthropic.ToolUseBlock,
+  onError: (message: string) => void,
+): Promise<Anthropic.ToolResultBlockParam> {
   if (!tool) {
     return { type: "tool_result", tool_use_id: call.id, content: `Bilinmeyen araç: ${call.name}`, is_error: true };
   }
   try {
     return { type: "tool_result", tool_use_id: call.id, content: await tool.run(call.input) };
   } catch (err) {
+    // İptal bir araç hatası değildir: Lina'ya "araç hatası" diye dönmez, en üste iletilir.
+    if (err instanceof CancelledError) throw err;
     const message = err instanceof Error ? err.message : String(err);
+    onError(message);
     return { type: "tool_result", tool_use_id: call.id, content: `Araç hatası: ${message}`, is_error: true };
   }
 }

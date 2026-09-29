@@ -3,9 +3,9 @@ import type { AddressInfo } from "node:net";
 import type { Server } from "node:http";
 import type Anthropic from "@anthropic-ai/sdk";
 import { eq } from "drizzle-orm";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { createApp } from "../src/app.js";
-import type { Deps } from "../src/core/conversation.js";
+import { findUnansweredConversations, type Deps } from "../src/core/conversation.js";
 import { DEFAULT_TEXTS } from "../src/core/texts.js";
 import { openDatabase, type Database } from "../src/db/client.js";
 import {
@@ -97,6 +97,7 @@ let database: Database;
 let server: Server;
 let baseUrl: string;
 let queue: ReturnType<typeof createApp>["queue"];
+let scheduler: ReturnType<typeof createApp>["scheduler"];
 let tenantId: string;
 let msgSeq = 0;
 
@@ -112,9 +113,12 @@ beforeAll(async () => {
     timeZone: "Europe/Istanbul",
     log: { info() {}, warn() {}, error() {} },
     now: () => now,
+    // Bu testler tek tek mesajları dener: beklemeden cevap (art arda mesajlar ayrı testte).
+    replyDelayOverrideMs: 0,
   };
   const created = createApp({ WHATSAPP_APP_SECRET: APP_SECRET, WHATSAPP_VERIFY_TOKEN: VERIFY_TOKEN }, deps);
   queue = created.queue;
+  scheduler = created.scheduler;
   server = created.app.listen(0);
   baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 
@@ -197,6 +201,7 @@ async function post(body: unknown, secret = APP_SECRET) {
     body: raw,
   });
   await queue.idle();
+  await scheduler.idle();
   return res.status;
 }
 
@@ -392,5 +397,137 @@ describe("sabit metinler ve ayarlar", () => {
     await database.db.update(tenants).set({ settings: { botEnabled: true } }).where(eq(tenants.id, tenantId));
     await post(text("merhaba"));
     expect(sent).toHaveLength(1);
+  });
+});
+
+describe("art arda mesajlar (gerçek zamanlayıcı)", () => {
+  // Ayrı bir sunucu: bekleme gerçekten devrede (testte 1 dk yerine 0,8 sn).
+  const DELAY_MS = 800;
+  let app2: ReturnType<typeof createApp>;
+  let server2: Server;
+  let base2: string;
+  const calls2: Anthropic.MessageCreateParamsNonStreaming[] = [];
+  let holdNext = false;
+  let aborted2 = 0;
+
+  // Sahte Claude: "holdNext" ise iptal edilene kadar bekler (Lina cevabı hazırlıyor).
+  const llm2: Llm = {
+    async create(params, opts) {
+      const system = (params.system as Anthropic.TextBlockParam[])[0]!.text;
+      if (system.includes("bilgi uzmanısın")) return reply("bilgi");
+      calls2.push(structuredClone(params));
+      if (holdNext) {
+        holdNext = false;
+        await new Promise<void>((_, reject) =>
+          opts?.signal?.addEventListener("abort", () => {
+            aborted2++;
+            reject(new Error("aborted"));
+          }),
+        );
+      }
+      const blocks = params.messages.at(-1)!.content as Anthropic.ContentBlockParam[];
+      return reply(`Cevap: ${blocks.map((b) => (b.type === "text" ? b.text : "")).join("|")}`);
+    },
+  };
+
+  beforeAll(() => {
+    app2 = createApp({ WHATSAPP_APP_SECRET: APP_SECRET, WHATSAPP_VERIFY_TOKEN: VERIFY_TOKEN }, {
+      db: database.db,
+      llm: llm2,
+      wa: fakeWa,
+      model: "claude-sonnet-5",
+      masterKey: MASTER_KEY,
+      historyLimit: 20,
+      timeZone: "Europe/Istanbul",
+      log: { info() {}, warn() {}, error() {} },
+      now: () => now,
+      replyDelayOverrideMs: DELAY_MS,
+    });
+    server2 = app2.app.listen(0);
+    base2 = `http://127.0.0.1:${(server2.address() as AddressInfo).port}`;
+  });
+  afterAll(() => {
+    app2.scheduler.stop();
+    server2.close();
+  });
+  beforeEach(() => {
+    calls2.length = 0;
+    aborted2 = 0;
+    holdNext = false;
+  });
+
+  /** Mesajı gönderir, sadece alınmasını bekler (cevap zamanlayıcıda). */
+  async function post2(body: unknown) {
+    const raw = JSON.stringify(body);
+    const sig = "sha256=" + createHmac("sha256", APP_SECRET).update(raw).digest("hex");
+    await fetch(`${base2}/webhook/whatsapp`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-hub-signature-256": sig },
+      body: raw,
+    });
+    await app2.queue.idle();
+  }
+  const lastUserContent = (i: number) => calls2[i]!.messages.at(-1)!.content;
+
+  it("'Merhaba / siparişim gelmedi / #1045' → tek Claude çağrısı, tek cevap, tek yazı", async () => {
+    await post2(text("Merhaba"));
+    await post2(text("siparişim gelmedi"));
+    await post2(text("#1045"));
+    await app2.scheduler.idle();
+
+    expect(calls2).toHaveLength(1);
+    expect(lastUserContent(0)).toEqual([{ type: "text", text: "Merhaba\nsiparişim gelmedi\n#1045" }]);
+    expect(sent.map((s) => s.text)).toEqual(["Cevap: Merhaba\nsiparişim gelmedi\n#1045"]);
+  });
+
+  it("Lina cevabı hazırlarken gelen mesaj: hazırlanan iptal, hepsine tek cevap; özür ve devir yok", async () => {
+    holdNext = true;
+    await post2(text("birinci"));
+    await vi.waitFor(() => expect(calls2).toHaveLength(1), { timeout: 5_000 }); // Lina hazırlıyor
+    await post2(text("ikinci"));
+    await app2.scheduler.idle();
+
+    expect(aborted2).toBe(1);
+    expect(calls2).toHaveLength(2);
+    expect(lastUserContent(1)).toEqual([{ type: "text", text: "birinci\nikinci" }]);
+    expect(sent.map((s) => s.text)).toEqual(["Cevap: birinci\nikinci"]);
+    expect(await database.db.select().from(handoffs)).toHaveLength(0);
+    const runs = await database.db.select().from(agentRuns);
+    expect(runs.some((r) => r.agent === "lina" && r.error === "cancelled")).toBe(true);
+  });
+
+  it("bekleme sırasında ekip devralırsa Lina hiç cevap vermez", async () => {
+    await post2(text("merhaba"));
+    await database.db.update(conversations).set({ status: "human" });
+    await app2.scheduler.idle();
+    expect(calls2).toHaveLength(0);
+    expect(sent).toHaveLength(0);
+  });
+
+  it("sadece sesli mesajlar: sabit metin bir kez; yazıyla karışıksa Lina cevaplar", async () => {
+    await post2(payload({ type: "audio", audio: { id: "a1" } }));
+    await post2(payload({ type: "audio", audio: { id: "a2" } }));
+    await app2.scheduler.idle();
+    expect(calls2).toHaveLength(0);
+    expect(sent.map((s) => s.text)).toEqual([DEFAULT_TEXTS.unsupported]);
+
+    sent.length = 0;
+    await post2(text("fiyatı ne"));
+    await post2(payload({ type: "audio", audio: { id: "a3" } }));
+    await app2.scheduler.idle();
+    expect(calls2).toHaveLength(1);
+    expect(lastUserContent(0)).toEqual([{ type: "text", text: "fiyatı ne\n[müşteri sesli mesaj gönderdi]" }]);
+    expect(sent).toHaveLength(1);
+  });
+
+  it("sunucu bekleme sırasında kapanırsa cevapsız konuşma açılışta bulunur (ekipteyse bulunmaz)", async () => {
+    await post2(text("cevapsız kalacak"));
+    app2.scheduler.stop(); // sunucu kapandı gibi
+    const since = new Date(Date.now() - 60_000);
+    const [conv] = await database.db.select().from(conversations);
+    expect(await findUnansweredConversations(database.db, since)).toEqual([conv!.id]);
+
+    await database.db.update(conversations).set({ status: "human" });
+    expect(await findUnansweredConversations(database.db, since)).toEqual([]);
   });
 });

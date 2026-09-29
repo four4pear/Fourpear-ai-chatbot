@@ -24,6 +24,8 @@ const schema = z.object({
   SHOPIFY_API_VERSION: z.string().default("2026-07"),
   /** Mağaza bilgilerinin kontrol aralığı (dakika). */
   KNOWLEDGE_SYNC_MINUTES: z.coerce.number().default(15),
+  /** Kampanya arşivinin (ürün ve site yazıları) kontrol aralığı (dakika). */
+  ARCHIVE_SYNC_MINUTES: z.coerce.number().default(15),
 });
 
 export type Config = z.infer<typeof schema>;
