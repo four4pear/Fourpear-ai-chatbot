@@ -220,6 +220,18 @@ describe("webhook doğrulama", () => {
     expect(await post(text("merhaba"), "wrong")).toBe(401);
     expect(sent).toHaveLength(0);
   });
+  it("WhatsApp ayarları girilmemişse webhook kapalı (503), sunucu çalışır", async () => {
+    const { app } = createApp({}, { log: { info() {}, warn() {}, error() {} } } as unknown as Deps);
+    const off = app.listen(0);
+    try {
+      const url = `http://127.0.0.1:${(off.address() as AddressInfo).port}`;
+      expect((await fetch(`${url}/webhook/whatsapp?hub.mode=subscribe&hub.verify_token=&hub.challenge=1`)).status).toBe(503);
+      expect((await fetch(`${url}/webhook/whatsapp`, { method: "POST", body: "{}" })).status).toBe(503);
+      expect((await fetch(`${url}/health`)).status).toBe(200);
+    } finally {
+      off.close();
+    }
+  });
 });
 
 describe("mesaj akışı", () => {

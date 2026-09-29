@@ -1,5 +1,5 @@
 import express from "express";
-import type { Config } from "./config.js";
+import { whatsappConfigured, type Config } from "./config.js";
 import { ingestInbound, respond, type Deps } from "./core/conversation.js";
 import { KeyedQueue } from "./core/queue.js";
 import { ReplyScheduler } from "./core/reply-scheduler.js";
@@ -34,8 +34,14 @@ export function createApp(
     res.json({ ok: true });
   });
 
+  // WhatsApp ayarları girilene kadar webhook kapalı (imzasız istek asla işlenmez).
+  const whatsappOff = (_req: express.Request, res: express.Response, next: express.NextFunction) => {
+    if (whatsappConfigured(config)) return next();
+    res.status(503).json({ error: "WhatsApp henüz ayarlanmadı (WHATSAPP_APP_SECRET, WHATSAPP_VERIFY_TOKEN)" });
+  };
+
   // Meta webhook doğrulaması (uygulama panelinde "Verify and save").
-  app.get("/webhook/whatsapp", (req, res) => {
+  app.get("/webhook/whatsapp", whatsappOff, (req, res) => {
     const { "hub.mode": mode, "hub.verify_token": token, "hub.challenge": challenge } = req.query;
     if (mode === "subscribe" && token === config.WHATSAPP_VERIFY_TOKEN && typeof challenge === "string") {
       res.type("text/plain").send(challenge);
@@ -44,9 +50,9 @@ export function createApp(
     res.sendStatus(403);
   });
 
-  app.post("/webhook/whatsapp", express.raw({ type: "*/*", limit: "1mb" }), (req, res) => {
+  app.post("/webhook/whatsapp", whatsappOff, express.raw({ type: "*/*", limit: "1mb" }), (req, res) => {
     const raw = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
-    if (!isValidSignature(raw, req.get("x-hub-signature-256"), config.WHATSAPP_APP_SECRET)) {
+    if (!isValidSignature(raw, req.get("x-hub-signature-256"), config.WHATSAPP_APP_SECRET!)) {
       res.sendStatus(401);
       return;
     }

@@ -9,9 +9,14 @@ const schema = z.object({
   MASTER_KEY: z.string().refine((v) => Buffer.from(v, "base64").length === 32, {
     message: "MASTER_KEY 32 baytlık base64 olmalı: node -e \"console.log(crypto.randomBytes(32).toString('base64'))\"",
   }),
+  ANTHROPIC_API_KEY: z.string().optional(),
   CLAUDE_MODEL: z.string().default("claude-sonnet-5"),
-  WHATSAPP_APP_SECRET: z.string().min(1),
-  WHATSAPP_VERIFY_TOKEN: z.string().min(1),
+  /**
+   * Meta WhatsApp: uygulamanın gizli anahtarı ve webhook'ta girilen doğrulama metni. İkisi de
+   * girilene kadar WhatsApp webhook'u kapalıdır (panel, Shopify ve arşiv yine çalışır).
+   */
+  WHATSAPP_APP_SECRET: z.string().optional(),
+  WHATSAPP_VERIFY_TOKEN: z.string().optional(),
   GRAPH_API_VERSION: z.string().default("v23.0"),
   /** Konuşma geçmişinden Claude'a gönderilecek son mesaj sayısı. */
   HISTORY_LIMIT: z.coerce.number().default(20),
@@ -30,13 +35,31 @@ const schema = z.object({
 
 export type Config = z.infer<typeof schema>;
 
-export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
+/**
+ * Ortam değişkenlerini okur. `server`: sunucunun kendisi için ek şartlar (komut satırı araçları
+ * bunlar olmadan da çalışır). Eksiklerin hepsi tek seferde listelenir.
+ */
+export function loadConfig(env: NodeJS.ProcessEnv = process.env, opts: { server?: boolean } = {}): Config {
   // .env.example'daki gibi boş bırakılan satırlar (APP_URL=) "tanımlı değil" sayılır.
   const filled = Object.fromEntries(Object.entries(env).filter(([, v]) => v !== undefined && v.trim() !== ""));
   const parsed = schema.safeParse(filled);
-  if (!parsed.success) {
-    const problems = parsed.error.issues.map((i) => `  - ${i.path.join(".")}: ${i.message}`).join("\n");
-    throw new Error(`Eksik ya da hatalı ortam değişkenleri (.env):\n${problems}`);
+  const problems = parsed.success ? [] : parsed.error.issues.map((i) => `  - ${i.path.join(".")}: ${i.message}`);
+  if (opts.server) {
+    if (!filled.ANTHROPIC_API_KEY) problems.push("  - ANTHROPIC_API_KEY: Lina'nın Claude anahtarı gerekli (console.anthropic.com → API Keys)");
+    // Railway'de dosya sistemi her yayında sıfırlanır: gömülü veritabanıyla bütün kayıtlar silinirdi.
+    if (isRailway(filled) && !filled.DATABASE_URL) {
+      problems.push("  - DATABASE_URL: Railway'de Postgres gerekli (projeye Postgres ekleyip değişkeni bu servise bağlayın)");
+    }
   }
-  return parsed.data;
+  if (problems.length) {
+    const where = isRailway(filled) ? "Railway → servis → Variables" : ".env dosyası";
+    throw new Error(`Eksik ya da hatalı ortam değişkenleri (${where}):\n${problems.join("\n")}`);
+  }
+  return parsed.data!;
 }
+
+const isRailway = (env: Record<string, string | undefined>) => Boolean(env.RAILWAY_ENVIRONMENT_NAME || env.RAILWAY_ENVIRONMENT || env.RAILWAY_PROJECT_ID);
+
+/** WhatsApp webhook'u için iki değer de girilmiş mi? */
+export const whatsappConfigured = (c: Pick<Config, "WHATSAPP_APP_SECRET" | "WHATSAPP_VERIFY_TOKEN">) =>
+  Boolean(c.WHATSAPP_APP_SECRET && c.WHATSAPP_VERIFY_TOKEN);

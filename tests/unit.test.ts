@@ -3,7 +3,7 @@ import type Anthropic from "@anthropic-ai/sdk";
 import { describe, expect, it } from "vitest";
 import { describeLlmError, runAgent, type Llm } from "../src/agents/runner.js";
 import type { DB } from "../src/db/client.js";
-import { loadConfig } from "../src/config.js";
+import { loadConfig, whatsappConfigured } from "../src/config.js";
 import { businessStatus } from "../src/core/business-hours.js";
 import { startOfToday, toClaudeMessages } from "../src/core/conversation.js";
 import { decryptSecret, encryptSecret } from "../src/lib/crypto.js";
@@ -143,7 +143,28 @@ describe("ayarlar (.env)", () => {
   });
 
   it("boş bırakılan zorunlu satırı açıkça bildirir", () => {
-    expect(() => loadConfig({ ...required, WHATSAPP_APP_SECRET: "" })).toThrow("WHATSAPP_APP_SECRET");
+    expect(() => loadConfig({ ...required, MASTER_KEY: "" })).toThrow("MASTER_KEY");
+  });
+
+  it("WhatsApp ayarları girilmeden de açılır (webhook kapalı kalır)", () => {
+    const config = loadConfig({ MASTER_KEY: required.MASTER_KEY });
+    expect(whatsappConfigured(config)).toBe(false);
+    expect(whatsappConfigured(loadConfig(required))).toBe(true);
+  });
+
+  it("sunucu için eksiklerin hepsini tek seferde listeler; Railway'de Postgres şart", () => {
+    const railway = { RAILWAY_ENVIRONMENT_NAME: "production" };
+    let message = "";
+    try {
+      loadConfig(railway, { server: true });
+    } catch (err) {
+      message = (err as Error).message;
+    }
+    expect(message).toContain("Railway → servis → Variables");
+    for (const name of ["MASTER_KEY", "ANTHROPIC_API_KEY", "DATABASE_URL"]) expect(message).toContain(name);
+    // Yerelde gömülü veritabanı serbest; komut satırı araçları Claude anahtarı istemez.
+    expect(() => loadConfig({ MASTER_KEY: required.MASTER_KEY, ANTHROPIC_API_KEY: "k" }, { server: true })).not.toThrow();
+    expect(() => loadConfig({ MASTER_KEY: required.MASTER_KEY })).not.toThrow();
   });
 });
 

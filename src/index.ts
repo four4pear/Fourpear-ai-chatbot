@@ -2,7 +2,7 @@ import "dotenv/config";
 import Anthropic from "@anthropic-ai/sdk";
 import { and, eq, isNull } from "drizzle-orm";
 import { createApp } from "./app.js";
-import { loadConfig } from "./config.js";
+import { loadConfig, whatsappConfigured } from "./config.js";
 import { exitIfLocked, openDatabase } from "./db/client.js";
 import { resolveSettings, shopifyStores, tenants } from "./db/schema.js";
 import { llmFromClient } from "./agents/runner.js";
@@ -29,7 +29,15 @@ function exclusive(task: () => Promise<unknown>): () => Promise<void> {
   };
 }
 
-const config = loadConfig();
+const config = (() => {
+  try {
+    return loadConfig(process.env, { server: true });
+  } catch (err) {
+    // Eksik ayarları yığın izi olmadan, okunur biçimde göster.
+    console.error(err instanceof Error ? err.message : err);
+    process.exit(1);
+  }
+})();
 const { db, close } = await openDatabase({ databaseUrl: config.DATABASE_URL, pgliteDir: config.PGLITE_DIR }).catch(exitIfLocked);
 
 // WhatsApp tarafı ile panel aynı olay kanalını paylaşır (canlı güncelleme).
@@ -38,7 +46,7 @@ const events = new EventBus();
 const deps: Deps = {
   db,
   events,
-  llm: llmFromClient(new Anthropic()),
+  llm: llmFromClient(new Anthropic({ apiKey: config.ANTHROPIC_API_KEY })),
   wa: createWhatsAppClient(config.GRAPH_API_VERSION),
   model: config.CLAUDE_MODEL,
   masterKey: config.MASTER_KEY,
@@ -118,6 +126,9 @@ if (unanswered.length) console.log(`Cevapsız kalan ${unanswered.length} konuşm
 
 const server = app.listen(config.PORT, () => {
   console.log(`Sunucu hazır: http://localhost:${config.PORT} (webhook: /webhook/whatsapp, model: ${config.CLAUDE_MODEL})`);
+  if (!whatsappConfigured(config)) {
+    console.warn("WhatsApp ayarları (WHATSAPP_APP_SECRET, WHATSAPP_VERIFY_TOKEN) eksik: WhatsApp webhook'u kapalı, panel çalışır.");
+  }
 });
 
 async function shutdown() {
