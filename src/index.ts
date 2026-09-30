@@ -10,6 +10,7 @@ import { syncAllStores, syncStoreKnowledge } from "./knowledge/sync.js";
 import { archiveAllTenants } from "./archive/sync.js";
 import { shopifyOrderSource } from "./orders/shopify.js";
 import { returnsProviderFor } from "./returns/provider.js";
+import { shopifyApps } from "./shopify/apps.js";
 import { createShopifyApi } from "./shopify/client.js";
 import { createWhatsAppClient } from "./whatsapp/client.js";
 import { EventBus } from "./core/events.js";
@@ -59,17 +60,25 @@ const deps: Deps = {
 
 let shopifyRoutes;
 let syncTimer: NodeJS.Timeout | undefined;
-if (config.SHOPIFY_API_KEY && config.SHOPIFY_API_SECRET && config.APP_URL) {
+if (config.APP_URL) {
+  // Her mağaza kendi Shopify uygulamasıyla bağlanır; sunucu ayarındaki uygulama ortak yedektir.
+  const apps = shopifyApps(
+    db,
+    config.MASTER_KEY,
+    config.SHOPIFY_API_KEY && config.SHOPIFY_API_SECRET
+      ? { apiKey: config.SHOPIFY_API_KEY, apiSecret: config.SHOPIFY_API_SECRET }
+      : undefined,
+  );
   const shopify = createShopifyApi({
     db,
     masterKey: config.MASTER_KEY,
-    app: { apiKey: config.SHOPIFY_API_KEY, apiSecret: config.SHOPIFY_API_SECRET },
+    appFor: apps.forTenant,
     apiVersion: config.SHOPIFY_API_VERSION,
   });
   shopifyRoutes = {
     db,
     shopify,
-    app: { apiKey: config.SHOPIFY_API_KEY, apiSecret: config.SHOPIFY_API_SECRET },
+    apps,
     appUrl: config.APP_URL.replace(/\/$/, ""),
     masterKey: config.MASTER_KEY,
     syncStore: (store: Parameters<typeof syncStoreKnowledge>[2]) => syncStoreKnowledge(db, shopify, store),
@@ -89,7 +98,7 @@ if (config.SHOPIFY_API_KEY && config.SHOPIFY_API_SECRET && config.APP_URL) {
   void runSync();
   syncTimer = setInterval(runSync, config.KNOWLEDGE_SYNC_MINUTES * 60 * 1000);
 } else {
-  console.warn("Shopify ayarları (SHOPIFY_API_KEY, SHOPIFY_API_SECRET, APP_URL) eksik: Shopify kurulumu ve bilgi senkronu kapalı.");
+  console.warn("APP_URL eksik: Shopify kurulumu ve bilgi senkronu kapalı.");
 }
 
 // Kampanya arşivi: ürün ve site yazıları tarihleriyle saklanır (Shopify uygulaması gerekmez).

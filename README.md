@@ -88,9 +88,9 @@ Uzman çağrılarını, devirleri ve mesaj başı maliyeti gösterir. Komutlar: 
 npm run tenant -- upsert --slug maius --name MAIUS --domain maiusonline.com \
   --hours "1,2,3,4,5,6 10:00-17:00"               # günler: 0=pazar ... 6=cumartesi
 npm run tenant -- whatsapp --slug maius --phone-number-id <PHONE_NUMBER_ID> --token <ERİŞİM_TOKEN>
-npm run tenant -- shopify-link --slug maius --shop maius.myshopify.com   # imzalı kurulum linki (24 saat geçerli)
+npm run tenant -- shopify-app --slug maius --shop kkhwm0-at.myshopify.com --client-id <CLIENT_ID>   # Client secret gizli sorulur
 ```
-Mağaza sahibi linki açıp uygulamayı onaylar; bilgiler otomatik çekilir. Sonra:
+Mağaza sahibi Shopify'ın özel dağıtım linkiyle uygulamayı kurar; bilgiler otomatik çekilir (ayrıntı: "Shopify uygulaması kurulumu"). Sonra:
 ```bash
 npm run tenant -- docs --slug maius      # Lina'nın kullandığı kaynaklar (her soruda / gerekince / kapalı)
 npm run tenant -- doc --slug maius --id <ilk 8 hane> --off   # bir kaynağı kapat (--on, --auto)
@@ -121,14 +121,25 @@ npm run tenant -- archive-import --slug maius --products urunler.json --home ana
 
 ## Shopify uygulaması kurulumu
 
-1. [dev.shopify.com](https://dev.shopify.com) (Dev Dashboard) → **Create app**.
-2. Uygulama ayarları:
-   - **App URL:** `<APP_URL>` · **Redirect URL:** `<APP_URL>/shopify/callback`
-   - **Embedded:** kapalı (panelimiz kendi adresinde çalışır)
+App Store'a çıkana kadar **her mağazanın kendi uygulaması** olur: Shopify özel dağıtımlı (custom distribution) uygulamayı tek mağazaya kilitler. Mağazanın uygulaması veritabanında durur (`shopify-app`, Client secret şifreli). Sunucudaki `SHOPIFY_API_KEY`/`SHOPIFY_API_SECRET` ortak uygulamadır: kendi uygulaması girilmemiş mağazalar onu kullanır (ileride App Store uygulaması). Her mağaza için:
+
+1. [dev.shopify.com](https://dev.shopify.com) (Dev Dashboard) → **Create app** (ad örn. "Lina MAIUS").
+2. Sürüm ayarları (**Versions → Create version**, sonra **Release**):
+   - **App URL:** `<APP_URL>/shopify/install` · **Redirect URL:** `<APP_URL>/shopify/callback`
+   - **Embed app in Shopify admin:** kapalı (panelimiz kendi adresinde çalışır)
+   - **Scopes:** `SHOPIFY_SCOPES` listesinin aynısı (aşağıda)
    - **Compliance webhooks** (zorunlu): `customers/data_request`, `customers/redact`, `shop/redact` → `<APP_URL>/webhook/shopify`
-3. **Client ID** → `SHOPIFY_API_KEY`, **Client secret** → `SHOPIFY_API_SECRET`.
-4. Dağıtım: pilot için **Custom distribution** ile MAIUS'a özel kurulum linki; ileride App Store.
-5. **Protected customer data** (sipariş uzmanı için şart): önce dağıtım yöntemini seçin (Custom distribution), sonra **API access requests → Protected customer data access** bölümünde "Protected customer data"yı ve alan olarak **Phone**'u (panelde Shopify adını göstermek için **Name**'i de) seçip gerekçeyi yazın: "WhatsApp'tan yazan müşterinin siparişin sahibi olduğunu telefonla doğrulamak". Tek mağazaya özel (custom) uygulamada inceleme gerekmez. Telefon izni yoksa Lina hiçbir siparişi doğrulayamaz; sunucu kaydında "Protected customer data (telefon) izni verilmemiş olabilir" uyarısı çıkar.
+3. **Distribution → Custom distribution** → mağazanın `.myshopify.com` adresi → kurulum linki oluşur.
+4. **Protected customer data** (sipariş uzmanı için şart): **API access requests → Protected customer data access** bölümünde "Protected customer data"yı ve alan olarak **Phone**'u (panelde Shopify adını göstermek için **Name**'i de) seçip gerekçeyi yazın: "WhatsApp'tan yazan müşterinin siparişin sahibi olduğunu telefonla doğrulamak". Tek mağazaya özel (custom) uygulamada inceleme gerekmez. Telefon izni yoksa Lina hiçbir siparişi doğrulayamaz; sunucu kaydında "Protected customer data (telefon) izni verilmemiş olabilir" uyarısı çıkar.
+5. **Settings → Client ID / Client secret** ile uygulamayı mağazaya bağlayın (secret gizli sorulur, sohbete/komut geçmişine düşmez):
+   ```bash
+   npm run tenant -- shopify-app --slug maius --shop kkhwm0-at.myshopify.com --client-id <CLIENT_ID>
+   ```
+   Canlıda aynı komut sunucunun içinde çalışır: `railway ssh` → `node dist/scripts/tenant.js shopify-app ...`
+6. Mağaza sahibi 3. adımdaki linkle uygulamayı kurar. Shopify onu App URL'e yönlendirir, izinler onaylanır, bilgiler çekilir.
+   Yedek yol: `npm run tenant -- shopify-link --slug maius --shop kkhwm0-at.myshopify.com` (bizim imzalı linkimiz, 24 saat geçerli).
+
+`npm run tenant -- list` her mağazanın hangi uygulamayla (kendi / ortak) bağlandığını gösterir.
 
 İstenen izinler `src/shopify/oauth.ts` içinde (`SHOPIFY_SCOPES`). Token'lar 60 dakikada bir otomatik yenilenir.
 Shopify sayfa/politika değişikliği için bildirim göndermediğinden bilgiler 15 dakikada bir kontrol edilir.

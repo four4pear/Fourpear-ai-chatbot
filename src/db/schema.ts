@@ -351,8 +351,11 @@ export const notifications = pgTable(
   (t) => [index("notifications_tenant_idx").on(t.tenantId, t.status, t.createdAt)],
 );
 
-/** returns_mcp: mağazanın iade sistemi (ör. Kolay İade paneli), MCP üzerinden yalnızca okuma. */
-export type IntegrationKind = "returns_mcp";
+/**
+ * returns_mcp: mağazanın iade sistemi (ör. Kolay İade paneli), MCP üzerinden yalnızca okuma.
+ * shopify_app: mağazaya özel Shopify uygulaması, config { clientId, shop }, secretEnc = Client secret (bkz. shopify/apps.ts).
+ */
+export type IntegrationKind = "returns_mcp" | "shopify_app";
 
 /** Mağazanın dış sistem bağlantıları. Anahtar şifreli saklanır (bkz. lib/crypto.ts). */
 export const integrations = pgTable(

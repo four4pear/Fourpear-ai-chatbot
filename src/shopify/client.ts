@@ -41,12 +41,13 @@ export function tokenColumns(token: ShopifyTokenResponse, masterKey: string, now
 export function createShopifyApi(opts: {
   db: DB;
   masterKey: string;
-  app: ShopifyAppCredentials;
+  /** Mağazanın bağlandığı uygulama (token yenilemek için; bkz. shopify/apps.ts). */
+  appFor: (tenantId: string) => Promise<ShopifyAppCredentials | null>;
   apiVersion: string;
   /** Tekrar denemeler arası temel bekleme (1., 2. denemeden sonra 1x, 2x). Testlerde kısaltılır. */
   retryDelayMs?: number;
 }): ShopifyApi {
-  const { db, masterKey, app } = opts;
+  const { db, masterKey } = opts;
   const retryDelayMs = opts.retryDelayMs ?? 1000;
   // Aynı mağaza için eşzamanlı yenilemeleri tek isteğe indirir.
   const refreshing = new Map<string, Promise<string>>();
@@ -58,6 +59,8 @@ export function createShopifyApi(opts: {
       // Başka bir istek az önce yenilemiş olabilir: güncel kaydı oku.
       const [current] = await db.select().from(shopifyStores).where(eq(shopifyStores.id, store.id));
       if (!current?.refreshTokenEnc) throw new ShopifyApiError("Yenileme token'ı yok; mağazanın uygulamayı yeniden kurması gerekiyor");
+      const app = await opts.appFor(current.tenantId);
+      if (!app) throw new ShopifyApiError("Mağazanın Shopify uygulama anahtarları yok ('tenant shopify-app' ile girin)");
       const token = await refreshAccessToken(current.shopDomain, decryptSecret(current.refreshTokenEnc, masterKey), app);
       await db.update(shopifyStores).set(tokenColumns(token, masterKey)).where(eq(shopifyStores.id, store.id));
       return token.access_token;

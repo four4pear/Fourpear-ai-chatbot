@@ -8,18 +8,22 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { askKnowledgeAgent } from "../src/agents/knowledge.js";
 import type { Llm } from "../src/agents/runner.js";
 import { openDatabase, type Database } from "../src/db/client.js";
-import { agentRuns, knowledgeAlerts, knowledgeDocs, shopifyStores, tenants, textArchive, type ShopifyStore } from "../src/db/schema.js";
+import { agentRuns, integrations, knowledgeAlerts, knowledgeDocs, shopifyStores, tenants, textArchive, type ShopifyStore } from "../src/db/schema.js";
 import { recordSnapshot } from "../src/archive/archive.js";
 import { decryptSecret, encryptSecret } from "../src/lib/crypto.js";
 import { loadKnowledge, readLegalDoc } from "../src/knowledge/base.js";
 import { htmlToText } from "../src/knowledge/html.js";
 import { classifyPage, syncStoreKnowledge } from "../src/knowledge/sync.js";
+import { oauthSigningKey, shopifyApps } from "../src/shopify/apps.js";
 import { createShopifyApi, type ShopifyApi } from "../src/shopify/client.js";
-import { createInstallToken, createState, isValidCallbackHmac, readInstallToken, readState } from "../src/shopify/oauth.js";
+import { createInstallToken, createState, isValidCallbackHmac, readInstallToken, readState, SHOPIFY_SCOPES } from "../src/shopify/oauth.js";
 import { registerShopifyRoutes } from "../src/shopify/routes.js";
 
 const MASTER_KEY = randomBytes(32).toString("base64");
+/** Ortak uygulama (sunucu ayarı); "diger" mağazasının kendi uygulaması var. */
 const APP = { apiKey: "app-key", apiSecret: "app-secret" };
+const OWN_APP = { apiKey: "diger-key", apiSecret: "diger-secret" };
+const SIGNING_KEY = oauthSigningKey(MASTER_KEY);
 
 let database: Database;
 let tenantId: string;
@@ -36,6 +40,12 @@ beforeAll(async () => {
     .returning();
   tenantId = t!.id;
   otherTenantId = o!.id;
+  await database.db.insert(integrations).values({
+    tenantId: otherTenantId,
+    kind: "shopify_app",
+    config: { clientId: OWN_APP.apiKey, shop: "diger.myshopify.com" },
+    secretEnc: encryptSecret(OWN_APP.apiSecret, MASTER_KEY),
+  });
 });
 afterAll(() => database.close());
 
@@ -302,7 +312,7 @@ describe("token yenileme", () => {
       return new Response(JSON.stringify({ data: { ok: true } }));
     });
 
-    const api = createShopifyApi({ db: database.db, masterKey: MASTER_KEY, app: APP, apiVersion: "2026-07" });
+    const api = createShopifyApi({ db: database.db, masterKey: MASTER_KEY, appFor: async () => APP, apiVersion: "2026-07" });
     expect(await api.graphql(store, "{ shop { name } }")).toEqual({ ok: true });
 
     expect(requests[0]!.body).toContain("grant_type=refresh_token");
@@ -328,7 +338,7 @@ describe("geçici hatalarda tekrar deneme", () => {
     return () => calls;
   }
   const ok = () => new Response(JSON.stringify({ data: { ok: true } }));
-  const api = () => createShopifyApi({ db: database.db, masterKey: MASTER_KEY, app: APP, apiVersion: "2026-07", retryDelayMs: 1 });
+  const api = () => createShopifyApi({ db: database.db, masterKey: MASTER_KEY, appFor: async () => APP, apiVersion: "2026-07", retryDelayMs: 1 });
 
   async function freshStore() {
     const store = await createStore();
@@ -385,7 +395,7 @@ describe("Shopify adresleri", () => {
     registerShopifyRoutes(app, {
       db: database.db,
       shopify: { graphql: async <T>() => ({ webhookSubscriptionCreate: { userErrors: [] } }) as T },
-      app: APP,
+      apps: shopifyApps(database.db, MASTER_KEY, APP),
       appUrl: "https://app.example.com",
       masterKey: MASTER_KEY,
       syncStore: async (store) => synced.push(store.shopDomain),
@@ -401,14 +411,15 @@ describe("Shopify adresleri", () => {
     await database.db.delete(shopifyStores);
   });
 
-  const signedCallback = (params: Record<string, string>) => {
+  const signed = (path: string, params: Record<string, string>, secret = APP.apiSecret) => {
     const message = Object.keys(params).sort().map((k) => `${k}=${params[k]}`).join("&");
-    const hmac = createHmac("sha256", APP.apiSecret).update(message).digest("hex");
-    return `${base}/shopify/callback?${new URLSearchParams({ ...params, hmac })}`;
+    const hmac = createHmac("sha256", secret).update(message).digest("hex");
+    return `${base}${path}?${new URLSearchParams({ ...params, hmac })}`;
   };
+  const signedCallback = (params: Record<string, string>, secret?: string) => signed("/shopify/callback", params, secret);
 
   it("imzalı linkle kurulum Shopify izin ekranına yönlendirir", async () => {
-    const token = createInstallToken(tenantId, "maius.myshopify.com", APP.apiSecret);
+    const token = createInstallToken(tenantId, "maius.myshopify.com", SIGNING_KEY);
     const res = await fetch(`${base}/shopify/install?token=${token}`, { redirect: "manual" });
     const location = new URL(res.headers.get("location")!);
     expect(location.origin + location.pathname).toBe("https://maius.myshopify.com/admin/oauth/authorize");
@@ -428,7 +439,7 @@ describe("Shopify adresleri", () => {
 
   it("geçerli callback mağazayı bağlar ve senkronu başlatır", async () => {
     const shop = "maius.myshopify.com";
-    const res = await fetch(signedCallback({ code: "c1", shop, state: createState(tenantId, shop, APP.apiSecret), timestamp: "1" }));
+    const res = await fetch(signedCallback({ code: "c1", shop, state: createState(tenantId, shop, SIGNING_KEY), timestamp: "1" }));
     expect(res.status).toBe(200);
     const [store] = await database.db.select().from(shopifyStores);
     expect(store).toMatchObject({ tenantId, shopDomain: shop });
@@ -438,9 +449,9 @@ describe("Shopify adresleri", () => {
 
   it("imzası bozuk ya da başka mağazanın state'i reddedilir", async () => {
     const shop = "maius.myshopify.com";
-    const good = signedCallback({ code: "c1", shop, state: createState(tenantId, shop, APP.apiSecret), timestamp: "1" });
+    const good = signedCallback({ code: "c1", shop, state: createState(tenantId, shop, SIGNING_KEY), timestamp: "1" });
     expect((await fetch(good.replace("code=c1", "code=c2"))).status).toBe(400);
-    const wrongShop = signedCallback({ code: "c1", shop, state: createState(tenantId, "baska.myshopify.com", APP.apiSecret), timestamp: "1" });
+    const wrongShop = signedCallback({ code: "c1", shop, state: createState(tenantId, "baska.myshopify.com", SIGNING_KEY), timestamp: "1" });
     expect((await fetch(wrongShop)).status).toBe(400);
     expect(await database.db.select().from(shopifyStores)).toHaveLength(0);
   });
@@ -500,4 +511,76 @@ describe("Shopify adresleri", () => {
     expect(runs.find((r) => r.agent === "order")).toMatchObject({ input: null, output: null });
     expect(runs.find((r) => r.agent === "lina")).toMatchObject({ input: "merhaba", output: "Merhaba" });
   });
+  it("kendi uygulaması olan mağaza kendi anahtarıyla kurulur; ortak uygulamanın imzası geçmez", async () => {
+    const shop = "diger.myshopify.com";
+    const token = createInstallToken(otherTenantId, shop, SIGNING_KEY);
+    const res = await fetch(`${base}/shopify/install?token=${token}`, { redirect: "manual" });
+    expect(new URL(res.headers.get("location")!).searchParams.get("client_id")).toBe("diger-key");
+
+    const params = { code: "c1", shop, state: createState(otherTenantId, shop, SIGNING_KEY), timestamp: "1" };
+    expect((await fetch(signedCallback(params, APP.apiSecret))).status).toBe(400);
+    expect((await fetch(signedCallback(params, OWN_APP.apiSecret))).status).toBe(200);
+    const [store] = await database.db.select().from(shopifyStores);
+    expect(store).toMatchObject({ tenantId: otherTenantId, shopDomain: shop });
+  });
+
+  it("Shopify'dan açılış: imzalıysa izin ekranına, kurulu ve izinleri tamamsa 'bağlı' sayfasına gider", async () => {
+    const shop = "diger.myshopify.com";
+    const launch = (secret: string) =>
+      fetch(signed("/shopify/install", { host: "YWRtaW4", shop, timestamp: "1" }, secret), { redirect: "manual" });
+    expect((await launch(APP.apiSecret)).status).toBe(400);
+
+    const location = new URL((await launch(OWN_APP.apiSecret)).headers.get("location")!);
+    expect(location.origin + location.pathname).toBe(`https://${shop}/admin/oauth/authorize`);
+    expect(location.searchParams.get("client_id")).toBe("diger-key");
+    expect(readState(location.searchParams.get("state")!, shop, SIGNING_KEY)).toEqual({ tenantId: otherTenantId });
+
+    await createStore(shop, otherTenantId);
+    await database.db.update(shopifyStores).set({ scopes: SHOPIFY_SCOPES }).where(eq(shopifyStores.shopDomain, shop));
+    const connected = await launch(OWN_APP.apiSecret);
+    expect(connected.status).toBe(200);
+    expect(await connected.text()).toContain("Lina bu mağazaya bağlı");
+
+    const unknown = await fetch(signed("/shopify/install", { shop: "tanimsiz.myshopify.com", timestamp: "1" }), { redirect: "manual" });
+    expect(unknown.status).toBe(404);
+  });
+
+  it("bildirim mağazanın kendi uygulamasının anahtarıyla doğrulanır", async () => {
+    await createStore("diger.myshopify.com", otherTenantId);
+    const body = JSON.stringify({ id: 1 });
+    const post = (secret: string) =>
+      fetch(`${base}/webhook/shopify`, {
+        method: "POST",
+        headers: {
+          "x-shopify-hmac-sha256": createHmac("sha256", secret).update(body).digest("base64"),
+          "x-shopify-topic": "app/uninstalled",
+          "x-shopify-shop-domain": "diger.myshopify.com",
+        },
+        body,
+      });
+    expect((await post(APP.apiSecret)).status).toBe(401);
+    expect((await post(OWN_APP.apiSecret)).status).toBe(200);
+  });
 });
+
+describe("mağaza başına Shopify uygulaması", () => {
+  it("kendi uygulaması varsa onu, yoksa ortak uygulamayı kullanır", async () => {
+    await database.db.delete(shopifyStores);
+    const apps = shopifyApps(database.db, MASTER_KEY, APP);
+    expect(await apps.forTenant(otherTenantId)).toEqual(OWN_APP);
+    expect(await apps.forTenant(tenantId)).toEqual(APP);
+    expect(await shopifyApps(database.db, MASTER_KEY).forTenant(tenantId)).toBeNull();
+    // Henüz kurulmamış mağaza, uygulamasının girildiği adresle bulunur.
+    expect(await apps.tenantForShop("diger.myshopify.com")).toBe(otherTenantId);
+    expect(await apps.tenantForShop("tanimsiz.myshopify.com")).toBeNull();
+
+    await database.db.update(integrations).set({ enabled: false }).where(eq(integrations.tenantId, otherTenantId));
+    try {
+      expect(await apps.forTenant(otherTenantId)).toEqual(APP);
+      expect(await apps.tenantForShop("diger.myshopify.com")).toBeNull();
+    } finally {
+      await database.db.update(integrations).set({ enabled: true }).where(eq(integrations.tenantId, otherTenantId));
+    }
+  });
+});
+

@@ -4,6 +4,7 @@ import { and, eq } from "drizzle-orm";
 import type { DB } from "../db/client.js";
 import { agentRuns, customers, knowledgeDocs, shopifyStores, tenants, textArchive, type ShopifyStore } from "../db/schema.js";
 import { normalizePhone } from "../lib/phone.js";
+import { oauthSigningKey, type ShopifyApps } from "./apps.js";
 import { tokenColumns, type ShopifyApi } from "./client.js";
 import {
   authorizeUrl,
@@ -13,13 +14,14 @@ import {
   isValidShopDomain,
   readInstallToken,
   readState,
-  type ShopifyAppCredentials,
+  SHOPIFY_SCOPES,
 } from "./oauth.js";
 
 export type ShopifyRouteDeps = {
   db: DB;
   shopify: ShopifyApi;
-  app: ShopifyAppCredentials;
+  /** Mağaza başına Shopify uygulaması (bkz. shopify/apps.ts). */
+  apps: ShopifyApps;
   appUrl: string;
   masterKey: string;
   /** Kurulumdan hemen sonra mağaza bilgilerini çekmek için. */
@@ -48,35 +50,73 @@ export function isValidWebhookHmac(rawBody: Buffer, header: string | undefined, 
   return given.length === expected.length && timingSafeEqual(given, expected);
 }
 
+/** Mağaza, uygulamanın şu an istediği izinlerin hepsini vermiş mi? */
+function hasAllScopes(granted: string): boolean {
+  const have = new Set(granted.split(",").map((s) => s.trim()));
+  return SHOPIFY_SCOPES.split(",").every((s) => have.has(s));
+}
+
+const queryOf = (query: Record<string, unknown>) => Object.fromEntries(Object.entries(query).map(([k, v]) => [k, String(v)]));
+
 export function registerShopifyRoutes(app: Express, deps: ShopifyRouteDeps) {
   const { db } = deps;
   const redirectUri = `${deps.appUrl}/shopify/callback`;
+  const signingKey = oauthSigningKey(deps.masterKey);
 
   /**
-   * Kurulumu başlatır: /shopify/install?token=...
-   * Token'ı yalnızca bizim araçlarımız üretir (createInstallToken; şimdilik `npm run tenant -- shopify-link`).
+   * Kurulumu başlatır. İki yoldan gelinir:
+   * - Bizim imzalı linkimiz: /shopify/install?token=... (şimdilik `npm run tenant -- shopify-link`).
+   * - Shopify: mağaza uygulamayı özel dağıtım linkiyle kurunca ya da yönetim panelinden açınca
+   *   uygulama adresine ?shop=...&hmac=... ile gelir (Shopify'da App URL = <APP_URL>/shopify/install).
    */
   app.get("/shopify/install", async (req, res) => {
-    const install = readInstallToken(String(req.query.token ?? ""), deps.app.apiSecret);
-    if (!install) {
+    const query = queryOf(req.query);
+    let target: { tenantId: string; shop: string } | null = null;
+    if (query.token) {
+      target = readInstallToken(query.token, signingKey);
+    } else if (query.shop && query.hmac) {
+      const shop = query.shop.toLowerCase();
+      const tenantId = isValidShopDomain(shop) ? await deps.apps.tenantForShop(shop) : null;
+      if (!tenantId) {
+        res.status(404).send(page("Hesap bulunamadı", "Bu Shopify mağazası için henüz bir Lina hesabı açılmamış. Lütfen bizimle iletişime geçin."));
+        return;
+      }
+      const shopApp = await deps.apps.forTenant(tenantId);
+      if (shopApp && isValidCallbackHmac(query, shopApp.apiSecret)) {
+        target = { tenantId, shop };
+        // Kurulu ve izinleri tamam: yönetim panelinden açılınca yeniden izin istemeye gerek yok.
+        const [store] = await db.select().from(shopifyStores).where(eq(shopifyStores.shopDomain, shop));
+        if (store && !store.uninstalledAt && store.tenantId === tenantId && hasAllScopes(store.scopes)) {
+          res.send(page("Lina bu mağazaya bağlı", "Mağaza bilgileri düzenli olarak güncelleniyor. Bu pencereyi kapatabilirsiniz."));
+          return;
+        }
+      }
+    }
+    if (!target) {
       res.status(400).send(page("Kurulum linki geçersiz", "Linkin süresi dolmuş ya da hatalı. Lütfen yeni bir kurulum linki isteyin."));
       return;
     }
-    const { shop } = install;
-    const [tenant] = await db.select().from(tenants).where(eq(tenants.id, install.tenantId));
+    const { shop } = target;
+    const [tenant] = await db.select().from(tenants).where(eq(tenants.id, target.tenantId));
     if (!tenant) {
       res.status(404).send(page("Hesap bulunamadı", "Bu kurulum linkine ait hesap artık yok."));
       return;
     }
-    const state = createState(tenant.id, shop, deps.app.apiSecret);
-    res.redirect(authorizeUrl({ shop, apiKey: deps.app.apiKey, redirectUri, state }));
+    const shopApp = await deps.apps.forTenant(tenant.id);
+    if (!shopApp) {
+      res.status(503).send(page("Kurulum hazır değil", "Bu hesap için Shopify uygulaması henüz ayarlanmamış. Lütfen bizimle iletişime geçin."));
+      return;
+    }
+    const state = createState(tenant.id, shop, signingKey);
+    res.redirect(authorizeUrl({ shop, apiKey: shopApp.apiKey, redirectUri, state }));
   });
 
   app.get("/shopify/callback", async (req, res) => {
-    const query = Object.fromEntries(Object.entries(req.query).map(([k, v]) => [k, String(v)]));
+    const query = queryOf(req.query);
     const shop = (query.shop ?? "").toLowerCase();
-    const state = isValidShopDomain(shop) ? readState(query.state ?? "", shop, deps.app.apiSecret) : null;
-    if (!state || !query.code || !isValidCallbackHmac(query, deps.app.apiSecret)) {
+    const state = isValidShopDomain(shop) ? readState(query.state ?? "", shop, signingKey) : null;
+    const shopApp = state ? await deps.apps.forTenant(state.tenantId) : null;
+    if (!state || !shopApp || !query.code || !isValidCallbackHmac(query, shopApp.apiSecret)) {
       res.status(400).send(page("Kurulum doğrulanamadı", "Bağlantının süresi dolmuş olabilir; kurulumu yeniden başlatın."));
       return;
     }
@@ -88,7 +128,7 @@ export function registerShopifyRoutes(app: Express, deps: ShopifyRouteDeps) {
     }
 
     try {
-      const token = await (deps.exchange ?? exchangeCode)(shop, query.code, deps.app);
+      const token = await (deps.exchange ?? exchangeCode)(shop, query.code, shopApp);
       const values = { ...tokenColumns(token, deps.masterKey), shopDomain: shop, installedAt: new Date(), uninstalledAt: null };
       const [store] = await db
         .insert(shopifyStores)
@@ -117,12 +157,15 @@ export function registerShopifyRoutes(app: Express, deps: ShopifyRouteDeps) {
   // Uygulama kaldırma ve Shopify'ın zorunlu gizlilik (GDPR) bildirimleri.
   app.post("/webhook/shopify", express.raw({ type: "*/*", limit: "1mb" }), async (req, res) => {
     const raw = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
-    if (!isValidWebhookHmac(raw, req.get("x-shopify-hmac-sha256"), deps.app.apiSecret)) {
+    const topic = req.get("x-shopify-topic") ?? "";
+    const shop = (req.get("x-shopify-shop-domain") ?? "").toLowerCase();
+    // Bildirim, mağazanın bağlandığı uygulamanın anahtarıyla imzalanır.
+    const tenantId = isValidShopDomain(shop) ? await deps.apps.tenantForShop(shop) : null;
+    const shopApp = tenantId ? await deps.apps.forTenant(tenantId) : deps.apps.shared;
+    if (!shopApp || !isValidWebhookHmac(raw, req.get("x-shopify-hmac-sha256"), shopApp.apiSecret)) {
       res.sendStatus(401);
       return;
     }
-    const topic = req.get("x-shopify-topic") ?? "";
-    const shop = (req.get("x-shopify-shop-domain") ?? "").toLowerCase();
     const payload = JSON.parse(raw.toString("utf8") || "{}") as { customer?: { phone?: string | null } };
     res.sendStatus(200);
 

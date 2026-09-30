@@ -4,6 +4,8 @@
  *   npm run tenant -- upsert --slug maius --name MAIUS --domain maiusonline.com \
  *     --hours "1,2,3,4,5,6 10:00-17:00" [--notes "Bu hafta kargoda gecikme var"]
  *   npm run tenant -- whatsapp --slug maius --phone-number-id 123 --token EAAG...
+ *   npm run tenant -- shopify-app --slug maius --shop maius.myshopify.com --client-id abc123
+ *        (mağazaya özel Shopify uygulaması; Client secret gizli sorulur)
  *   npm run tenant -- shopify-link --slug maius --shop maius.myshopify.com
  *   npm run tenant -- sync --slug maius          (Shopify'dan bilgileri şimdi yenile)
  *   npm run tenant -- docs --slug maius          (Lina'nın kullandığı kaynaklar)
@@ -50,6 +52,7 @@ import { ALLOWED_TOOLS, DANGEROUS_TOOLS, McpClient } from "../returns/kolay-iade
 import { createInvite, createResetToken, normalizeEmail } from "../auth/service.js";
 import { isEnabled } from "../knowledge/base.js";
 import { syncStoreKnowledge } from "../knowledge/sync.js";
+import { oauthSigningKey, shopifyApps } from "../shopify/apps.js";
 import { createShopifyApi } from "../shopify/client.js";
 import { createInstallToken, isValidShopDomain } from "../shopify/oauth.js";
 import { currentTexts, recordSnapshot, refreshCampaignDoc, versionsByTitle, type RecordResult } from "../archive/archive.js";
@@ -70,6 +73,7 @@ const { values: args } = parseArgs({
     token: { type: "string" },
     "display-phone": { type: "string" },
     shop: { type: "string" },
+    "client-id": { type: "string" },
     id: { type: "string" },
     email: { type: "string" },
     role: { type: "string" },
@@ -129,6 +133,18 @@ async function testReturnsConnection(url: string, key: string) {
         "ama anahtar çalınırsa diye panelden yalnızca talep_ara ve talep_detay ile kısıtlanması önerilir.",
     );
   }
+}
+
+const apps = shopifyApps(
+  db,
+  config.MASTER_KEY,
+  config.SHOPIFY_API_KEY && config.SHOPIFY_API_SECRET ? { apiKey: config.SHOPIFY_API_KEY, apiSecret: config.SHOPIFY_API_SECRET } : undefined,
+);
+
+function shopArg(): string {
+  const shop = required("shop").toLowerCase();
+  if (!isValidShopDomain(shop)) throw new Error("--shop magaza-adi.myshopify.com biçiminde olmalı");
+  return shop;
 }
 
 async function tenantBySlug() {
@@ -211,24 +227,51 @@ try {
     };
     await db.insert(whatsappAccounts).values(values).onConflictDoUpdate({ target: whatsappAccounts.phoneNumberId, set: values });
     console.log(`WhatsApp numarası ${values.phoneNumberId} → ${tenant.slug} mağazasına bağlandı`);
+  } else if (command === "shopify-app") {
+    // Mağazaya özel Shopify uygulaması (özel dağıtım). Client secret gizli sorulur; komut satırında dolaşmaz.
+    const tenant = await tenantBySlug();
+    const where = and(eq(integrations.tenantId, tenant.id), eq(integrations.kind, "shopify_app"));
+    if (args.off) {
+      const off = await db.update(integrations).set({ enabled: false, updatedAt: new Date() }).where(where).returning();
+      if (!off.length) throw new Error("Bu mağazanın kendi Shopify uygulaması yok");
+      console.log("Mağazanın kendi Shopify uygulaması kapatıldı; varsa ortak uygulama kullanılır.");
+    } else {
+      const shop = shopArg();
+      const clientId = required("client-id");
+      const secret = await promptSecret("Shopify Client secret (yazdığınız görünmez, sonra Enter): ");
+      if (!secret) throw new Error("Client secret boş olamaz");
+      const values = {
+        tenantId: tenant.id,
+        kind: "shopify_app" as const,
+        config: { clientId, shop },
+        secretEnc: encryptSecret(secret, config.MASTER_KEY),
+        enabled: true,
+        updatedAt: new Date(),
+      };
+      await db
+        .insert(integrations)
+        .values(values)
+        .onConflictDoUpdate({ target: [integrations.tenantId, integrations.kind], set: values });
+      console.log(`${tenant.slug} mağazasının Shopify uygulaması kaydedildi (${shop}). Client secret şifreli saklandı.`);
+    }
   } else if (command === "shopify-link") {
     const tenant = await tenantBySlug();
-    const shop = required("shop").toLowerCase();
-    if (!isValidShopDomain(shop)) throw new Error("--shop magaza-adi.myshopify.com biçiminde olmalı");
-    if (!config.APP_URL) throw new Error(".env içinde APP_URL tanımlı olmalı (ör. ngrok adresi)");
-    if (!config.SHOPIFY_API_SECRET) throw new Error(".env içinde SHOPIFY_API_SECRET tanımlı olmalı");
+    const shop = shopArg();
+    if (!config.APP_URL) throw new Error("APP_URL tanımlı olmalı (sunucunun herkese açık adresi)");
+    if (!(await apps.forTenant(tenant.id))) {
+      throw new Error("Bu mağazanın Shopify uygulaması yok: önce 'shopify-app' ile girin (ya da ortak SHOPIFY_API_KEY/SECRET)");
+    }
     const url = new URL("/shopify/install", config.APP_URL);
-    url.search = new URLSearchParams({ token: createInstallToken(tenant.id, shop, config.SHOPIFY_API_SECRET) }).toString();
+    url.search = new URLSearchParams({ token: createInstallToken(tenant.id, shop, oauthSigningKey(config.MASTER_KEY)) }).toString();
     console.log(`Mağaza sahibinin açması gereken kurulum linki (24 saat geçerli, sadece ${shop} için):\n${url}`);
   } else if (command === "sync") {
     const tenant = await tenantBySlug();
-    if (!config.SHOPIFY_API_KEY || !config.SHOPIFY_API_SECRET) throw new Error("SHOPIFY_API_KEY / SHOPIFY_API_SECRET eksik");
     const [store] = await db.select().from(shopifyStores).where(eq(shopifyStores.tenantId, tenant.id));
     if (!store) throw new Error("Bu mağazada Shopify uygulaması kurulu değil; 'shopify-link' ile kurun");
     const shopify = createShopifyApi({
       db,
       masterKey: config.MASTER_KEY,
-      app: { apiKey: config.SHOPIFY_API_KEY, apiSecret: config.SHOPIFY_API_SECRET },
+      appFor: apps.forTenant,
       apiVersion: config.SHOPIFY_API_VERSION,
     });
     const r = await syncStoreKnowledge(db, shopify, store);
@@ -321,13 +364,22 @@ try {
         name: tenants.name,
         whatsapp: whatsappAccounts.phoneNumberId,
         shopify: shopifyStores.shopDomain,
+        shopifyApp: integrations.config,
+        shopifyAppOn: integrations.enabled,
         lastSync: shopifyStores.lastSyncAt,
         syncError: shopifyStores.lastSyncError,
       })
       .from(tenants)
       .leftJoin(whatsappAccounts, eq(whatsappAccounts.tenantId, tenants.id))
-      .leftJoin(shopifyStores, eq(shopifyStores.tenantId, tenants.id));
-    console.table(rows);
+      .leftJoin(shopifyStores, eq(shopifyStores.tenantId, tenants.id))
+      .leftJoin(integrations, and(eq(integrations.tenantId, tenants.id), eq(integrations.kind, "shopify_app")));
+    console.table(
+      rows.map(({ shopifyApp, shopifyAppOn, ...r }) => ({
+        ...r,
+        // Mağazanın kendi uygulaması mı, sunucudaki ortak uygulama mı?
+        shopifyApp: shopifyApp && shopifyAppOn ? `kendi (${shopifyApp.shop})` : apps.shared ? "ortak" : "yok",
+      })),
+    );
   } else {
     console.log(
       "Komutlar: upsert | whatsapp | shopify-link | sync | docs | doc | alerts | admin | invite | list | returns | archive | archive-import | archive-show  (ayrıntı: src/scripts/tenant.ts)",
