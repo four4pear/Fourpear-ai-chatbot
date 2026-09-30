@@ -69,6 +69,10 @@ mesajlara tek cevap verilir (cevap hazırlanırken yazılırsa hazırlanan cevap
 metin geçmişi yeniden kurulur. Bu ekran fotoğraf ve ekip devralma akışlarını simüle etmez. En fazla 40 mesajdan
 sonra yeni sohbet açın.
 
+**Lina'yı eğitmek:** Test ekranında Lina'nın cevabı yanlış ya da eksikse "geri bildirim: …" yazın. Bu mesaj Lina'ya
+gitmez; eğitmen onu kurala çevirir, siz onaylayınca ders olarak kaydedilir (`lessons` tablosu) ve bütün konuşmalarda
+(WhatsApp dahil) hemen geçerli olur. "Son soruyu tekrar sor" ile yeni kuralı hemen deneyebilirsiniz (docs/lina-davranis.md §13).
+
 ### Lina ile terminalden konuşma (WhatsApp gerekmez)
 
 ```bash

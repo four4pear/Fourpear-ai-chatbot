@@ -79,7 +79,14 @@ function conflictRule(orders: boolean, returnsFormUrl: string): string {
   return `${base} İstisna: çelişki yalnızca iade, değişim ya da hasarlı ürün başvurusunun nereden yapılacağıyla ilgiliyse (ör. form mu, e-posta mı) mağazanın belirlediği iade formu (${returnsFormUrl}) geçerlidir; devretme, yukarıdaki iade ya da şikayet adımlarını uygula. Çelişki mağazaya zaten bildirilir. Süre, ücret gibi rakam ve kurallardaki çelişkide yine devret.`;
 }
 
-export function linaSystemPrompt(tenant: Tenant, specialists: string[], opts: { orders: boolean } = { orders: false }): string {
+export function linaSystemPrompt(
+  tenant: Tenant,
+  specialists: string[],
+  opts: { orders: boolean; lessons?: string[] } = { orders: false },
+): string {
+  const taught = opts.lessons?.length
+    ? `\n\n## Mağazanın sana öğrettikleri\nMağaza sahibinin onayladığı kurallar; bu talimattaki genel kurallardan önce gelir, her zaman uy:\n${opts.lessons.map((l) => `- ${l}`).join("\n")}`
+    : "";
   const store = tenant.domain ? `${tenant.name} (${tenant.domain})` : tenant.name;
   const specialistList = specialists.length
     ? specialists.map((s) => `- ${s}`).join("\n")
@@ -95,7 +102,7 @@ ${specialistList}
 - handoff_to_human: konuşmayı mağaza ekibine devreder.
 
 ## Temel kural
-${coreRule}
+${coreRule}${taught}
 
 ## Durumlara göre ne yaparsın
 
@@ -291,4 +298,22 @@ ${(kb && formatSources(kb)) || "(kaynak yok)"}
 ## Hukuki metinler
 ${kb ? formatLegalList(kb) : "- (yok)"}
 Cayma hakkı ya da sözleşmedeki iade şartları gerekiyorsa read_legal_document ile ilgili metni oku.`;
+}
+
+/**
+ * Eğitmen: mağaza sahibinin test ekranındaki geri bildirimini Lina'nın bütün müşterilerde uygulayacağı
+ * kısa, genel kurallara çevirir (docs/lina-davranis.md "Lina'yı eğitmek"). Kurallar sahip onaylayınca kaydedilir.
+ */
+export function trainerSystemPrompt(tenant: Tenant): string {
+  const lina = tenant.botName;
+  return `Sen ${tenant.name} mağazasının WhatsApp asistanı ${lina}'nın eğitmenisin. Mağaza sahibi ${lina}'yı test ederken bir geri bildirim yazdı. Görevin bu geri bildirimi ${lina}'nın bundan sonra bütün müşterilerle konuşurken uygulayacağı kurallara çevirmek ve propose_lessons aracıyla önermek.
+
+## Kurallar
+- Her kural tek başına anlaşılır, kısa ve genel olsun; bu konuşmaya, test müşterisine ya da deneme sipariş numarasına özel olmasın. Nerede geçerli olduğunu söyle ("Müşteri iade süresini sorduğunda: ..." gibi).
+- Mağaza sahibinin verdiği bilgi, rakam ve süreleri aynen koru; yorum katma, bilgi uydurma, yumuşatma.
+- Mağaza sahibi müşteriye söylenecek bir cümle verdiyse onu tırnak içinde aynen yaz.
+- Geri bildirim ${lina}'nın yanlış yaptığı bir şeyi anlatıyorsa kuralı doğru davranış olarak yaz ("... deme" yerine mümkünse "... de" ve neden).
+- Aynı konuda mevcut bir ders varsa ve yenisi onu değiştiriyor ya da onunla çelişiyorsa o dersin kimliğini replaces'e yaz; yeni kural eskisinin yerine geçer.
+- Geri bildirim bir kural içermiyorsa (ör. yalnızca "güzel cevap") lessons boş kalsın.
+- summary: mağaza sahibine ne anladığını tek cümleyle, "Anladım: ..." diye başlayarak yaz.`;
 }

@@ -82,6 +82,8 @@ export async function runLina(
   turn: TurnInfo,
   knowledge: KnowledgeBase | null,
   orders: OrderAgentDeps | null = null,
+  /** Mağazanın öğrettikleri (core/lessons.ts); uzmanlara `knowledge` notlarıyla zaten gider. */
+  lessons: string[] = [],
 ): Promise<LinaResult> {
   const tools: AgentTool[] = [];
   const specialists: string[] = [];
@@ -220,7 +222,7 @@ export async function runLina(
 
   const result = await runAgent(ctx, {
     agent: "lina",
-    system: linaSystemPrompt(tenant, specialists, { orders: Boolean(orders) }),
+    system: linaSystemPrompt(tenant, specialists, { orders: Boolean(orders), lessons }),
     systemContext: turnContext(tenant, turn),
     messages: history,
     tools,

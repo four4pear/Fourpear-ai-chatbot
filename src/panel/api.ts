@@ -9,6 +9,7 @@ import type { EventBus } from "../core/events.js";
 import type { WhatsAppSender } from "../whatsapp/client.js";
 import { registerConversationRoutes } from "./conversations.js";
 import { registerNotificationRoutes } from "./notifications.js";
+import { registerLessonRoutes } from "./lessons.js";
 import {
   AuthError,
   SESSION_TTL_MS,
@@ -292,6 +293,7 @@ export function registerPanelApi(app: Express, deps: PanelApiDeps) {
 
   registerConversationRoutes(api, deps, { requireUser, requireTenant });
   registerNotificationRoutes(api, deps, { requireUser, requireTenant });
+  registerLessonRoutes(api, deps, { requireUser, requireTenant });
 
   api.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
     deps.log.error("Panel API hatası", err);

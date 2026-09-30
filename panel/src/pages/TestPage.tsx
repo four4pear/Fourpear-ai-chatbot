@@ -1,29 +1,51 @@
 import { useEffect, useRef, useState } from "react";
 import { api, type Membership } from "../api";
 
-type Message = { role: "user" | "assistant"; text: string };
+type Turn = { role: "user" | "assistant"; text: string };
 type Result = { replies: string[]; outcome: string; runs: { agent: string; question: string | null; answer: string | null; error: string | null }[]; handoffs: { summary: string }[]; demoHelp: string[] };
+type Proposal = { summary: string; lessons: string[]; replaces: { id: string; text: string }[] };
+type Lesson = { id: string; text: string };
+
+/** Ekrandaki sohbet: müşteri ve Lina mesajları, geri bildirimler ve Lina'nın çıkardığı dersler. */
+type Entry =
+  | { kind: "user"; text: string }
+  /** superseded: ders sonrası "tekrar sor" ile yerine yenisi gelen cevap (Lina'ya gönderilmez). */
+  | { kind: "assistant"; text: string; superseded?: boolean }
+  | { kind: "feedback"; text: string }
+  | { kind: "proposal"; feedback: string; proposal: Proposal; drafts: string[]; state: "open" | "saving" | "saved" | "dismissed"; error?: string };
 
 const AGENT_LABELS: Record<string, string> = { order: "Sipariş uzmanı", returns: "İade uzmanı", knowledge: "Mağaza bilgi uzmanı" };
+
+/** "geri bildirim: ..." ile başlayan mesaj müşteri mesajı değil, Lina için derstir. */
+const FEEDBACK_PREFIX = /^\s*ger[iı]?\s*bildiri?m\b[\s:：\-–—]*/i;
 
 /** WhatsApp'taki gibi: Lina son mesajdan bu kadar sonra cevaplar; her yeni mesajda bekleme baştan başlar. */
 export const TEST_REPLY_DELAY_MS = 10_000;
 
+/** Lina'ya giden konuşma: yalnızca müşteri ve (yerine yenisi gelmemiş) Lina mesajları. */
+const conversationOf = (entries: Entry[]): Turn[] =>
+  entries.flatMap((e): Turn[] =>
+    e.kind === "user" ? [{ role: "user", text: e.text }] : e.kind === "assistant" && !e.superseded ? [{ role: "assistant", text: e.text }] : [],
+  );
+
 export function TestPage({ store, replyDelayMs = TEST_REPLY_DELAY_MS }: { store: Membership; replyDelayMs?: number }) {
-  const [history, setHistory] = useState<Message[]>([]);
+  const [entries, setEntries] = useState<Entry[]>([]);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
+  const [training, setTraining] = useState(false);
   const [waitUntil, setWaitUntil] = useState<number | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const [demo, setDemo] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState<Result | null>(null);
+  const [lessons, setLessons] = useState<Lesson[] | null>(null);
   const bottom = useRef<HTMLDivElement>(null);
   // Zamanlayıcı ve istek, ekranın o anki sohbetini okur (eski çizimin kopyasını değil).
-  const current = useRef<Message[]>([]);
+  const current = useRef<Entry[]>([]);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const request = useRef<AbortController | null>(null);
-  useEffect(() => { bottom.current?.scrollIntoView?.({ block: "nearest" }); }, [history, busy, waitUntil]);
+  const base = `/tenants/${store.tenantId}`;
+  useEffect(() => { bottom.current?.scrollIntoView?.({ block: "nearest" }); }, [entries, busy, waitUntil, training]);
   useEffect(() => {
     if (waitUntil === null) return;
     const tick = setInterval(() => setNow(Date.now()), 250);
@@ -31,48 +53,108 @@ export function TestPage({ store, replyDelayMs = TEST_REPLY_DELAY_MS }: { store:
   }, [waitUntil]);
   // Sayfadan çıkınca bekleyen ya da hazırlanan cevap bırakılır.
   useEffect(() => () => { clearTimeout(timer.current); request.current?.abort(); }, []);
+  useEffect(() => { void loadLessons(); }, [store.tenantId]);
 
-  function show(next: Message[]) { current.current = next; setHistory(next); }
+  async function loadLessons() {
+    try { setLessons((await api<{ lessons: Lesson[] }>(`${base}/lessons`)).lessons); } catch { setLessons([]); }
+  }
+  function show(next: Entry[]) { current.current = next; setEntries(next); }
+  function update(index: number, entry: Entry) { show(current.current.map((e, i) => (i === index ? entry : e))); }
   function cancelReply() {
     clearTimeout(timer.current); setWaitUntil(null);
     request.current?.abort(); request.current = null; setBusy(false);
   }
+  function scheduleReply(delayMs: number) {
+    setNow(Date.now()); setWaitUntil(Date.now() + delayMs);
+    timer.current = setTimeout(() => void ask(), delayMs);
+  }
   function send() {
-    if (!text.trim()) return;
+    const raw = text.trim();
+    if (!raw) return;
+    const feedback = FEEDBACK_PREFIX.exec(raw);
+    if (feedback) {
+      const body = raw.slice(feedback[0].length).trim();
+      if (!body) { setError("Geri bildirimi “geri bildirim:” yazısından sonra yazın."); return; }
+      setText(""); setError("");
+      void giveFeedback(body);
+      return;
+    }
     // Hazırlanan cevap iptal edilir; yeni mesajla birlikte hepsine tek cevap verilir.
     cancelReply();
-    show([...current.current, { role: "user", text: text.trim() }]);
+    show([...current.current, { kind: "user", text: raw }]);
     setText(""); setError("");
-    setNow(Date.now()); setWaitUntil(Date.now() + replyDelayMs);
-    timer.current = setTimeout(() => void ask(), replyDelayMs);
+    scheduleReply(replyDelayMs);
   }
   async function ask() {
     setWaitUntil(null);
-    const asked = current.current;
+    const asked = conversationOf(current.current);
+    if (asked.at(-1)?.role !== "user") return;
     const controller = new AbortController();
     request.current = controller; setBusy(true);
     try {
-      const data = await api<Result>(`/tenants/${store.tenantId}/test`, { method: "POST", body: { history: asked, demo }, signal: controller.signal });
+      const data = await api<Result>(`${base}/test`, { method: "POST", body: { history: asked, demo }, signal: controller.signal });
       if (controller.signal.aborted) return;
       setResult(data);
-      if (data.replies.length) show([...asked, { role: "assistant", text: data.replies.join("\n\n") }]);
-      else restore(asked, "Lina cevap vermedi. Mağazanın bot ayarlarını kontrol edin veya yeni sohbet açın.");
+      if (data.replies.length) show([...current.current, { kind: "assistant", text: data.replies.join("\n\n") }]);
+      else restore("Lina cevap vermedi. Mağazanın bot ayarlarını kontrol edin veya yeni sohbet açın.");
     } catch (e) {
-      if (!controller.signal.aborted) restore(asked, e instanceof Error ? e.message : "Mesaj gönderilemedi");
+      if (!controller.signal.aborted) restore(e instanceof Error ? e.message : "Mesaj gönderilemedi");
     } finally {
       if (request.current === controller) { request.current = null; setBusy(false); }
     }
   }
-  /** Cevaplanamayan mesajlar taslağa geri döner; tekrar gönderilebilir. */
-  function restore(asked: Message[], message: string) {
-    const answered = asked.map(m => m.role).lastIndexOf("assistant") + 1;
-    show(asked.slice(0, answered));
-    const unanswered = asked.slice(answered).map(m => m.text).join("\n");
-    setText(draft => [unanswered, draft].filter(Boolean).join("\n"));
+  /** Cevaplanamayan müşteri mesajları taslağa geri döner; tekrar gönderilebilir. */
+  function restore(message: string) {
+    const list = current.current;
+    const lastReply = list.map((e) => e.kind === "assistant" && !e.superseded).lastIndexOf(true);
+    const unanswered = list.filter((e, i) => i > lastReply && e.kind === "user").map((e) => (e as { text: string }).text);
+    show(list.filter((e, i) => !(i > lastReply && e.kind === "user")));
+    setText(draft => [unanswered.join("\n"), draft].filter(Boolean).join("\n"));
     setError(message);
+  }
+  async function giveFeedback(feedback: string) {
+    show([...current.current, { kind: "feedback", text: feedback }]);
+    setTraining(true);
+    try {
+      const proposal = await api<Proposal>(`${base}/test/feedback`, { method: "POST", body: { history: conversationOf(current.current), feedback } });
+      show([...current.current, { kind: "proposal", feedback, proposal, drafts: proposal.lessons, state: proposal.lessons.length ? "open" : "dismissed" }]);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Geri bildirim değerlendirilemedi");
+    } finally {
+      setTraining(false);
+    }
+  }
+  async function saveProposal(index: number) {
+    const entry = current.current[index];
+    if (entry?.kind !== "proposal") return;
+    const texts = entry.drafts.map((d) => d.trim()).filter(Boolean);
+    if (!texts.length) { update(index, { ...entry, error: "Kaydedilecek kural yok." }); return; }
+    update(index, { ...entry, state: "saving", error: undefined });
+    try {
+      await api(`${base}/lessons`, { method: "POST", body: { texts, replaces: entry.proposal.replaces.map((r) => r.id), feedback: entry.feedback } });
+      update(index, { ...entry, drafts: texts, state: "saved", error: undefined });
+      await loadLessons();
+    } catch (e) {
+      update(index, { ...entry, state: "open", error: e instanceof Error ? e.message : "Kaydedilemedi" });
+    }
+  }
+  /** Ders sonrası: Lina'nın son cevabı bir kenara bırakılır, aynı soruyu yeni kurallarla yeniden cevaplar. */
+  function retryLast() {
+    const list = current.current;
+    const last = list.map((e) => e.kind === "assistant" && !e.superseded).lastIndexOf(true);
+    if (last < 0) return;
+    cancelReply();
+    show(list.map((e, i) => (i === last && e.kind === "assistant" ? { ...e, superseded: true } : e)));
+    void ask();
+  }
+  async function removeLesson(lesson: Lesson) {
+    if (!window.confirm(`Bu ders silinsin mi?\n\n${lesson.text}`)) return;
+    try { await api(`${base}/lessons/${lesson.id}`, { method: "DELETE" }); await loadLessons(); }
+    catch (e) { setError(e instanceof Error ? e.message : "Ders silinemedi"); }
   }
   function reset() { cancelReply(); show([]); setResult(null); setError(""); setText(""); }
 
+  const canRetry = !busy && entries.some((e) => e.kind === "assistant" && !e.superseded);
   const seconds = waitUntil === null ? 0 : Math.max(0, Math.ceil((waitUntil - now) / 1000));
   return <main className="page test-page">
     <div className="test-heading"><div><p className="hint">{store.name} · Deneme alanı</p><h1>Lina’yı test et</h1></div>
@@ -80,24 +162,57 @@ export function TestPage({ store, replyDelayMs = TEST_REPLY_DELAY_MS }: { store:
     <p className="hint">Müşteri gibi yazın, Lina’nın cevabını deneyin. Gerçek mağaza bilgileri ve yapay zekâ kullanılır; WhatsApp’a mesaj gönderilmez.</p>
     <div className="test-layout"><section className="panel-card test-chat" aria-label="Test sohbeti">
       <div className="test-messages" role="log" aria-live="polite">
-        {!history.length && <div className="test-empty"><h2>İlk mesajı siz yazın.</h2><p>Kargo, iade veya ürünler hakkında bir soru sorun.</p>
+        {!entries.length && <div className="test-empty"><h2>İlk mesajı siz yazın.</h2><p>Kargo, iade veya ürünler hakkında bir soru sorun.</p>
           {["Merhaba, kargo kaç günde gelir?", "İade koşullarınız nelerdir?"].map(q => <button key={q} className="btn btn-secondary" onClick={() => setText(q)}>{q}</button>)}</div>}
-        {history.map((m, i) => <div key={i} className={`test-message ${m.role}`}><span>{m.role === "user" ? "Siz" : "Lina"}</span><p>{m.text}</p></div>)}
+        {entries.map((e, i) => {
+          if (e.kind === "user" || e.kind === "assistant") {
+            const old = e.kind === "assistant" && e.superseded;
+            return <div key={i} className={`test-message ${e.kind}${old ? " superseded" : ""}`}><span>{e.kind === "user" ? "Siz" : old ? "Lina (önceki cevap)" : "Lina"}</span><p>{e.text}</p></div>;
+          }
+          if (e.kind === "feedback") return <div key={i} className="test-message feedback"><span>Geri bildiriminiz</span><p>{e.text}</p></div>;
+          return <div key={i} className="test-lesson" aria-label="Lina'nın çıkardığı ders">
+            <p><strong>{e.proposal.summary}</strong></p>
+            {e.state === "dismissed" && !e.proposal.lessons.length && <p className="hint">Bu geri bildirimden kaydedilecek bir kural çıkmadı.</p>}
+            {e.state === "dismissed" && e.proposal.lessons.length > 0 && <p className="hint">Kaydedilmedi.</p>}
+            {(e.state === "open" || e.state === "saving") && <>
+              <p className="hint">Lina bundan sonra şu kurallara uyacak; düzenleyebilirsiniz:</p>
+              {e.drafts.map((d, j) => <textarea key={j} aria-label={`Kural ${j + 1}`} value={d} rows={3} maxLength={1000}
+                onChange={ev => update(i, { ...e, drafts: e.drafts.map((x, k) => (k === j ? ev.target.value : x)) })} />)}
+              {e.proposal.replaces.map(r => <p key={r.id} className="hint">Şu dersin yerine geçecek: {r.text}</p>)}
+              {e.error && <p role="alert" className="test-error">{e.error}</p>}
+              <div className="test-lesson-actions">
+                <button className="btn btn-primary" disabled={e.state === "saving"} onClick={() => void saveProposal(i)}>{e.state === "saving" ? "Kaydediliyor…" : "Kaydet"}</button>
+                <button className="btn btn-secondary" disabled={e.state === "saving"} onClick={() => update(i, { ...e, state: "dismissed" })}>Vazgeç</button>
+              </div>
+            </>}
+            {e.state === "saved" && <>
+              <p>Öğrenildi: WhatsApp’ta da hemen geçerli.</p>
+              <ul>{e.drafts.map((d, j) => <li key={j}>{d}</li>)}</ul>
+              <button className="btn btn-secondary" disabled={!canRetry} onClick={retryLast}>Son soruyu tekrar sor</button>
+            </>}
+          </div>;
+        })}
         {waitUntil !== null && <p className="hint" role="status">Lina bekliyor… {seconds} sn. Yazmaya devam ederseniz bekleme baştan başlar.</p>}
         {busy && <p className="hint" role="status">Lina cevap hazırlıyor… Şimdi yazarsanız bu cevap iptal edilir, hepsine birlikte cevap verilir.</p>}
+        {training && <p className="hint" role="status">Lina geri bildiriminizi değerlendiriyor…</p>}
         <div ref={bottom} />
       </div>
       {error && <p role="alert" className="test-error">{error}</p>}
       <form className="test-compose" onSubmit={e => { e.preventDefault(); send(); }}><label className="sr-only" htmlFor="test-message">Mesajınız</label>
-        <textarea id="test-message" value={text} maxLength={4000} rows={3} placeholder="Müşteri gibi bir mesaj yazın…" onChange={e => setText(e.target.value)} onKeyDown={e => { if(e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send(); } }} />
+        <textarea id="test-message" value={text} maxLength={4000} rows={3} placeholder="Müşteri gibi bir mesaj yazın… (Lina’yı düzeltmek için: geri bildirim: …)" onChange={e => setText(e.target.value)} onKeyDown={e => { if(e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send(); } }} />
         <button className="btn btn-primary" disabled={!text.trim()}>Gönder</button></form>
     </section><aside className="panel-card test-details"><h2>Test ayarları</h2>
-      <label><input type="checkbox" checked={demo} disabled={busy || history.length > 0} onChange={e => setDemo(e.target.checked)} /> Deneme siparişlerini kullan</label>
+      <label><input type="checkbox" checked={demo} disabled={busy || entries.length > 0} onChange={e => setDemo(e.target.checked)} /> Deneme siparişlerini kullan</label>
       <p className="hint">Siparişler örnektir. Bu seçimi değiştirmek için yeni sohbet açın.</p>
       <p className="hint">WhatsApp’taki gibi: Lina son mesajınızdan {replyDelayMs / 1000} sn sonra cevaplar. Bu sürede yazarsanız bekleme baştan başlar; art arda mesajlarınızı tek mesaj gibi okuyup tek cevap verir.</p>
       <p className="hint">Bu ekran metin sohbetini test eder. Konuşma geçmişi bu sayfada tutulur; müşteri kayıtlarına yazılmaz. Gerçek API kullanımı ücretlidir.</p>
       {result?.demoHelp.map(line => <p className="hint" key={line}>{line}</p>)}
       {result?.handoffs.map((h,i) => <p key={i}>Ekibe devir: {h.summary}</p>)}
+      <h2>Lina’nın öğrendikleri{lessons?.length ? ` (${lessons.length})` : ""}</h2>
+      <p className="hint">Lina’nın cevabı yanlış ya da eksikse “geri bildirim: …” diye yazın. Lina bundan bir kural çıkarır; siz onaylayınca kaydedilir ve WhatsApp’ta da hemen geçerli olur.</p>
+      {lessons?.length === 0 && <p className="hint">Henüz ders yok.</p>}
+      {lessons && lessons.length > 0 && <ul className="test-lessons">{lessons.map(l => <li key={l.id}><span>{l.text}</span>
+        <button className="btn btn-secondary" aria-label={`Dersi sil: ${l.text}`} onClick={() => void removeLesson(l)}>Sil</button></li>)}</ul>}
       <h2>Son cevabın uzman çağrıları</h2>
       {result?.runs.filter(r => r.agent !== "lina").map((r,i) => <details key={i}><summary>{AGENT_LABELS[r.agent] ?? r.agent}</summary><p>{r.question}</p><p>{r.answer || r.error}</p></details>)}
       {!result && <p className="hint">İlk cevaptan sonra burada görünecek.</p>}

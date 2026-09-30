@@ -232,6 +232,15 @@ Mağazalar kampanya ve ön sipariş koşullarını ürün açıklamalarına ve s
 - Kampanya ve ön sipariş satırları sipariş bilgisinin en başına konur ve hiçbir zaman kısaltılmaz.
 - Lina iade ya da değişim cevabı vermeden önce bu satırlara bakmak zorundadır. Bu kural testle korunur.
 
+## 13. Lina'yı eğitmek (test ekranında geri bildirim)
+Mağaza sahibi panelde **Lina'yı test et** ekranında Lina'nın cevabını beğenmezse **"geri bildirim: …"** diye yazar (büyük/küçük harf ve "geri bildirim sorunları" gibi devamı fark etmez).
+- Bu mesaj müşteri mesajı sayılmaz, Lina'ya gitmez. Eğitmen onu Lina'nın bütün müşterilerde uygulayacağı kısa, genel kurallara çevirir ("Müşteri iade süresini sorduğunda: …"). Mağaza sahibinin verdiği bilgi ve rakamlar aynen korunur.
+- Kural ekranda gösterilir; mağaza sahibi düzenleyip **Kaydet** der ya da vazgeçer. Onaylanmadan hiçbir şey kaydedilmez.
+- Aynı konuda eski bir ders varsa yenisi onun yerine geçer (ekranda gösterilir).
+- Kaydedilen dersler Lina'nın talimatına ve uzmanların (bilgi, iade) mağaza notlarına **öncelikli** girer; WhatsApp'ta da hemen geçerlidir.
+- **Son soruyu tekrar sor:** Lina'nın önceki cevabı üstü çizili kalır, aynı soru yeni kurallarla yeniden cevaplanır.
+- Dersler ekranın sağında listelenir ve silinebilir. Mağaza başına en fazla 200 ders, her biri en fazla 1000 karakter. Yalnızca mağaza sahibi.
+
 ## 12. Ekibe bildirimler
 Sipariş konularında (§3) konuşma devredilmez; ekip panelde bildirim görür.
 - **Her sipariş sorusu kaydedilir:** müşteri, sipariş no, konu, müşterinin sorusu (kısa), Lina'nın cevabı (kısa), zaman ve konuşmaya bağlantı.

@@ -396,6 +396,28 @@ export const integrations = pgTable(
   (t) => [uniqueIndex("integrations_tenant_kind_idx").on(t.tenantId, t.kind)],
 );
 
+/**
+ * Lina'nın mağazadan öğrendikleri (docs/lina-davranis.md "Lina'yı eğitmek"): test ekranındaki
+ * geri bildirimden (ya da ileride ekibin cevabından) çıkarılan, onaylanmış kurallar. Lina ve
+ * uzmanlar her konuşmada bunlara uyar; WhatsApp'ta da hemen geçerlidir.
+ */
+export const lessons = pgTable(
+  "lessons",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+    /** Lina'nın uyacağı kısa, genel kural, ör. "Müşteri iade süresini sorduğunda: ..." */
+    text: text("text").notNull(),
+    /** feedback: test ekranındaki geri bildirim · team: ekibin cevabı */
+    source: text("source").$type<"feedback" | "team">().notNull().default("feedback"),
+    /** Kuralın çıktığı geri bildirimin ham hali (panelde gösterilir). */
+    feedback: text("feedback"),
+    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (t) => [index("lessons_tenant_idx").on(t.tenantId, t.createdAt)],
+);
+
 /** Müşterinin gönderdiği fotoğraflar (ekip panelde görür, Lina okur). */
 export const media = pgTable("media", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -486,3 +508,4 @@ export type KnowledgeDoc = typeof knowledgeDocs.$inferSelect;
 export type ArchivedText = typeof textArchive.$inferSelect;
 export type Notification = typeof notifications.$inferSelect;
 export type Integration = typeof integrations.$inferSelect;
+export type Lesson = typeof lessons.$inferSelect;

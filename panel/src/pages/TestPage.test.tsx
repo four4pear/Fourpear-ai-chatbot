@@ -4,16 +4,30 @@ import { afterEach, expect, it, vi } from "vitest";
 import { TestPage } from "./TestPage";
 const store = { tenantId: "t", slug: "test", name: "Test", role: "owner" as const };
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
-const reply = (text: string) => new Response(JSON.stringify({ replies: [text], runs: [], handoffs: [], demoHelp: [] }));
+const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
+const reply = (text: string) => json({ replies: [text], runs: [], handoffs: [], demoHelp: [] });
 const write = (text: string) => {
   fireEvent.change(screen.getByLabelText("Mesajınız"), { target: { value: text } });
   fireEvent.click(screen.getByRole("button", { name: "Gönder" }));
 };
-const sentHistory = (fetch: ReturnType<typeof vi.fn>, call: number) =>
-  JSON.parse(String((fetch.mock.calls[call]![1] as RequestInit).body)).history;
+
+/** Sahte sunucu: ders listesi boş; test sohbeti isteklerini verilen fonksiyon cevaplar. */
+function server(test: (init: RequestInit) => Response | Promise<Response>, extra: Record<string, (init: RequestInit) => Response> = {}) {
+  const testCalls: RequestInit[] = [];
+  const fetch = vi.fn(async (url: string, init: RequestInit = {}) => {
+    const path = url.replace("/api/tenants/t", "");
+    if (path === "/test") { testCalls.push(init); return test(init); }
+    const key = `${init.method ?? "GET"} ${path}`;
+    if (extra[key]) return extra[key](init);
+    if (key === "GET /lessons") return json({ lessons: [] });
+    return json({ error: "yok" }, 404);
+  });
+  vi.stubGlobal("fetch", fetch);
+  return { testCalls, fetch, body: (i: number) => JSON.parse(String(testCalls[i]!.body)) };
+}
 
 it("shows a reply and resets the test conversation", async () => {
-  vi.stubGlobal("fetch", vi.fn(async () => reply("Kargo iki gün.")));
+  server(() => reply("Kargo iki gün."));
   render(<TestPage store={store} replyDelayMs={0} />);
   write("Kargo?");
   await screen.findByText("Kargo iki gün.");
@@ -22,7 +36,7 @@ it("shows a reply and resets the test conversation", async () => {
 });
 
 it("keeps the draft after an API error", async () => {
-  vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ error: "Tekrar deneyin" }), { status: 503 })));
+  server(() => json({ error: "Tekrar deneyin" }, 503));
   render(<TestPage store={store} replyDelayMs={0} />);
   write("Merhaba");
   await screen.findByRole("alert");
@@ -30,16 +44,15 @@ it("keeps the draft after an API error", async () => {
 });
 
 it("answers consecutive messages once, after the customer stops writing", async () => {
-  const fetch = vi.fn(async () => reply("Siparişinize bakıyorum."));
-  vi.stubGlobal("fetch", fetch);
+  const s = server(() => reply("Siparişinize bakıyorum."));
   render(<TestPage store={store} replyDelayMs={80} />);
   write("Merhaba");
   expect(screen.getByRole("status").textContent).toContain("Lina bekliyor");
   write("siparişim gelmedi");
   write("#1045");
   await screen.findByText("Siparişinize bakıyorum.");
-  expect(fetch).toHaveBeenCalledTimes(1);
-  expect(sentHistory(fetch, 0)).toEqual([
+  expect(s.testCalls).toHaveLength(1);
+  expect(s.body(0).history).toEqual([
     { role: "user", text: "Merhaba" },
     { role: "user", text: "siparişim gelmedi" },
     { role: "user", text: "#1045" },
@@ -48,18 +61,64 @@ it("answers consecutive messages once, after the customer stops writing", async 
 
 it("cancels the reply being prepared when a new message arrives", async () => {
   const signals: AbortSignal[] = [];
-  const fetch = vi.fn((_url: string, init: RequestInit) => {
+  const s = server((init) => {
     signals.push(init.signal!);
-    if (signals.length > 1) return Promise.resolve(reply("İkisine birden cevap."));
+    if (signals.length > 1) return reply("İkisine birden cevap.");
     return new Promise<Response>((_, reject) => init.signal!.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError"))));
   });
-  vi.stubGlobal("fetch", fetch);
   render(<TestPage store={store} replyDelayMs={0} />);
   write("Merhaba");
   await screen.findByText(/cevap hazırlıyor/);
   write("iade nasıl yapılır?");
   await screen.findByText("İkisine birden cevap.");
   expect(signals[0]!.aborted).toBe(true);
-  expect(sentHistory(fetch, 1)).toHaveLength(2);
+  expect(s.body(1).history).toHaveLength(2);
   expect(screen.queryByRole("alert")).toBeNull();
+});
+
+it("'geri bildirim:' müşteri mesajı değil: kural önerilir, onaylanınca kaydedilir, son soru yeni kuralla tekrar sorulur", async () => {
+  let answers = 0;
+  const saved: unknown[] = [];
+  const s = server(() => reply(++answers === 1 ? "Kaynaklarda tutarsızlık var." : "İnceleme en geç 14 gün sürer."), {
+    "POST /test/feedback": (init) => {
+      expect(JSON.parse(String(init.body))).toMatchObject({
+        feedback: "iade süresini direkt söyle: 14 gün inceleme",
+        history: [{ role: "user", text: "İadem ne zaman yatar?" }, { role: "assistant", text: "Kaynaklarda tutarsızlık var." }],
+      });
+      return json({ summary: "Anladım: iade süresi doğrudan söylenecek.", lessons: ["Müşteri iade süresini sorduğunda: inceleme en geç 14 gün."], replaces: [] });
+    },
+    "POST /lessons": (init) => { saved.push(JSON.parse(String(init.body))); return json({ lessons: [] }, 201); },
+  });
+  render(<TestPage store={store} replyDelayMs={0} />);
+  write("İadem ne zaman yatar?");
+  await screen.findByText("Kaynaklarda tutarsızlık var.");
+
+  write("Geri bildirim: iade süresini direkt söyle: 14 gün inceleme");
+  await screen.findByText("Anladım: iade süresi doğrudan söylenecek.");
+  expect(s.testCalls).toHaveLength(1); // geri bildirim Lina'ya müşteri mesajı olarak gitmedi
+  fireEvent.change(screen.getByLabelText("Kural 1"), { target: { value: "Müşteri iade süresini sorduğunda: inceleme en geç 14 gün sürer." } });
+  fireEvent.click(screen.getByRole("button", { name: "Kaydet" }));
+  await screen.findByText(/Öğrenildi/);
+  expect(saved).toEqual([
+    { texts: ["Müşteri iade süresini sorduğunda: inceleme en geç 14 gün sürer."], replaces: [], feedback: "iade süresini direkt söyle: 14 gün inceleme" },
+  ]);
+
+  fireEvent.click(screen.getByRole("button", { name: "Son soruyu tekrar sor" }));
+  await screen.findByText("İnceleme en geç 14 gün sürer.");
+  // Eski cevap Lina'ya gönderilmez; ekranda "önceki cevap" olarak kalır.
+  expect(s.body(1).history).toEqual([{ role: "user", text: "İadem ne zaman yatar?" }]);
+  expect(screen.getByText("Lina (önceki cevap)")).toBeTruthy();
+});
+
+it("öğrenilen dersler listelenir ve silinebilir", async () => {
+  let lessons = [{ id: "l1", text: "İade süresi: 14 gün inceleme." }];
+  vi.stubGlobal("confirm", () => true);
+  server(() => reply("x"), {
+    "GET /lessons": () => json({ lessons }),
+    "DELETE /lessons/l1": () => { lessons = []; return json({ ok: true }); },
+  });
+  render(<TestPage store={store} replyDelayMs={0} />);
+  await screen.findByText("İade süresi: 14 gün inceleme.");
+  fireEvent.click(screen.getByRole("button", { name: "Dersi sil: İade süresi: 14 gün inceleme." }));
+  await screen.findByText("Henüz ders yok.");
 });

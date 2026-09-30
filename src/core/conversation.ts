@@ -24,6 +24,7 @@ import type { ReturnsProvider } from "../returns/provider.js";
 import type { WhatsAppSender } from "../whatsapp/client.js";
 import type { InboundEvent, WaIncomingMessage } from "../whatsapp/types.js";
 import { loadKnowledge } from "../knowledge/base.js";
+import { loadLessons, withLessons } from "./lessons.js";
 import { businessStatus } from "./business-hours.js";
 import type { EventBus } from "./events.js";
 import { recordOrderNotification } from "./notifications.js";
@@ -229,11 +230,12 @@ export async function respond(deps: Deps, conversationId: string, ctl: RespondCo
       deps.log.error(`${what} alınamadı (tenant=${tenant.slug})`, err);
       return null;
     });
-  const [history, firstContact, openHandoff, knowledge, orderSource, returns] = await Promise.all([
+  const [history, firstContact, openHandoff, storeKnowledge, lessons, orderSource, returns] = await Promise.all([
     loadHistory(db, conversationId, deps.historyLimit),
     isFirstContact(db, conversationId),
     findOpenHandoff(db, conversationId),
     loadKnowledge(db, tenant),
+    loadLessons(db, tenant.id),
     optional(deps.orderSourceFor?.(tenant.id), "Sipariş kaynağı"),
     optional(deps.returnsFor?.(tenant.id), "İade sistemi bağlantısı"),
   ]);
@@ -250,7 +252,7 @@ export async function respond(deps: Deps, conversationId: string, ctl: RespondCo
   let handoff: HandoffRequest | null;
   let orderFindings: OrderFindings | null = null;
   try {
-    const result = await runLina(ctx, tenant, history, turn, knowledge, orders);
+    const result = await runLina(ctx, tenant, history, turn, withLessons(storeKnowledge, lessons), orders, lessons);
     if (result.kind === "failed") {
       reply = fixedText(settings, "failure");
       handoff = { reason: "other", summary: `Asistan cevap üretemedi (stop_reason: ${result.stopReason}). Mesajlar: "${lastText}"` };

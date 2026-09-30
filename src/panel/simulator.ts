@@ -1,7 +1,7 @@
 import { randomBytes, randomInt, randomUUID } from "node:crypto";
 import { eq, TransactionRollbackError } from "drizzle-orm";
 import { openDatabase, type DB } from "../db/client.js";
-import { agentRuns, handoffs, knowledgeDocs, messages, tenants, textArchive, whatsappAccounts } from "../db/schema.js";
+import { agentRuns, handoffs, knowledgeDocs, lessons, messages, tenants, textArchive, whatsappAccounts } from "../db/schema.js";
 import { ingestInbound, respond, type Deps } from "../core/conversation.js";
 import { encryptSecret } from "../lib/crypto.js";
 import { demoOrderSource, demoReturnsProvider, DEMO_ORDERS_HELP } from "../orders/demo.js";
@@ -48,6 +48,8 @@ export async function simulate(
     await db.insert(tenants).values(tenant);
     const docs = await source.db.select().from(knowledgeDocs).where(eq(knowledgeDocs.tenantId, tenantId));
     if (docs.length) await db.insert(knowledgeDocs).values(docs);
+    const taught = await source.db.select().from(lessons).where(eq(lessons.tenantId, tenantId));
+    if (taught.length) await db.insert(lessons).values(taught.map((l) => ({ ...l, createdBy: null })));
     const archive = await source.db.select().from(textArchive).where(eq(textArchive.tenantId, tenantId));
     for (let i = 0; i < archive.length; i += 500) await db.insert(textArchive).values(archive.slice(i, i + 500));
     return await run(source, db, tenantId, history, demo, signal);
