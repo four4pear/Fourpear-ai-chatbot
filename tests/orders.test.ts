@@ -19,7 +19,7 @@ import { encryptSecret } from "../src/lib/crypto.js";
 import { demoOrderSource } from "../src/orders/demo.js";
 import { buildOrderSheet, findDate, preorderFor, specialLines, type ProductTextAt } from "../src/orders/facts.js";
 import { shopifyOrderSource } from "../src/orders/shopify.js";
-import { belongsTo, sameOrderNumber, type OrderFacts, type OrderItem } from "../src/orders/types.js";
+import { belongsTo, nameMatches, sameOrderNumber, type OrderFacts, type OrderItem } from "../src/orders/types.js";
 import type { ShopifyApi } from "../src/shopify/client.js";
 import type { WhatsAppSender } from "../src/whatsapp/client.js";
 
@@ -287,6 +287,17 @@ describe("sipariş bilgi kartı", () => {
 });
 
 describe("sahiplik ve sipariş numarası", () => {
+  it("ad soyad: büyük/küçük ve Türkçe harf farkı önemsiz, ikinci ad gerekmez; yalnızca ad yetmez", () => {
+    const withNames = (...names: string[]) => ({ names }) as OrderFacts;
+    expect(nameMatches(withNames("Ayşe Nur Yılmaz"), "ayse yilmaz")).toBe(true);
+    expect(nameMatches(withNames("İREM IŞIK"), "İrem Işık")).toBe(true);
+    expect(nameMatches(withNames("irem isik"), "IREM IŞIK")).toBe(true);
+    expect(nameMatches(withNames("Ayşe Yılmaz"), "Ayşe")).toBe(false);
+    expect(nameMatches(withNames("Ayşe Yılmaz"), "Ayşe Kaya")).toBe(false);
+    expect(nameMatches(withNames("Ayşe"), "Ayşe Yılmaz")).toBe(false); // siparişte soyad yoksa doğrulanamaz
+    expect(nameMatches(withNames("Zeynep Kaya", "Ayşe Yılmaz"), "adım ayşe yılmaz")).toBe(true);
+  });
+
   it("sipariş yalnızca aynı telefona aittir", () => {
     expect(belongsTo(order(), CUSTOMER)).toBe(true);
     expect(belongsTo(order(), "905551112233")).toBe(false);
@@ -307,8 +318,8 @@ describe("Shopify sipariş kaynağı", () => {
     createdAt: "2026-09-12T08:20:00Z",
     cancelledAt: null,
     phone: "+90 532 123 45 67",
-    customer: { defaultPhoneNumber: { phoneNumber: "+905321234567" } },
-    shippingAddress: { phone: "0532 123 4567" },
+    customer: { firstName: "Ayşe", lastName: "Yılmaz", defaultPhoneNumber: { phoneNumber: "+905321234567" } },
+    shippingAddress: { firstName: "Ayşe Nur", lastName: "Yılmaz", phone: "0532 123 4567" },
     billingAddress: null,
     lineItems: {
       nodes: [
@@ -360,7 +371,7 @@ describe("Shopify sipariş kaynağı", () => {
     const source = shopifyOrderSource(api, {} as never);
     const found = await source.byName("MO-1271");
     expect(calls[0]!.variables).toEqual({ query: "name:1271", first: 5 });
-    expect(found).toMatchObject({ name: "#MO-1271", phones: [CUSTOMER] });
+    expect(found).toMatchObject({ name: "#MO-1271", phones: [CUSTOMER], names: ["Ayşe Yılmaz", "Ayşe Nur Yılmaz"] });
     expect(found!.items[0]).toMatchObject({ productId: "10094861484281", productOptionValues: ["1–36/38", "2–40/42", "Siyah", "Kırık Beyaz"] });
     // İptal edilen gönderim kargo bilgisi sayılmaz.
     expect(found!.shipments).toEqual([
@@ -457,6 +468,12 @@ const calls = {
 let orderAgentScript: ((params: Anthropic.MessageCreateParamsNonStreaming) => Anthropic.Message) | null = null;
 let returnsAgentScript: ((params: Anthropic.MessageCreateParamsNonStreaming) => Anthropic.Message) | null = null;
 
+/** Sahte Lina müşterinin yazdığı ad soyadı ve telefonu uzmana iletir. */
+const identityOf = (text: string) => ({
+  customer_name: /Zeynep Kaya|Ayşe Yılmaz/.exec(text)?.[0] ?? "",
+  order_phone: /0\d{3} \d{3} \d{2} \d{2}/.exec(text)?.[0] ?? "",
+});
+
 const fakeLlm: Llm = {
   async create(params) {
     const system = (params.system as Anthropic.TextBlockParam[])[0]!.text;
@@ -479,10 +496,10 @@ const fakeLlm: Llm = {
     const number = /MO-\d+/.exec(text)?.[0] ?? "";
     if (text.includes("iade") || text.includes("hasarlı")) {
       const topic = text.includes("hasarlı") ? "damaged" : "return";
-      return toolUse("ask_returns_agent", { topic, question: text, order_number: number });
+      return toolUse("ask_returns_agent", { topic, question: text, order_number: number, ...identityOf(text) });
     }
     const topic = text.includes("iptal") ? "cancel" : text.includes("gelmedi") ? "complaint" : "status";
-    if (text.includes("sipariş") || number) return toolUse("ask_order_agent", { topic, question: text, order_number: number });
+    if (text.includes("sipariş") || number) return toolUse("ask_order_agent", { topic, question: text, order_number: number, ...identityOf(text) });
     return reply("Merhaba, nasıl yardımcı olabilirim?");
   },
 };
@@ -533,14 +550,51 @@ describe("sipariş uzmanı", () => {
     expect(findings.issues.map((i) => i.kind)).toEqual(["delay"]);
   });
 
-  it("başka numaranın siparişi: hiçbir bilgi gitmez, var olup olmadığı söylenmez", async () => {
+  it("başka numaranın siparişi: hiçbir bilgi gitmez, var olup olmadığı söylenmez; ad soyad istenir", async () => {
     const findings = newFindings();
     await askOrderAgent(ctx(), tenant, deps(), { topic: "status", question: "Siparişim?", orderNumber: "MO-9005" }, findings);
     const sent = textOf(calls.order[0]!.messages[0]!.content);
-    expect(sent).toContain("DOĞRULANAMADI");
+    expect(sent).toContain("DOĞRULAMA GEREKLİ");
+    expect(sent).toContain("siparişte kayıtlı adını ve soyadını iste");
     expect(sent).not.toContain("Top Takım");
     expect(findings).toMatchObject({ unverified: true });
     expect(findings.orders.size).toBe(0);
+  });
+
+  it("numara tutmazsa sipariş no + siparişteki ad soyad birlikte doğrular; yanlış ad soyad bilgi vermez", async () => {
+    const ask = async (name: string) => {
+      calls.order.length = 0;
+      const findings = newFindings();
+      const identity = { name, orderPhone: "" };
+      await askOrderAgent(ctx(), tenant, deps(), { topic: "status", question: "?", orderNumber: "MO-9005", identity }, findings);
+      return { sent: textOf(calls.order[0]!.messages[0]!.content), findings };
+    };
+    const right = await ask("zeynep KAYA");
+    expect(right.sent).toContain("Top Takım");
+    expect([...right.findings.orders.keys()]).toEqual(["#MO-9005"]);
+    const wrong = await ask("Ayşe Yılmaz");
+    expect(wrong.sent).toContain("DOĞRULANAMADI");
+    expect(wrong.sent).not.toContain("Top Takım");
+    // Yalnızca ad yetmez.
+    expect((await ask("Zeynep")).sent).toContain("DOĞRULANAMADI");
+  });
+
+  it("sipariş numarasını bilmeyen: siparişte kayıtlı telefon + ad soyadla bulunur", async () => {
+    const stranger = { ...deps(), waId: "905000000000" };
+    const ask = async (identity?: { name: string; orderPhone: string }) => {
+      calls.order.length = 0;
+      const findings = newFindings();
+      await askOrderAgent(ctx(), tenant, stranger, { topic: "status", question: "?", orderNumber: null, identity }, findings);
+      return { sent: textOf(calls.order[0]!.messages[0]!.content), findings };
+    };
+    const none = await ask();
+    expect(none.sent).toContain("sipariş numarasını bilmiyorsa siparişte kayıtlı telefon numarasını");
+    const found = await ask({ name: "Zeynep Kaya", orderPhone: "0555 999 99 99" });
+    expect(found.sent).toContain("Top Takım");
+    expect([...found.findings.orders.keys()]).toEqual(["#MO-9005"]);
+    const wrongName = await ask({ name: "Ayşe Yılmaz", orderPhone: "0555 999 99 99" });
+    expect(wrongName.sent).toContain("DOĞRULANAMADI");
+    expect(wrongName.findings.orders.size).toBe(0);
   });
 
   it("numara verilmezse müşterinin siparişleri listelenir", async () => {
@@ -757,12 +811,17 @@ describe("konuşma akışı: sipariş sorusu devredilmez, ekibe bildirim düşer
     expect(n!.details.issues![0]).toContain("WhatsApp'a gönderilemedi");
   });
 
-  it("başka numaranın siparişi: bilgi verilmez, sessiz kayıt düşer", async () => {
+  it("başka numaranın siparişi: bilgi verilmez, ad soyad istenir; ad soyad tutunca bakılır", async () => {
     await say("MO-9005 siparişim ne durumda?");
-    expect(sent[0]).toContain("DOĞRULANAMADI");
+    expect(sent[0]).toContain("DOĞRULAMA GEREKLİ");
     expect(sent[0]).not.toContain("Top Takım");
     const [n] = await allNotifications();
     expect(n).toMatchObject({ kind: "unverified", important: false, orderNames: [] });
+
+    await say("MO-9005 siparişim, adım Zeynep Kaya");
+    expect(sent[1]).not.toContain("DOĞRULAMA");
+    const latest = (await allNotifications()).at(-1);
+    expect(latest).toMatchObject({ kind: "order_question", orderNames: ["#MO-9005"] });
   });
 
   it("Lina'nın talimatı: müşteri hizmetleri yaklaşımı, iade uzmanı, iade formu; devir aracı sipariş için kullanılmaz", async () => {
@@ -772,13 +831,16 @@ describe("konuşma akışı: sipariş sorusu devredilmez, ekibe bildirim düşer
     expect(system).toContain("ask_order_agent");
     expect(system).toContain("ask_returns_agent");
     expect(system).toContain("Mağazanın iade ve değişim formu: https://iade.betulsaday.com");
-    // Önce anla ve sakinleştir; sorumlusuna iletme cümlesi cevabın sonunda, zaman sözü yok.
+    // Önce anla ve sakinleştir; kişiye iletildiği söylenmez, "işleme alındı" cevabın sonunda, zaman sözü yok.
     expect(system).toContain("*Müşteri hizmetleri yaklaşımı*");
-    expect(system).toContain(
-      '"Talebinizi {birim} süreçlerimizden sorumlu arkadaşımıza ilettim, konuyla ilgili gerekli işlem yapılacak. Bu sırada aklınıza takılan bir şey olursa buradayım."',
-    );
-    expect(system).toContain("İptal talebinizi sipariş süreçlerimizden sorumlu arkadaşımıza ilettim");
-    expect(system).toContain("ekibin ne zaman ya da nasıl döneceğini söyleme");
+    expect(system).toContain('"Talebiniz işleme alındı. Başka bir konuda yardımcı olabileceğim bir şey var mı?"');
+    expect(system).toContain("Müşteriye asla bir kişiye, ekibe ya da arkadaşına ilettiğini söyleme");
+    expect(system).toContain('"İptal talebiniz işleme alındı."');
+    expect(system).toContain("ne zaman ya da nasıl sonuçlanacağını söyleme");
+    expect(system).not.toContain("arkadaşımıza ilettim");
+    // Tutarsızlık müşteriye anlatılmaz; bilgi gerekiyorsa "kontrol ediyorum".
+    expect(system).toContain("tutarsızlıktan bahsetme");
+    expect(system).toContain('"Hemen kontrol ediyorum, kısa süre içinde size buradan bilgi vereceğim."');
     expect(system).not.toContain("Ekibimize ilettim");
     expect(system).not.toContain("Bilgiler tamamlanınca devret");
     // Başvuru yolu çelişkisinde (form mu, e-posta mı) mağazanın iade formu geçerli; rakam çelişkisinde devir.

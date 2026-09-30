@@ -23,13 +23,31 @@ const questionInput = z.object({ question: z.string().min(1) });
 const handoffInput = z.object({ reason: z.enum(HANDOFF_REASONS), summary: z.string().min(1) });
 /** İade, değişim ve hasarlı ürün iade uzmanına gider; sipariş uzmanı geri kalan sipariş konularına bakar. */
 const ORDER_AGENT_TOPICS = ["status", "cancel", "change", "complaint", "other"] as const;
-const orderInput = z.object({ topic: z.enum(ORDER_AGENT_TOPICS), question: z.string().min(1), order_number: z.string() });
-const returnsInput = z.object({ topic: z.enum(RETURN_TOPICS), question: z.string().min(1), order_number: z.string() });
+const identityFields = { order_number: z.string(), customer_name: z.string(), order_phone: z.string() };
+const orderInput = z.object({ topic: z.enum(ORDER_AGENT_TOPICS), question: z.string().min(1), ...identityFields });
+const returnsInput = z.object({ topic: z.enum(RETURN_TOPICS), question: z.string().min(1), ...identityFields });
 
-const orderNumberProperty = {
-  type: "string",
-  description: "Müşterinin verdiği sipariş numarası (ör. #1271); vermediyse boş metin.",
+/** Sipariş numarası ve doğrulama bilgileri (docs/lina-davranis.md §3.1); iki uzmanda aynı. */
+const identityProperties = {
+  order_number: {
+    type: "string",
+    description: "Müşterinin verdiği sipariş numarası (ör. #1271); vermediyse boş metin.",
+  },
+  customer_name: {
+    type: "string",
+    description: "Müşterinin doğrulama için yazdığı, siparişte kayıtlı adı ve soyadı; yazmadıysa boş metin.",
+  },
+  order_phone: {
+    type: "string",
+    description: "Müşterinin sipariş numarasını bilmediği için yazdığı, siparişte kayıtlı telefon numarası; yazmadıysa boş metin.",
+  },
 } as const;
+const identityRequired = ["order_number", "customer_name", "order_phone"];
+
+const requestOf = (input: { order_number: string; customer_name: string; order_phone: string }) => ({
+  orderNumber: input.order_number.trim() || null,
+  identity: { name: input.customer_name, orderPhone: input.order_phone },
+});
 
 function specialistTool(name: string, description: string, run: (question: string) => Promise<string>): AgentTool {
   return {
@@ -103,18 +121,19 @@ export async function runLina(
             description:
               "Uzmana tek başına anlaşılır soru: müşterinin ne istediği ve söylediği ayrıntılar (ürün, beden, renk, sebep, para iadesi mi değişim mi, fotoğraf gönderdi mi). Müşteriye kuralı daha önce söylediysen ve yine de istiyorsa bunu da yaz.",
           },
-          order_number: orderNumberProperty,
+          ...identityProperties,
         },
-        required: ["topic", "question", "order_number"],
+        required: ["topic", "question", ...identityRequired],
         additionalProperties: false,
       },
     },
     run: async (input) => {
-      const { topic, question, order_number } = returnsInput.parse(input);
+      const parsed = returnsInput.parse(input);
+      const { topic, question } = parsed;
       // Bildirim yalnızca sipariş sistemi bağlıyken; bağlı değilse iletilecek konu devredilir.
       if (orders) findings.topics.push(topic === "damaged" ? "complaint" : topic);
       try {
-        return await askReturnsAgent(ctx, tenant, { knowledge, orders }, { topic, question, orderNumber: order_number.trim() || null }, findings);
+        return await askReturnsAgent(ctx, tenant, { knowledge, orders }, { topic, question, ...requestOf(parsed) }, findings);
       } catch (err) {
         if (orders && !(err instanceof CancelledError)) findings.lookupFailed = true;
         throw err;
@@ -145,17 +164,18 @@ export async function runLina(
               type: "string",
               description: "Uzmana tek başına anlaşılır soru; müşterinin istediği değişiklik varsa ayrıntısı (yeni beden, renk, adres).",
             },
-            order_number: orderNumberProperty,
+            ...identityProperties,
           },
-          required: ["topic", "question", "order_number"],
+          required: ["topic", "question", ...identityRequired],
           additionalProperties: false,
         },
       },
       run: async (input) => {
-        const { topic, question, order_number } = orderInput.parse(input);
+        const parsed = orderInput.parse(input);
+        const { topic, question } = parsed;
         findings.topics.push(topic);
         try {
-          return await askOrderAgent(ctx, tenant, orders, { topic, question, orderNumber: order_number.trim() || null }, findings);
+          return await askOrderAgent(ctx, tenant, orders, { topic, question, ...requestOf(parsed) }, findings);
         } catch (err) {
           // Sipariş sistemine ulaşılamadı: müşterinin isteği sessiz kayda düşmesin (ekibe önemli bildirim).
           if (!(err instanceof CancelledError)) findings.lookupFailed = true;
@@ -194,7 +214,7 @@ export async function runLina(
     },
     run: async (input) => {
       handoff = handoffInput.parse(input);
-      return "Devir kaydedildi. Müşteriye talebini ilgili sorumlu arkadaşa ilettiğini ve ekibin ne zaman döneceğini (mesai bilgisine göre) söyle.";
+      return "Devir kaydedildi. Müşteriye kişiye ya da ekibe devrettiğini söyleme; talimattaki cümleyi kullan. Yalnızca müşteri açıkça temsilci istediyse ekibin ne zaman döneceğini (mesai bilgisine göre) söyle.";
     },
   });
 

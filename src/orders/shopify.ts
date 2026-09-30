@@ -4,15 +4,15 @@ import { normalizePhone } from "../lib/phone.js";
 import type { ShopifyApi } from "../shopify/client.js";
 import { sameOrderNumber, type OrderFacts, type OrderSource } from "./types.js";
 
-// Tutar, ödeme ve adres alanları bilerek istenmez; telefonlar yalnızca doğrulama için.
+// Tutar, ödeme ve adres alanları bilerek istenmez; telefonlar ve ad soyadlar yalnızca doğrulama için.
 const ORDER_FIELDS = `
       name
       createdAt
       cancelledAt
       phone
-      customer { defaultPhoneNumber { phoneNumber } }
-      shippingAddress { phone }
-      billingAddress { phone }
+      customer { firstName lastName defaultPhoneNumber { phoneNumber } }
+      shippingAddress { firstName lastName phone }
+      billingAddress { firstName lastName phone }
       lineItems(first: 50) {
         nodes {
           id
@@ -47,14 +47,16 @@ query LinaCustomersByPhone($query: String!) {
   customers(first: 3, query: $query) { nodes { legacyResourceId } }
 }`;
 
+type Person = { firstName?: string | null; lastName?: string | null };
+
 type GqlOrder = {
   name: string;
   createdAt: string;
   cancelledAt: string | null;
   phone: string | null;
-  customer: { defaultPhoneNumber: { phoneNumber: string } | null } | null;
-  shippingAddress: { phone: string | null } | null;
-  billingAddress: { phone: string | null } | null;
+  customer: Person & { defaultPhoneNumber: { phoneNumber: string } | null } | null;
+  shippingAddress: Person & { phone: string | null } | null;
+  billingAddress: Person & { phone: string | null } | null;
   lineItems: {
     nodes: {
       id: string;
@@ -91,11 +93,15 @@ export function toOrderFacts(o: GqlOrder, countryCode = "90"): OrderFacts {
   const phones = [o.phone, o.customer?.defaultPhoneNumber?.phoneNumber, o.shippingAddress?.phone, o.billingAddress?.phone]
     .filter((p): p is string => Boolean(p?.trim()))
     .map((p) => normalizePhone(p, countryCode));
+  const names = [o.customer, o.shippingAddress, o.billingAddress]
+    .map((p) => [p?.firstName, p?.lastName].filter((x) => x?.trim()).join(" ").trim())
+    .filter(Boolean);
   return {
     name: o.name,
     createdAt: new Date(o.createdAt),
     cancelledAt: o.cancelledAt ? new Date(o.cancelledAt) : null,
     phones: [...new Set(phones)],
+    names: [...new Set(names)],
     items: o.lineItems.nodes.map((li) => ({
       id: li.id,
       productId: li.product?.legacyResourceId ? String(li.product.legacyResourceId) : null,

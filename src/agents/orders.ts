@@ -1,12 +1,12 @@
 import { z } from "zod";
 import type { Tenant } from "../db/schema.js";
-import { addIssue, orderLookup, type OrderAgentDeps, type OrderFindings, type OrderTopic } from "./order-lookup.js";
+import { addIssue, orderLookup, type CustomerIdentity, type OrderAgentDeps, type OrderFindings, type OrderTopic } from "./order-lookup.js";
 import { orderAgentSystemPrompt } from "./prompts.js";
 import { runAgent, type AgentContext, type AgentTool } from "./runner.js";
 
 export { newFindings, ORDER_TOPICS, type OrderAgentDeps, type OrderFindings, type OrderTopic } from "./order-lookup.js";
 
-export type OrderRequest = { topic: OrderTopic; question: string; orderNumber: string | null };
+export type OrderRequest = { topic: OrderTopic; question: string; orderNumber: string | null; identity?: CustomerIdentity };
 
 const TOPIC_LABELS: Record<OrderTopic, string> = {
   status: "sipariş durumu, kargo, ön sipariş",
@@ -32,7 +32,7 @@ export async function askOrderAgent(
   findings: OrderFindings,
 ): Promise<string> {
   const withReturns = ["return", "return_status", "complaint"].includes(request.topic);
-  const lookup = orderLookup(ctx, tenant, deps, findings, { withReturns });
+  const lookup = orderLookup(ctx, tenant, deps, findings, { withReturns, identity: request.identity });
 
   const tools: AgentTool[] = [
     ...lookup.tools,

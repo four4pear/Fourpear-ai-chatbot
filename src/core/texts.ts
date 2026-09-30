@@ -6,7 +6,7 @@ export const DEFAULT_TEXTS: Record<FixedTextKey, string> = {
   dailyLimit:
     "Bugün için mesaj sınırına ulaştınız. Yarın tekrar yazabilirsiniz; acil bir durum varsa ekibimiz size buradan dönecektir.",
   failure:
-    "Üzgünüm, sorunuzu şu an cevaplayamıyorum. Talebinizi ekibimize ilettim, en kısa sürede buradan size dönecekler.",
+    "Üzgünüm, şu an sorunuza cevap veremiyorum. Hemen kontrol ediyorum, kısa süre içinde size buradan bilgi vereceğim.",
 };
 
 export function fixedText(settings: TenantSettings, key: FixedTextKey): string {

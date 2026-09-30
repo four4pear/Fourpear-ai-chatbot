@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { Tenant } from "../db/schema.js";
 import type { KnowledgeBase } from "../knowledge/base.js";
 import { legalDocumentTool, reportConflictTool } from "./knowledge.js";
-import { addIssue, orderLookup, type OrderAgentDeps, type OrderFindings } from "./order-lookup.js";
+import { addIssue, orderLookup, type CustomerIdentity, type OrderAgentDeps, type OrderFindings } from "./order-lookup.js";
 import { returnsAgentSystemPrompt } from "./prompts.js";
 import { runAgent, type AgentContext, type AgentTool } from "./runner.js";
 
@@ -10,7 +10,7 @@ import { runAgent, type AgentContext, type AgentTool } from "./runner.js";
 export const RETURN_TOPICS = ["return", "return_status", "damaged"] as const;
 export type ReturnTopic = (typeof RETURN_TOPICS)[number];
 
-export type ReturnRequest = { topic: ReturnTopic; question: string; orderNumber: string | null };
+export type ReturnRequest = { topic: ReturnTopic; question: string; orderNumber: string | null; identity?: CustomerIdentity };
 
 const TOPIC_LABELS: Record<ReturnTopic, string> = {
   return: "iade ya da değişim isteği, iade koşulları",
@@ -40,7 +40,7 @@ export async function askReturnsAgent(
   let context = NO_ORDERS;
 
   if (deps.orders) {
-    const lookup = orderLookup(ctx, tenant, deps.orders, findings, { withReturns: true });
+    const lookup = orderLookup(ctx, tenant, deps.orders, findings, { withReturns: true, identity: request.identity });
     tools.push(...lookup.tools, {
       definition: {
         name: "forward_to_team",

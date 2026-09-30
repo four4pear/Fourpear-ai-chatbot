@@ -10,10 +10,13 @@ export const DEMO_ORDERS_HELP = [
   "#MO-9002  kampanyalı ürün, teslim edildi (Riva Takım)",
   "#MO-9003  kampanyasız ürün, teslim edildi (Cozy Spor Takım)",
   "#MO-9004  kargoya verildi ama takip numarası yok (Rosie Body)",
-  "#MO-9005  başka bir numaranın siparişi (doğrulanamaz)",
+  "#MO-9005  başka bir numaranın siparişi: sipariş no + ad soyad (Zeynep Kaya) ya da telefon 0555 999 99 99 + ad soyadla doğrulanır",
 ];
 
 const OTHER_PHONE = "905559999999";
+/** Deneme siparişlerinde kayıtlı ad soyadlar (numara tutmayınca ad soyadla doğrulama denemesi için). */
+const CUSTOMER_NAME = "Ayşe Yılmaz";
+const OTHER_NAME = "Zeynep Kaya";
 const at = (iso: string) => new Date(`${iso}+03:00`);
 
 function item(id: string, productId: string, title: string, variantTitle: string, optionValues: string[], unfulfilled: number): OrderItem {
@@ -56,6 +59,7 @@ function demoOrders(phone: string): OrderFacts[] {
       createdAt: at("2026-09-12T11:20:00"),
       cancelledAt: null,
       phones: [phone],
+      names: [CUSTOMER_NAME],
       items: [item("demo-1", "10094861484281", "Maius Lavin Etek", "1–36/38 / Siyah", ["1–36/38", "2–40/42", "Kırık Beyaz", "Siyah"], 1)],
       shipments: [],
     },
@@ -64,6 +68,7 @@ function demoOrders(phone: string): OrderFacts[] {
       createdAt: at("2026-09-15T14:05:00"),
       cancelledAt: null,
       phones: [phone],
+      names: [CUSTOMER_NAME],
       items: [item("demo-2", "10246378717433", "Maius Riva Takım", "2–40/42 / Vizon", ["1–36/38", "2–40/42", "Vizon"], 0)],
       shipments: [
         shipment("2026-09-17T16:00:00", ["demo-2"], { status: "DELIVERED", deliveredAt: at("2026-09-19T12:30:00"), ...tracking("100200300401") }),
@@ -74,6 +79,7 @@ function demoOrders(phone: string): OrderFacts[] {
       createdAt: at("2026-09-20T09:45:00"),
       cancelledAt: null,
       phones: [phone],
+      names: [CUSTOMER_NAME],
       items: [
         item("demo-3", "10290984714489", "Maius Cozy Spor Takım", "Koyu Kahve / 2–40/42", ["Vizon", "Koyu Kahve", "1–36/38", "2–40/42", "3–44/46"], 0),
       ],
@@ -86,6 +92,7 @@ function demoOrders(phone: string): OrderFacts[] {
       createdAt: at("2026-09-24T20:30:00"),
       cancelledAt: null,
       phones: [phone],
+      names: [CUSTOMER_NAME],
       items: [item("demo-4", "10063998058745", "Maius Rosie Body", "1–36/38 / Kemik", ["1–36/38", "2–40/42", "Kemik", "Siyah", "Acı Kahve"], 0)],
       shipments: [shipment("2026-09-26T17:40:00", ["demo-4"], { status: "CONFIRMED" })],
     },
@@ -94,6 +101,7 @@ function demoOrders(phone: string): OrderFacts[] {
       createdAt: at("2026-09-26T10:00:00"),
       cancelledAt: null,
       phones: [OTHER_PHONE],
+      names: [OTHER_NAME],
       items: [
         item("demo-5", "10063997796601", "Maius Top Takım", "1–36/38 / Siyah", ["1–36/38", "2–40/42", "Haki ( Vizon Altton )", "Siyah", "Ekru", "Lacivert"], 1),
       ],

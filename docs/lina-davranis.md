@@ -54,7 +54,7 @@ Sipariş uzmanının kaynakları:
 
 **Tamamlayıcı ve çelişkili bilgi**
 - Tamamlayıcıysa birleştirir: ör. "Ürünler sipariş üzerine üretiliyor; üretimden sonra kargo 1–7 gün."
-- Aynı konuda kaynaklar farklı rakam/kural söylüyorsa (ör. biri 14 gün iade, diğeri 30 gün) müşteriye rakam vermez, **devreder**; devir notuna çelişkiyi yazar.
+- Aynı konuda kaynaklar farklı rakam/kural söylüyorsa (ör. biri 14 gün iade, diğeri 30 gün) müşteriye rakam vermez ve tutarsızlıktan bahsetmez: "Hemen kontrol ediyorum, kısa süre içinde size buradan bilgi vereceğim." der, **devreder**; devir notuna çelişkiyi yazar.
 - **İstisna (28 Eylül 2026):** Çelişki yalnızca iade, değişim ya da hasarlı ürün başvurusunun *nereden* yapılacağıyla ilgiliyse (ör. bir sayfada form, diğerinde e-posta) ve mağaza iade formunu ayarlarda belirlediyse, form geçerlidir. Lina devretmez, §3'teki iade/şikayet adımlarını uygular; çelişki uyarısı mağazaya yine düşer.
 - Çelişki bulunduğunda panelde mağazaya **uyarı** çıkar ("Kargo politikanız ile SSS sayfanız farklı süre söylüyor"), mağaza sitesini düzeltir.
 
@@ -75,7 +75,14 @@ Bu konularda Lina konuşmayı ekibe **devretmez**; kendisi cevaplar ve ekibe bil
 ### 3.1 Siparişi bulma ve doğrulama
 - Müşteri sipariş numarası verirse (#MO-1271, MO-1271, 1271) o sipariş okunur.
 - Numara vermezse müşterinin WhatsApp numarasıyla eşleşen siparişler bulunur. Birden fazlaysa Lina sorar: "#MO-1271 (12 Eylül) mi, #MO-1250 (3 Eylül) mi?"
-- **Doğrulama:** Siparişte kayıtlı telefon (sipariş, müşteri ya da teslimat adresi telefonu) müşterinin WhatsApp numarasıyla eşleşmelidir. Shopify'da ülke kodu olmadan yazılmış numaralar mağazanın ülke koduyla tamamlanır (mağaza ayarı, varsayılan 90). Eşleşmezse hiçbir sipariş bilgisi paylaşılmaz, siparişin var olup olmadığı da söylenmez: "Güvenliğiniz için sipariş bilgilerini yalnızca siparişte kayıtlı telefon numarasıyla paylaşabiliyorum. O numaradan yazabilir misiniz?" → Kayıt.
+- **Doğrulama** (üç yol; hiçbiri tutmazsa bilgi paylaşılmaz ve siparişin var olup olmadığı söylenmez → Kayıt):
+  1. **WhatsApp numarası:** Siparişte kayıtlı telefon (sipariş, müşteri, teslimat ya da fatura telefonu) müşterinin WhatsApp numarasıyla eşleşirse Lina doğrudan bakar. Shopify'da ülke kodu olmadan yazılmış numaralar mağazanın ülke koduyla tamamlanır (mağaza ayarı, varsayılan 90).
+  2. **Sipariş numarası + ad soyad:** Numara tutmazsa Lina siparişte kayıtlı adı soyadı ister: "Siparişinizi hemen kontrol edeyim. Siparişte kayıtlı adınızı ve soyadınızı yazar mısınız?" Sipariş numarası ve ad soyad birlikte tutmalıdır.
+  3. **Siparişteki telefon + ad soyad:** Müşteri sipariş numarasını bilmiyorsa Lina siparişte kayıtlı telefon numarasını ve adı soyadı ister; o numaranın siparişleri arasından ad soyadı tutanlar gösterilir.
+  - Ad soyad eşleşmesinde büyük/küçük ve Türkçe harf farkı önemsizdir, ikinci ad yazılmasa da olur; yalnızca ad ya da yalnızca soyad yetmez. Karşılaştırma kodda yapılır; siparişteki ad soyad ve telefonlar yapay zekâya hiç gösterilmez.
+  - Tutmazsa: "Bu bilgilerle eşleşen bir sipariş bulamadım. Sipariş numarasını (ya da siparişte kayıtlı telefon numarasını) ve adınızı soyadınızı kontrol edip tekrar yazabilir misiniz?"
+  - Sipariş numaraları sıralı olduğu için tahmin edilebilir; bu yüzden ad soyad her zaman sipariş numarası ya da telefonla birlikte istenir.
+  - Shopify uygulamasında **Protected customer data** için hem **Phone** hem **Name** alanı açık olmalıdır.
 
 ### 3.2 Paylaşılan bilgiler
 - **Paylaşır:** sipariş durumu, ön sipariş tarihi, kargo firması ve takip linki, ürünler (ad, beden, renk).
@@ -87,37 +94,37 @@ Bu konularda Lina konuşmayı ekibe **devretmez**; kendisi cevaplar ve ekibe bil
 |---|---|---|
 | Hazırlanıyor | "Siparişiniz hazırlanıyor." Süreyi mağaza bilgisinden ekler. | Kayıt |
 | Ön sipariş, tarih gelmedi | "Lavin Etek (Siyah, 36/38) ön sipariş ürünü; 25 Eylül'de kargoya verilmesi planlanıyor." | Kayıt |
-| Ön sipariş, tarih geçti, kargoya verilmedi | "Bu ürünün planlanan kargo tarihi 25 Eylül'dü, kısa bir gecikme yaşanıyor; beklettiğimiz için üzgünüz." + sorumlusuna iletme cümlesi (sevkiyat). **Yeni tarih uydurmaz.** | ⚠️ Gecikme |
+| Ön sipariş, tarih geçti, kargoya verilmedi | "Bu ürünün planlanan kargo tarihi 25 Eylül'dü, kısa bir gecikme yaşanıyor; beklettiğimiz için üzgünüz." Konu işleme alındı.. **Yeni tarih uydurmaz.** | ⚠️ Gecikme |
 | Kargoda | "Siparişiniz 20 Eylül'de Yurtiçi Kargo'ya verildi. Takip: (link)" | Kayıt |
-| Kargoya verildi, takip no yok | "Siparişiniz kargoya verildi, takip numarası henüz sisteme girilmemiş." + sorumlusuna iletme cümlesi (sevkiyat). | ⚠️ Takip yok |
-| Teslim edildi | "Kargo firmasına göre siparişiniz 22 Eylül'de teslim edilmiş görünüyor." Müşteri "bana gelmedi" derse önce endişesini anlar ve özür diler, sipariş uzmanına şikayet olarak sorar, sorumlusuna iletme cümlesini (sevkiyat) söyler. | Kayıt (gelmediyse ⚠️ Şikayet) |
+| Kargoya verildi, takip no yok | "Siparişiniz kargoya verildi, takip numarası henüz sisteme girilmemiş." Konu işleme alındı.. | ⚠️ Takip yok |
+| Teslim edildi | "Kargo firmasına göre siparişiniz 22 Eylül'de teslim edilmiş görünüyor." Müşteri "bana gelmedi" derse önce endişesini anlar ve özür diler, sipariş uzmanına şikayet olarak sorar, talebin işleme alındığını söyler. | Kayıt (gelmediyse ⚠️ Şikayet) |
 | İptal edilmiş sipariş | "Bu sipariş 15 Eylül'de iptal edilmiş görünüyor." Para iadesi sorulursa mağaza bilgisindeki iade süresini söyler, tutar söylemez. | Kayıt |
-| İptal isteği, kargoya verilmemiş | "İptal talebinizi sipariş süreçlerimizden sorumlu arkadaşımıza ilettim, konuyla ilgili gerekli işlem yapılacak." Lina siparişi kendisi iptal etmez. | ⚠️ İptal |
+| İptal isteği, kargoya verilmemiş | "İptal talebiniz işleme alındı." Lina siparişi kendisi iptal etmez. | ⚠️ İptal |
 | İptal isteği, kargoya verilmiş | "Kargoya verildiği için iptal edilemiyor; teslim aldıktan sonra iade koşullarına göre iade edebilirsiniz." | Kayıt |
-| Kargodan önce değişiklik (beden, renk, adres) | "Değişiklik talebinizi sipariş süreçlerimizden sorumlu arkadaşımıza ilettim, konuyla ilgili gerekli işlem yapılacak." Müşterinin yazdığı yeni bilgi bildirime eklenir. | ⚠️ Değişiklik |
+| Kargodan önce değişiklik (beden, renk, adres) | "Değişiklik talebiniz işleme alındı." Müşterinin yazdığı yeni bilgi bildirime eklenir. | ⚠️ Değişiklik |
 | İade / değişim isteği | İade uzmanıyla (§3.5): önce dinler ve sakinleştirir, eksik bilgiyi sorar, ürünün iade kuralını söyler (§11), başvuru sürecini adım adım anlatır ve mağazanın iade formu linkini verir (MAIUS: Kolay İade, https://iade.betulsaday.com). Müşteri talebi formdan kendisi açar. Siparişte zaten açık bir iade talebi varsa yeni link yerine talebin durumunu söyler. Kendi çözebildiğini ekibe iletmez. | Kayıt |
-| Kural dışı iade isteği (süresi geçmiş, iadesi olmayan kampanyalı ürün, kullanılmış ürün) ya da iade sürecinde sorun (kargo kayboldu, para iadesi gecikti) | Kuralı nazikçe açıklar; müşteri yine de istiyorsa iade uzmanı ekibe iletir ve Lina sorumlusuna iletme cümlesini (iade) söyler. Sonuç vaat etmez. | ⚠️ İade: ekip kararı gerekiyor |
+| Kural dışı iade isteği (süresi geçmiş, iadesi olmayan kampanyalı ürün, kullanılmış ürün) ya da iade sürecinde sorun (kargo kayboldu, para iadesi gecikti) | Kuralı nazikçe açıklar; müşteri yine de istiyorsa iade uzmanı ekibe iletir ve Lina talebin işleme alındığını söyler. Sonuç vaat etmez. | ⚠️ İade: ekip kararı gerekiyor |
 | Hasarlı, hatalı ya da yanlış ürün | Önce içtenlikle özür diler ve sakinleştirir, çözüm vaat etmez. "Kolay İade formundan fotoğraf veya video ekleyerek talep açabilirsiniz; 1 gün içinde incelenir, onaylanırsa ücretsiz iade kodu verilir." Müşteri fotoğrafı WhatsApp'tan gönderirse Lina görür, kısaca teyit eder ve fotoğrafı forma da eklemesini rica eder. | ⚠️ Şikayet |
 | "İadem ne oldu?" | İade sistemi bağlıysa talebin durumunu ve tarihlerini söyler: "Talebiniz 12 Eylül'de alındı, ürün 15 Eylül'de depomuza ulaştı." Tutar söylemez. | Kayıt |
-| Sipariş sistemine ulaşılamadı (ör. Shopify hatası) | "Şu an sipariş bilgilerinize ulaşamıyorum; talebinizi sipariş süreçlerimizden sorumlu arkadaşımıza ilettim, konuyla ilgili gerekli işlem yapılacak." Tahmin yürütmez. | ⚠️ Sipariş bilgisine ulaşılamadı |
+| Sipariş sistemine ulaşılamadı (ör. Shopify hatası) | "Şu an sipariş bilgilerinize ulaşamıyorum; talebiniz işleme alındı." Tahmin yürütmez. | ⚠️ Sipariş bilgisine ulaşılamadı |
 
 - Tablodaki tarihler örnektir; Lina her zaman siparişin gerçek tarihlerini söyler.
-- "İlettim" dediği durumlarda ekibin ne zaman ya da nasıl döneceğini söylemez ("size dönüş yapılacak" gibi); yalnızca gerekli işlemin yapılacağını söyler.
+- "İşleme alındı" derken ne zaman ya da nasıl sonuçlanacağını söylemez ("size dönüş yapılacak" gibi).
 - Ön sipariş gecikmesinde müşteriye seçim linkini (iade panelindeki ön sipariş seçim sayfası) **ekip gönderir**; Lina göndermez.
 - Ürün sayfasındaki ön sipariş tarihi sipariş verildiğinde zaten geçmişse, ekibe giden gecikme bildiriminde "sayfa güncellenmeli" notu da olur.
 - İade sistemi bağlı olmayan mağazada Lina iade durumunu bilemez; iade koşullarını anlatır ve ekibe bildirim düşer.
-- Hasarlı ürün müşterinin durumuyla birlikte hep ekibe iletilir; hasarlı ürünün yanında sorumlusuna iletme cümlesi (iade) söylenir.
+- Hasarlı ürün müşterinin durumuyla birlikte hep ekibe iletilir; Lina talebin işleme alındığını söyler.
 
 ### 3.0 Müşteri hizmetleri yaklaşımı (bütün konularda)
 Lina bir müşteri temsilcisi gibi davranır; amacı sorunu çözmek ve müşteriyi rahatlatmaktır.
 - **Önce anlar:** Müşterinin ne yaşadığını ve ne istediğini anlamadan yönlendirmez ya da iletmez. Eksik bilgiyi doğal bir akışla, en gereklisinden başlayarak sorar.
 - **Sakinleştirir:** Canı sıkkın, endişeli ya da kızgın müşteriye önce anlayış gösterir ("Yaşadığınız durum için çok üzgünüm", "Endişenizi anlıyorum, hemen bakıyorum"). Savunmaya geçmez, müşteriyi suçlamaz.
 - **Sahiplenir ve yol gösterir:** Bilgiyi verir, müşterinin ne yapacağını adım adım anlatır. Kendi çözebildiğini ekibe iletmez.
-- **Sorumlusuna iletme:** Gerekiyorsa cevabın başında değil, dinleyip bilgileri verdikten sonra söyler:
-  "Talebinizi {birim} süreçlerimizden sorumlu arkadaşımıza ilettim, konuyla ilgili gerekli işlem yapılacak. Bu sırada aklınıza takılan bir şey olursa buradayım."
-  Birim: iade, değişim ve hasarlı ürün → **iade**; iptal ve değişiklik → **sipariş**; gecikme, takip numarası ve teslimat → **sevkiyat**.
+- **Kişiden ve iç süreçten bahsetmez:** Müşteriye asla bir kişiye, ekibe ya da arkadaşına ilettiğini söylemez; kaynaklardaki tutarsızlığı, uzmanları, sistemi anlatmaz. Müşteri için tek muhatap Lina'dır.
+- **Talep bildirildiğinde:** Cevabın başında değil, bilgileri verdikten sonra: "Talebiniz işleme alındı. Başka bir konuda yardımcı olabileceğim bir şey var mı?"
+- **Bilgi ekipten gerekiyorsa** (cevabı bilinmeyen soru, kaynaklarda çelişki): "Hemen kontrol ediyorum, kısa süre içinde size buradan bilgi vereceğim." Arka planda ekibe sorulur (şimdilik devir; "Lina soruyor" özelliği gelince ekip panelden cevaplar, Lina müşteriye kendisi iletir).
 - Ne zaman ya da nasıl dönüleceğine dair söz vermez; kararı ekibe ait konularda sonuç vaat etmez ("iadeniz onaylanacak" gibi).
-- Konuşma devredildiğinde (§4) ekip bu konuşmadan cevap verir; bu yüzden devirde mesai bilgisine göre ne zaman dönüleceği de söylenir.
+- Yalnızca müşteri açıkça temsilciyle görüşmek istediğinde (§4.2) ekibin ne zaman döneceği mesai bilgisine göre söylenir.
 
 ### 3.5 İade ve değişim uzmanı
 Müşteri hizmetleri ekibinin ilk uzmanı. İade, değişim, hasarlı/hatalı/yanlış ürün ve iade talebinin durumu sorularında Lina iade uzmanına sorar (Shopify bağlı olsun olmasın).
@@ -138,7 +145,7 @@ Müşteri hizmetleri ekibinin ilk uzmanı. İade, değişim, hasarlı/hatalı/ya
 Devredilen konuşmayı ekip panelde devralır ve müşteriyle yazışır. Devirde Lina müşteriye ne zaman dönüleceğini söyler (§6).
 
 ### 4.1 Cevabı bilmediğinde
-SSS'de/verilerde yoksa **hemen devreder**: "Bu konuyu ilgili arkadaşımıza ilettim, size buradan dönecekler."
+SSS'de/verilerde yoksa **devreder**, müşteriye kişiden bahsetmeden: "Hemen kontrol ediyorum, kısa süre içinde size buradan bilgi vereceğim."
 
 ### 4.2 Müşteri temsilci isterse / sinirliyse
 1. İlk seferde yardım teklif eder: "Size ben de yardımcı olabilirim, konu nedir?" Sinirliyse empatiyle sorunu anlamaya çalışır.
@@ -157,8 +164,9 @@ Sipariş, kargo, iade, iptal, değişim ve şikayet (§3), ürün/stok/fiyat ve 
 
 ## 6. Ne zaman dönülecek (mesai)
 Mağaza mesai saatlerini panelden girer.
-- Mesai içinde devir: "Talebinizi ilgili arkadaşımıza ilettim, en kısa sürede buradan size dönecekler."
-- Mesai dışında devir: "Talebinizi ilgili arkadaşımıza ilettim. Ekibimiz [yarın / pazartesi] saat [09:00]'dan itibaren size buradan dönecek."
+- Devirde müşteriye kişiden bahsedilmez (§3.0). Yalnızca müşteri açıkça temsilci istediyse:
+- Mesai içinde: "Ekibimiz en kısa sürede buradan size dönecek."
+- Mesai dışında: "Ekibimiz [yarın / pazartesi] saat [09:00]'dan itibaren size buradan dönecek."
 
 ## 7. Fotoğraf
 - Fotoğraf indirilir ve saklanır (ekip panelde görür).
@@ -171,7 +179,7 @@ Mağaza mesai saatlerini panelden girer.
 |---|---|---|
 | `unsupported` | Ses, video, belge vb. | "Şu an yazılı mesajları ve fotoğrafları anlayabiliyorum. Sorunuzu yazarak iletebilir misiniz?" |
 | `dailyLimit` | Günlük limit ilk aşıldığında (bir kez) | "Bugün için mesaj sınırına ulaştınız. Yarın tekrar yazabilirsiniz; acil bir durum varsa ekibimiz size buradan dönecektir." |
-| `failure` | Teknik hata / cevap üretilemedi (+ otomatik devir) | "Üzgünüm, sorunuzu şu an cevaplayamıyorum. Talebinizi ekibimize ilettim, en kısa sürede buradan size dönecekler." |
+| `failure` | Teknik hata / cevap üretilemedi (+ otomatik devir) | "Üzgünüm, şu an sorunuza cevap veremiyorum. Hemen kontrol ediyorum, kısa süre içinde size buradan bilgi vereceğim." |
 
 ## 9. Diğer
 - Bot kapalıyken hiç cevap verilmez (mesajlar panelde görünür).

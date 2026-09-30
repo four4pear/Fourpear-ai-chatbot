@@ -41,6 +41,8 @@ export type OrderFacts = {
   cancelledAt: Date | null;
   /** Normalleştirilmiş telefonlar (sipariş, müşteri, teslimat, fatura); modele ve müşteriye gösterilmez. */
   phones: string[];
+  /** Siparişteki ad soyadlar (müşteri, teslimat, fatura); yalnızca doğrulama için, modele gösterilmez. */
+  names: string[];
   items: OrderItem[];
   shipments: Shipment[];
 };
@@ -57,6 +59,31 @@ export interface OrderSource {
 export function belongsTo(order: OrderFacts, waId: string): boolean {
   const wa = normalizePhone(waId);
   return wa.length >= 10 && order.phones.some((p) => p === wa);
+}
+
+/** Büyük/küçük harf ve Türkçe harf farkını yok sayan kelimeler: "AYŞE Nur yılmaz" → ["ayse", "nur", "yilmaz"]. */
+function nameWords(text: string): string[] {
+  return text
+    .toLocaleLowerCase("tr-TR")
+    .replace(/ı/g, "i")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z\s]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean);
+}
+
+/**
+ * Müşterinin yazdığı ad soyad siparişteki bir adla eşleşiyor mu? Siparişteki adın ilk ve son kelimesi
+ * (ad ve soyad) yazılanda bulunmalı; ikinci ad yazılmasa da olur. Yalnızca ad ya da yalnızca soyad yetmez.
+ */
+export function nameMatches(order: OrderFacts, typed: string): boolean {
+  const words = new Set(nameWords(typed));
+  if (words.size < 2) return false;
+  return order.names.some((name) => {
+    const parts = nameWords(name);
+    return parts.length >= 2 && words.has(parts[0]!) && words.has(parts.at(-1)!);
+  });
 }
 
 /** Müşterinin yazdığı numara bu sipariş mi? "mo 1271", "#1271" → "#MO-1271" */
