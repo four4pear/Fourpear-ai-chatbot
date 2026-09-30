@@ -122,3 +122,14 @@ it("öğrenilen dersler listelenir ve silinebilir", async () => {
   fireEvent.click(screen.getByRole("button", { name: "Dersi sil: İade süresi: 14 gün inceleme." }));
   await screen.findByText("Henüz ders yok.");
 });
+
+it("deneme siparişleri kutu işaretlenince sağda listelenir; tıklayınca örnek mesaj yazılır", async () => {
+  server(() => reply("x"), {
+    "GET /test/demo-orders": () => json({ scenarios: [{ order: "MO-9013", label: "iade 50 gündür yatmadı", sample: "MO-9013 iadem 50 gündür yatmadı" }] }),
+  });
+  render(<TestPage store={store} replyDelayMs={0} />);
+  expect(screen.queryByText("Deneme siparişleri")).toBeNull();
+  fireEvent.click(screen.getByLabelText("Deneme siparişlerini kullan"));
+  fireEvent.click(await screen.findByRole("button", { name: "MO-9013 iade 50 gündür yatmadı" }));
+  expect((screen.getByLabelText("Mesajınız") as HTMLTextAreaElement).value).toBe("MO-9013 iadem 50 gündür yatmadı");
+});

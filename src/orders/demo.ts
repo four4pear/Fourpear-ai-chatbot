@@ -9,22 +9,25 @@ import { sameOrderNumber, type OrderFacts, type OrderItem, type OrderSource, typ
  * mağazalarda da aynı senaryolar çalışır. MO-9001 ve MO-9002 dışındaki tarihler bugüne göre kurulur;
  * senaryolar zamanla bozulmaz (ör. "teslimden 4 gün sonra iade").
  */
-export const DEMO_ORDERS_HELP = [
-  "#MO-9001  ön sipariş gecikmesi (planlanan tarih geçti)",
-  "#MO-9002  kampanyalı ürün, teslim edildi (kampanyada iade yok)",
-  "#MO-9003  kampanyasız ürün, 4 gün önce teslim edildi (normal iade / değişim)",
-  "#MO-9004  kargoya verildi ama takip numarası yok",
-  "#MO-9005  başka bir numaranın siparişi: sipariş no + ad soyad (Zeynep Kaya) ya da telefon 0555 999 99 99 + ad soyadla doğrulanır",
-  "#MO-9006  hazırlanıyor, kargoya verilmedi (iptal ya da beden/adres değişikliği)",
-  "#MO-9007  kargoda, takip linki var (kargoya verildikten sonra iptal)",
-  "#MO-9008  ön sipariş, tarihi henüz gelmedi",
-  "#MO-9009  iptal edilmiş sipariş (para iadesi ne zaman?)",
-  "#MO-9010  kısmen kargoda: bir ürün yolda, biri bekliyor",
-  "#MO-9011  40 gün önce teslim edildi (iade süresi geçmiş)",
-  "#MO-9012  açık iade talebi: ürün depoya ulaştı, inceleniyor",
-  "#MO-9013  iade 50 gün önce depoya ulaştı, onaylandı ama para hâlâ yatmadı",
-  "#MO-9014  dün teslim edildi (yanlış ya da hasarlı ürün denemesi: 'siyah istedim bej geldi')",
+/** Deneme senaryoları: sipariş, ne olduğu ve denemek için örnek müşteri mesajı (test ekranında tıklanır). */
+export const DEMO_SCENARIOS = [
+  { order: "MO-9001", label: "ön sipariş gecikmesi (planlanan tarih geçti)", sample: "MO-9001 siparişim ne zaman kargoya verilecek?" },
+  { order: "MO-9002", label: "kampanyalı ürün, teslim edildi (kampanyada iade yok)", sample: "MO-9002 siparişimi iade etmek istiyorum" },
+  { order: "MO-9003", label: "kampanyasız ürün, 4 gün önce teslim edildi (normal iade / değişim)", sample: "MO-9003 beden büyük geldi, değiştirmek istiyorum" },
+  { order: "MO-9004", label: "kargoya verildi ama takip numarası yok", sample: "MO-9004 kargo takip numaram nerede?" },
+  { order: "MO-9005", label: "başka numaranın siparişi: ad soyad (Zeynep Kaya) ya da telefon 0555 999 99 99 + ad soyadla doğrulanır", sample: "MO-9005 siparişim nerede?" },
+  { order: "MO-9006", label: "hazırlanıyor, kargoya verilmedi (iptal ya da beden/adres değişikliği)", sample: "MO-9006 siparişimi iptal etmek istiyorum" },
+  { order: "MO-9007", label: "kargoda, takip linki var (kargoya verildikten sonra iptal)", sample: "MO-9007 kargom nerede?" },
+  { order: "MO-9008", label: "ön sipariş, tarihi henüz gelmedi", sample: "MO-9008 siparişim ne zaman gelir?" },
+  { order: "MO-9009", label: "iptal edilmiş sipariş (para iadesi ne zaman?)", sample: "MO-9009 iptal oldu, param ne zaman yatar?" },
+  { order: "MO-9010", label: "kısmen kargoda: bir ürün yolda, biri bekliyor", sample: "MO-9010 siparişimin bir kısmı gelmedi" },
+  { order: "MO-9011", label: "40 gün önce teslim edildi (iade süresi geçmiş)", sample: "MO-9011 iade etmek istiyorum" },
+  { order: "MO-9012", label: "açık iade talebi: ürün depoya ulaştı, inceleniyor", sample: "MO-9012 iadem ne durumda?" },
+  { order: "MO-9013", label: "iade 50 gün önce depoya ulaştı, onaylandı ama para hâlâ yatmadı", sample: "MO-9013 iadem 50 gündür yatmadı" },
+  { order: "MO-9014", label: "dün teslim edildi (yanlış ya da hasarlı ürün denemesi)", sample: "MO-9014 siyah istedim bej geldi" },
 ];
+
+export const DEMO_ORDERS_HELP = DEMO_SCENARIOS.map((s) => `#${s.order}  ${s.label}`);
 
 const OTHER_PHONE = "905559999999";
 /** Deneme siparişlerinde kayıtlı ad soyadlar (numara tutmayınca ad soyadla doğrulama denemesi için). */

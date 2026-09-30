@@ -1,4 +1,5 @@
 import { simulate, type SimulationMode } from "./simulator.js";
+import { DEMO_SCENARIOS } from "../orders/demo.js";
 import type { Deps } from "../core/conversation.js";
 import express, { type Express, type NextFunction, type Request, type Response } from "express";
 import { and, eq, ne } from "drizzle-orm";
@@ -272,6 +273,11 @@ export function registerPanelApi(app: Express, deps: PanelApiDeps) {
   });
 
   const testing = new Set<string>();
+  // Test ekranının sağında: deneme siparişleri ve her biri için örnek müşteri mesajı.
+  api.get("/tenants/:tenantId/test/demo-orders", requireUser, requireTenant("owner"), (_req, res) => {
+    res.json({ scenarios: DEMO_SCENARIOS });
+  });
+
   api.post("/tenants/:tenantId/test", requireUser, requireTenant("owner"), async (req, res) => {
     if (!deps.simulatorDeps) return res.status(503).json({ error: "Test sohbeti kullanılamıyor" });
     const history = req.body?.history;

@@ -5,6 +5,7 @@ type Turn = { role: "user" | "assistant"; text: string };
 type Result = { replies: string[]; outcome: string; runs: { agent: string; question: string | null; answer: string | null; error: string | null }[]; handoffs: { summary: string }[]; demoHelp: string[] };
 type Proposal = { summary: string; lessons: string[]; replaces: { id: string; text: string }[] };
 type Lesson = { id: string; text: string };
+type Scenario = { order: string; label: string; sample: string };
 
 /** Ekrandaki sohbet: müşteri ve Lina mesajları, geri bildirimler ve Lina'nın çıkardığı dersler. */
 type Entry =
@@ -39,6 +40,7 @@ export function TestPage({ store, replyDelayMs = TEST_REPLY_DELAY_MS }: { store:
   const [error, setError] = useState("");
   const [result, setResult] = useState<Result | null>(null);
   const [lessons, setLessons] = useState<Lesson[] | null>(null);
+  const [scenarios, setScenarios] = useState<Scenario[]>([]);
   const bottom = useRef<HTMLDivElement>(null);
   // Zamanlayıcı ve istek, ekranın o anki sohbetini okur (eski çizimin kopyasını değil).
   const current = useRef<Entry[]>([]);
@@ -54,6 +56,10 @@ export function TestPage({ store, replyDelayMs = TEST_REPLY_DELAY_MS }: { store:
   // Sayfadan çıkınca bekleyen ya da hazırlanan cevap bırakılır.
   useEffect(() => () => { clearTimeout(timer.current); request.current?.abort(); }, []);
   useEffect(() => { void loadLessons(); }, [store.tenantId]);
+  useEffect(() => {
+    if (!demo || scenarios.length) return;
+    api<{ scenarios: Scenario[] }>(`${base}/test/demo-orders`).then((r) => setScenarios(r.scenarios), () => setScenarios([]));
+  }, [demo]);
 
   async function loadLessons() {
     try { setLessons((await api<{ lessons: Lesson[] }>(`${base}/lessons`)).lessons); } catch { setLessons([]); }
@@ -204,9 +210,15 @@ export function TestPage({ store, replyDelayMs = TEST_REPLY_DELAY_MS }: { store:
     </section><aside className="panel-card test-details"><h2>Test ayarları</h2>
       <label><input type="checkbox" checked={demo} disabled={busy || entries.length > 0} onChange={e => setDemo(e.target.checked)} /> Deneme siparişlerini kullan</label>
       <p className="hint">Siparişler örnektir. Bu seçimi değiştirmek için yeni sohbet açın.</p>
+      {demo && scenarios.length > 0 && <div className="test-scenarios">
+        <h2>Deneme siparişleri</h2>
+        <p className="hint">Hepsi test müşterisine (Ayşe Yılmaz) ait; MO-9005 başka bir numaranın. Tıklayınca örnek mesaj yazılır, isterseniz değiştirip gönderin.</p>
+        <ul>{scenarios.map((sc) => <li key={sc.order}>
+          <button type="button" className="test-scenario" onClick={() => setText(sc.sample)}><strong>{sc.order}</strong> {sc.label}</button>
+        </li>)}</ul>
+      </div>}
       <p className="hint">WhatsApp’taki gibi: Lina son mesajınızdan {replyDelayMs / 1000} sn sonra cevaplar. Bu sürede yazarsanız bekleme baştan başlar; art arda mesajlarınızı tek mesaj gibi okuyup tek cevap verir.</p>
       <p className="hint">Bu ekran metin sohbetini test eder. Konuşma geçmişi bu sayfada tutulur; müşteri kayıtlarına yazılmaz. Gerçek API kullanımı ücretlidir.</p>
-      {result?.demoHelp.map(line => <p className="hint" key={line}>{line}</p>)}
       {result?.handoffs.map((h,i) => <p key={i}>Ekibe devir: {h.summary}</p>)}
       <h2>Lina’nın öğrendikleri{lessons?.length ? ` (${lessons.length})` : ""}</h2>
       <p className="hint">Lina’nın cevabı yanlış ya da eksikse “geri bildirim: …” diye yazın. Lina bundan bir kural çıkarır; siz onaylayınca kaydedilir ve WhatsApp’ta da hemen geçerli olur.</p>

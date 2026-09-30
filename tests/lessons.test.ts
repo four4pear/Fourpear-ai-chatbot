@@ -139,6 +139,13 @@ describe("Lina'yı eğitmek", () => {
     expect(await loadLessons(database.db, tenant.id)).toEqual([]);
   });
 
+  it("deneme siparişleri listesi: her senaryo örnek mesajıyla; yalnızca mağaza sahibi", async () => {
+    expect((await call("GET", `${url()}/test/demo-orders`, { cookie: agentCookie })).status).toBe(403);
+    const res = await call("GET", `${url()}/test/demo-orders`, { cookie: ownerCookie });
+    expect(res.body.scenarios).toHaveLength(14);
+    expect(res.body.scenarios.find((s: { order: string }) => s.order === "MO-9013")).toMatchObject({ sample: "MO-9013 iadem 50 gündür yatmadı" });
+  });
+
   it("boş ya da çok uzun kural kaydedilmez", async () => {
     expect((await call("POST", `${url()}/lessons`, { cookie: ownerCookie, body: { texts: [" "] } })).status).toBe(400);
     expect((await call("POST", `${url()}/lessons`, { cookie: ownerCookie, body: { texts: ["x".repeat(1001)] } })).status).toBe(400);
