@@ -41,7 +41,7 @@ import {
 import { isEnabled } from "../knowledge/base.js";
 import { llmFromClient } from "../agents/runner.js";
 import { encryptSecret } from "../lib/crypto.js";
-import { DEMO_ORDERS_HELP, demoOrderSource } from "../orders/demo.js";
+import { DEMO_ORDERS_HELP, demoOrderSource, demoReturnsProvider } from "../orders/demo.js";
 import { NOTIFICATION_LABELS } from "../panel/notifications.js";
 import type { WhatsAppSender } from "../whatsapp/client.js";
 
@@ -125,7 +125,8 @@ const deps: Deps = {
   now: () => simulatedNow ?? new Date(),
   replyDelayOverrideMs: args.bekleme ? Number(args.bekleme) * 1000 : undefined,
   // Deneme siparişleri o an konuşan simülatör müşterisine aittir.
-  orderSourceFor: args["demo-siparis"] ? async () => demoOrderSource(() => String(customerNo)) : undefined,
+  orderSourceFor: args["demo-siparis"] ? async () => demoOrderSource(() => String(customerNo), () => simulatedNow ?? new Date()) : undefined,
+  returnsFor: args["demo-siparis"] ? async () => demoReturnsProvider(() => simulatedNow ?? new Date()) : undefined,
 };
 const delaySeconds = deps.replyDelayOverrideMs !== undefined ? deps.replyDelayOverrideMs / 1000 : null;
 

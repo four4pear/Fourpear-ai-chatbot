@@ -4,7 +4,7 @@ import { openDatabase, type DB } from "../db/client.js";
 import { agentRuns, handoffs, knowledgeDocs, messages, tenants, textArchive, whatsappAccounts } from "../db/schema.js";
 import { ingestInbound, respond, type Deps } from "../core/conversation.js";
 import { encryptSecret } from "../lib/crypto.js";
-import { demoOrderSource, DEMO_ORDERS_HELP } from "../orders/demo.js";
+import { demoOrderSource, demoReturnsProvider, DEMO_ORDERS_HELP } from "../orders/demo.js";
 
 type Turn = { role: "user" | "assistant"; text: string };
 
@@ -72,7 +72,7 @@ async function run(source: Deps, db: DB, tenantId: string, history: Turn[], demo
     // Deneme siparişleri seçilmediyse canlıdaki gibi: mağazanın sipariş ve iade bağlantısı kullanılır.
     // Test numarası hiçbir siparişle eşleşmez; gerçek siparişlerde Lina doğrulama ister, bilgi paylaşmaz.
     orderSourceFor: demo ? async () => demoOrderSource(() => customerPhone) : source.orderSourceFor,
-    returnsFor: demo ? undefined : source.returnsFor,
+    returnsFor: demo ? async () => demoReturnsProvider() : source.returnsFor,
   };
   // Görünen test sohbeti yeniden kurulur; eski turlar için yapay zekâ çağrılmaz.
   let conversationId: string | undefined;

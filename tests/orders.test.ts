@@ -16,7 +16,7 @@ import { classifyFindings } from "../src/core/notifications.js";
 import { openDatabase, type Database } from "../src/db/client.js";
 import { conversations, customers, handoffs, notifications, tenants, whatsappAccounts, type Tenant } from "../src/db/schema.js";
 import { encryptSecret } from "../src/lib/crypto.js";
-import { demoOrderSource } from "../src/orders/demo.js";
+import { demoOrderSource, demoReturnsProvider } from "../src/orders/demo.js";
 import { buildOrderSheet, findDate, preorderFor, specialLines, type ProductTextAt } from "../src/orders/facts.js";
 import { shopifyOrderSource } from "../src/orders/shopify.js";
 import { belongsTo, nameMatches, sameOrderNumber, type OrderFacts, type OrderItem } from "../src/orders/types.js";
@@ -521,6 +521,39 @@ const RIVA_PRODUCT = {
   variants: [{ id: 2, title: "2–40/42 / Vizon", price: "2160.00", compare_at_price: "3600.00" }],
 } as StorefrontProduct;
 
+describe("deneme siparişleri", () => {
+  const source = demoOrderSource(() => CUSTOMER, () => NOW);
+  const sheet = async (no: string) => buildOrderSheet((await source.byName(no))!, new Map(), NOW, TZ).text;
+
+  it("her durum için bir sipariş var; kampanya ve ön sipariş yazıları siparişin içinde", async () => {
+    expect(await sheet("MO-9002")).toContain("SONBAHAR İNDİRİMİ");
+    expect(await sheet("MO-9001")).toContain("GECİKME");
+    expect(await sheet("MO-9006")).toContain("Hazırlanıyor");
+    expect(await sheet("MO-9007")).toContain("https://www.yurticikargo.com");
+    expect(await sheet("MO-9008")).toContain("10 Ekim");
+    expect(await sheet("MO-9008")).not.toContain("GECİKME");
+    expect(await sheet("MO-9009")).toContain("İptal edildi (19 Eylül 2026)");
+    expect(await sheet("MO-9010")).toContain("Kısmen kargoya verildi");
+    expect(await sheet("MO-9011")).toContain("Teslim edildi (19 Ağustos 2026)");
+  });
+
+  it("tarihler bugüne göre kurulur: senaryolar zamanla bozulmaz", async () => {
+    const later = demoOrderSource(() => CUSTOMER, () => new Date("2026-12-01T09:00:00Z"));
+    const order = (await later.byName("MO-9003"))!;
+    expect(order.shipments[0]!.deliveredAt!.toISOString().slice(0, 10)).toBe("2026-11-27");
+  });
+
+  it("iade talepleri: MO-9012 inceleniyor, MO-9013 50 gün önce depoya ulaştı ama para iadesi yok", async () => {
+    const returns = demoReturnsProvider(() => NOW);
+    const [open] = await returns.requestsFor("#MO-9012");
+    expect(open).toMatchObject({ status: "RECEIVED", createdAt: "2026-09-20" });
+    const [late] = await returns.requestsFor("#MO-9013");
+    expect(late!.status).toBe("APPROVED");
+    expect(late!.history.find((h) => h.status === "RECEIVED")!.at).toBe("2026-08-09");
+    expect(await returns.requestsFor("#MO-9003")).toEqual([]);
+  });
+});
+
 describe("sipariş uzmanı", () => {
   let database: Database;
   let tenant: Tenant;
@@ -537,7 +570,7 @@ describe("sipariş uzmanı", () => {
   });
 
   const ctx = () => ({ db: database.db, llm: fakeLlm, model: "claude-sonnet-5", tenantId: tenant.id, conversationId: null });
-  const deps = () => ({ source: demoOrderSource(() => CUSTOMER), waId: CUSTOMER, timeZone: TZ, now: NOW, returns: null });
+  const deps = () => ({ source: demoOrderSource(() => CUSTOMER, () => NOW), waId: CUSTOMER, timeZone: TZ, now: NOW, returns: null });
 
   it("sipariş önceden okunur: kart kampanya ve gecikmeyle uzmana gider", async () => {
     const findings = newFindings();
@@ -602,7 +635,9 @@ describe("sipariş uzmanı", () => {
     await askOrderAgent(ctx(), tenant, deps(), { topic: "status", question: "Siparişim ne durumda?", orderNumber: null }, findings);
     const sent = textOf(calls.order[0]!.messages[0]!.content);
     expect(sent).toContain("#MO-9004 · 24 Eylül 2026");
-    expect(sent).toContain("#MO-9001 · 12 Eylül 2026 · Hazırlanıyor");
+    // En yeni 5 sipariş listelenir.
+    expect(sent).toContain("#MO-9006 · 27 Eylül 2026 · Hazırlanıyor");
+    expect(sent).not.toContain("#MO-9001");
     expect(sent).not.toContain("#MO-9005");
   });
 
@@ -699,7 +734,7 @@ describe("konuşma akışı: sipariş sorusu devredilmez, ekibe bildirim düşer
       // Yalnızca MAIUS'ta sipariş kaynağı var (Shopify bağlı). MO-9999 sorgusu Shopify hatası verir.
       orderSourceFor: async (id) => {
         if (id !== tenantId) return null;
-        const demo = demoOrderSource(() => CUSTOMER);
+        const demo = demoOrderSource(() => CUSTOMER, () => NOW);
         return {
           byName: async (n: string) => {
             if (n.includes("9999")) throw new Error("Shopify GraphQL hatası (503)");
