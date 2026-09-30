@@ -71,6 +71,11 @@ const bytea = customType<{ data: Buffer; driverData: Uint8Array }>({
 });
 
 const createdAt = () => timestamp("created_at", { withTimezone: true }).notNull().defaultNow();
+/**
+ * Kaydın gerçek anı. now() işlemin başladığı anı verir; aynı işlemde art arda eklenen mesajlar
+ * (ör. panel test sohbeti) aynı zamanı alıp karışırdı. Sıranın önemli olduğu tablolarda kullanılır.
+ */
+const createdAtClock = () => timestamp("created_at", { withTimezone: true }).notNull().default(sql`clock_timestamp()`);
 
 export const tenants = pgTable("tenants", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -157,7 +162,7 @@ export const messages = pgTable(
     /** WhatsApp mesaj kimliği; gelen mesajlarda tekrar işlemeyi önler. */
     waMessageId: text("wa_message_id").unique(),
     meta: jsonb("meta").$type<Record<string, unknown>>(),
-    createdAt: createdAt(),
+    createdAt: createdAtClock(),
   },
   (t) => [index("messages_conversation_idx").on(t.conversationId, t.createdAt)],
 );
@@ -181,7 +186,7 @@ export const agentRuns = pgTable(
     cacheWriteTokens: integer("cache_write_tokens").notNull().default(0),
     durationMs: integer("duration_ms").notNull().default(0),
     error: text("error"),
-    createdAt: createdAt(),
+    createdAt: createdAtClock(),
   },
   (t) => [index("agent_runs_tenant_idx").on(t.tenantId, t.createdAt)],
 );

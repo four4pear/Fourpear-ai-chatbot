@@ -122,6 +122,8 @@ const panel = {
   wa: deps.wa,
   masterKey: config.MASTER_KEY,
   events,
+  // Postgres'te test sohbeti geri alınan işlemde çalışır; bellekte ayrı veritabanı açmaz (~700 MB).
+  simulatorMode: config.DATABASE_URL ? ("transaction" as const) : ("copy" as const),
 };
 
 const { app, queue, scheduler } = createApp(config, deps, shopifyRoutes, panel);

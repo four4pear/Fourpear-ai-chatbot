@@ -71,6 +71,13 @@
       "when": 1790672099464,
       "tag": "0009_steep_deathstrike",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1790763466898,
+      "tag": "0010_message_clock_timestamp",
+      "breakpoints": true
     }
   ]
 }

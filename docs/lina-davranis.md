@@ -158,6 +158,7 @@ Mağaza mesai saatlerini panelden girer.
 Müşteriler çoğu zaman tek uzun mesaj yerine art arda kısa mesajlar yazar ("Merhaba" / "siparişim gelmedi" / "#1045"). Lina insan temsilci gibi davranır:
 - Müşteri yazınca "okundu" ve "yazıyor…" hemen gösterilir; Lina **müşterinin son mesajından 30 saniye sonra** cevap verir. Bu sürede yeni mesaj gelirse bekleme baştan başlar.
 - Son cevaptan beri gelen bütün mesajları **tek bir yazı gibi** okur ve **tek cevap** verir; selamlaşmaya ayrı cevap vermez.
+- Birbirini tamamlayan parçaları birleştirir ("siparişim" / "hâlâ gelmedi" / "#1045" → tek istek). Sonraki mesaj öncekini düzeltiyorsa ("pardon 1046 olacak") son hâlini esas alır. Tekrarlanan soruyu bir kez, ayrı ayrı sorulan soruların hepsini aynı cevapta sırayla cevaplar.
 - Cevap hazırlanırken yeni mesaj gelirse hazırlanan cevap **gönderilmeden iptal** edilir, bekleme yeniden başlar, sonra hepsine birlikte cevap verilir. Aynı anda tek cevap hazırlanır; cevaplar karışmaz.
 - **Üst sınır:** durmadan yazan müşteri de ilk cevapsız mesajından en fazla **3 dakika** sonra cevap alır; bu sınırdan sonra hazırlanan cevap iptal edilmez, yeni mesajlar hemen ardından ayrıca cevaplanır.
 - WhatsApp'ın "yazıyor…" göstergesi 25 sn'de kaybolduğu için bekleme boyunca ~20 sn'de bir yenilenir.
@@ -165,6 +166,7 @@ Müşteriler çoğu zaman tek uzun mesaj yerine art arda kısa mesajlar yazar ("
 - Toplu mesajda sadece ses/video/belge varsa sabit metin bir kez gider; yazıyla karışıksa Lina yazılı kısmı cevaplar, açamadığı içeriği yazarak iletmesini rica eder.
 - Sunucu bekleme sırasında yeniden başlarsa son 10 dakikada cevapsız kalan müşteriler açılışta yeniden sıraya alınır.
 - Süreler mağaza ayarıdır (`replyDelaySeconds` = 30, `maxReplyWaitSeconds` = 180); panel Ayarlar ekranına eklenecek.
+- Paneldeki **Lina'yı test et** ekranı aynı davranışı 10 saniyelik beklemeyle gösterir: her yeni mesajda bekleme baştan başlar, art arda mesajlara tek cevap verilir, cevap hazırlanırken yazılırsa hazırlanan cevap iptal edilir.
 
 ## 11. Kampanya yazıları (asla unutulmaz)
 Mağazalar kampanya ve ön sipariş koşullarını ürün açıklamalarına ve sitenin görünen yerlerine yazar. Lina bunları **her zaman** okur ve kampanya bittikten sonra da unutmaz.

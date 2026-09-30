@@ -60,11 +60,14 @@ Panel kodu `panel/` klasöründe (React + Vite); derlenmiş hali `panel/dist` su
 ### Panelde test sohbeti
 
 Mağaza sahibi veya yönetici hesabıyla `/m/<mağaza>/test` ekranını açın (menü: **Lina’yı test et**).
-Gerçek mağaza bilgileri ve Claude ile metin sohbetini deneyebilirsiniz. Testler ayrı, geçici bir
-veritabanında çalışır; müşteri kayıtlarına yazılmaz ve WhatsApp’a mesaj göndermez. Gerçek API kullanımı
+Gerçek mağaza bilgileri ve Claude ile metin sohbetini deneyebilirsiniz. Testler iz bırakmaz: canlıda
+(Postgres) sonunda geri alınan bir işlem içinde, yerelde bellekteki ayrı bir veritabanında çalışır;
+müşteri kayıtlarına yazılmaz ve WhatsApp’a mesaj göndermez. Gerçek API kullanımı
 ücretlidir. İsteğe bağlı deneme siparişleri, uzman çağrıları ve yeni sohbet düğmesi bulunur.
-Cevaplar beklemeden hazırlanır; her istekte görünür metin geçmişi yeniden kurulur. Bu ekran
-zamanlayıcı, fotoğraf ve ekip devralma akışlarını simüle etmez. En fazla 20 mesajdan sonra yeni sohbet açın.
+Lina son mesajdan 10 sn sonra cevaplar; bu sürede yeni mesaj yazılırsa bekleme baştan başlar ve art arda
+mesajlara tek cevap verilir (cevap hazırlanırken yazılırsa hazırlanan cevap iptal edilir). Her istekte görünür
+metin geçmişi yeniden kurulur. Bu ekran fotoğraf ve ekip devralma akışlarını simüle etmez. En fazla 40 mesajdan
+sonra yeni sohbet açın.
 
 ### Lina ile terminalden konuşma (WhatsApp gerekmez)
 

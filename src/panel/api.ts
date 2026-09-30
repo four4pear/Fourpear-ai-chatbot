@@ -1,4 +1,4 @@
-import { simulate } from "./simulator.js";
+import { simulate, type SimulationMode } from "./simulator.js";
 import type { Deps } from "../core/conversation.js";
 import express, { type Express, type NextFunction, type Request, type Response } from "express";
 import { and, eq, ne } from "drizzle-orm";
@@ -27,6 +27,8 @@ import {
 
 export type PanelApiDeps = {
   simulatorDeps?: Deps;
+  /** Test sohbetinin kayıt bırakmama yöntemi (bkz. panel/simulator.ts); canlıda "transaction". */
+  simulatorMode?: SimulationMode;
   db: DB;
   /** Davet/sıfırlama linklerinin başı, ör. https://panel.ornek.com */
   publicUrl: string;
@@ -272,14 +274,19 @@ export function registerPanelApi(app: Express, deps: PanelApiDeps) {
   api.post("/tenants/:tenantId/test", requireUser, requireTenant("owner"), async (req, res) => {
     if (!deps.simulatorDeps) return res.status(503).json({ error: "Test sohbeti kullanılamıyor" });
     const history = req.body?.history;
-    if (!Array.isArray(history) || history.length < 1 || history.length > 40 || history.some((m: any, i: number) =>
-      !m || m.role !== (i % 2 === 0 ? "user" : "assistant") || typeof m.text !== "string" || !m.text.trim() || m.text.length > 4000
-    ) || history.at(-1).role !== "user") return res.status(400).json({ error: "Geçersiz sohbet. En fazla 20 mesaj deneyebilirsiniz; ardından yeni sohbet açın." });
+    // Müşteri art arda birkaç mesaj yazabilir (WhatsApp'taki gibi tek cevapta toplanır); sohbet müşteriyle başlar ve biter.
+    if (!Array.isArray(history) || history.length < 1 || history.length > 40 || history.some((m: any) =>
+      !m || (m.role !== "user" && m.role !== "assistant") || typeof m.text !== "string" || !m.text.trim() || m.text.length > 4000
+    ) || history[0].role !== "user" || history.at(-1).role !== "user") return res.status(400).json({ error: "Geçersiz sohbet. En fazla 40 mesaj deneyebilirsiniz; ardından yeni sohbet açın." });
     const key = `${(res.locals as Locals).user!.id}:${param(req, "tenantId")}`;
     if (testing.has(key) || testing.size >= 4) return res.status(429).json({ error: "Devam eden cevabın tamamlanmasını bekleyin." });
     testing.add(key);
+    // Hazırlanırken yeni mesaj yazılınca ekran isteği bırakır: yapay zekâ çağrısı da iptal edilir.
+    const abort = new AbortController();
+    res.on("close", () => { if (!res.writableFinished) abort.abort(); });
     try {
-      res.json(await simulate(deps.simulatorDeps, param(req, "tenantId"), history, req.body.demo === true));
+      const result = await simulate(deps.simulatorDeps, param(req, "tenantId"), history, req.body.demo === true, abort.signal, deps.simulatorMode);
+      if (!abort.signal.aborted) res.json(result);
     } finally { testing.delete(key); }
   });
 
