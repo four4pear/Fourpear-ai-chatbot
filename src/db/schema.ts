@@ -45,6 +45,11 @@ export type TenantSettings = {
    * doğrulanırken kullanılır; yanlışsa başka ülkeden bir numara yanlış kişiyle eşleşebilir.
    */
   phoneCountryCode: string;
+  /**
+   * İade uzmanının el kitabı: mağazanın iade ve değişimde nasıl davranılacağına dair talimatları
+   * (ör. "kampanyalı üründe istisna yapma", "beden değişiminde önce stok sor"). Boşsa politikalar geçerli.
+   */
+  returnsPlaybook: string;
 };
 
 export const defaultTenantSettings: TenantSettings = {
@@ -57,6 +62,7 @@ export const defaultTenantSettings: TenantSettings = {
   maxReplyWaitSeconds: 180,
   returnsFormUrl: "",
   phoneCountryCode: "90",
+  returnsPlaybook: "",
 };
 
 /** Eski kayıtlarda eksik olabilecek alanları varsayılanlarla tamamlar. */
@@ -318,8 +324,19 @@ export const textArchive = pgTable(
  * Sipariş konularında ekibe bildirim (docs/lina-davranis.md "Ekibe bildirimler"). Bu konularda
  * konuşma devredilmez; her sipariş sorusu kaydedilir, önemliler panelde sesli uyarıyla gelir.
  */
-/** lookup_failed: sipariş sistemine ulaşılamadı (ör. Shopify hatası); müşterinin isteği ekibe kalır. */
-export const IMPORTANT_KINDS = ["complaint", "cancel_request", "change_request", "lookup_failed", "delay", "no_tracking"] as const;
+/**
+ * lookup_failed: sipariş sistemine ulaşılamadı (ör. Shopify hatası); müşterinin isteği ekibe kalır.
+ * return_review: iade uzmanı talebin ekip kararı gerektirdiğine karar verdi (kural dışı istek, iade sürecinde sorun).
+ */
+export const IMPORTANT_KINDS = [
+  "complaint",
+  "return_review",
+  "cancel_request",
+  "change_request",
+  "lookup_failed",
+  "delay",
+  "no_tracking",
+] as const;
 export const RECORD_KINDS = ["return_request", "return_status", "unverified", "order_question"] as const;
 /** Önem sırasıyla: bir cevapta birden fazla konu varsa bildirimin türü ilk sıradaki olur. */
 export const NOTIFICATION_KINDS = [...IMPORTANT_KINDS, ...RECORD_KINDS] as const;

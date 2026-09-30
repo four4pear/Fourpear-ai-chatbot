@@ -11,6 +11,7 @@ type Middleware = (req: Request, res: Response, next: NextFunction) => unknown;
 /** Panelde görünen Türkçe adlar. */
 export const NOTIFICATION_LABELS: Record<Notification["kind"], string> = {
   complaint: "Şikayet",
+  return_review: "İade: ekip kararı gerekiyor",
   cancel_request: "İptal isteği",
   change_request: "Değişiklik isteği",
   lookup_failed: "Sipariş bilgisine ulaşılamadı",

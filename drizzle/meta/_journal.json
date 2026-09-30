@@ -78,6 +78,13 @@
       "when": 1790763466898,
       "tag": "0010_message_clock_timestamp",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1790765235118,
+      "tag": "0011_returns_playbook_setting",
+      "breakpoints": true
     }
   ]
 }

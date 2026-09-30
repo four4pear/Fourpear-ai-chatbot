@@ -8,6 +8,7 @@ import { createApp } from "../src/app.js";
 import { recordSnapshot } from "../src/archive/archive.js";
 import { productSnapshot, type StorefrontProduct } from "../src/archive/storefront.js";
 import { askOrderAgent, newFindings, type OrderFindings } from "../src/agents/orders.js";
+import { askReturnsAgent } from "../src/agents/returns.js";
 import type { Llm } from "../src/agents/runner.js";
 import type { Deps } from "../src/core/conversation.js";
 import { EventBus, type PanelEvent } from "../src/core/events.js";
@@ -447,14 +448,24 @@ const toolUse = (name: string, input: unknown) =>
 const textOf = (content: Anthropic.MessageParam["content"]) =>
   typeof content === "string" ? content : content.map((b) => (b.type === "text" ? b.text : "")).join(" ");
 
-/** Lina'ya, sipariş uzmanına ve bilgi uzmanına giden istekler. */
-const calls = { lina: [] as Anthropic.MessageCreateParamsNonStreaming[], order: [] as Anthropic.MessageCreateParamsNonStreaming[] };
+/** Lina'ya, sipariş uzmanına, iade uzmanına ve bilgi uzmanına giden istekler. */
+const calls = {
+  lina: [] as Anthropic.MessageCreateParamsNonStreaming[],
+  order: [] as Anthropic.MessageCreateParamsNonStreaming[],
+  returns: [] as Anthropic.MessageCreateParamsNonStreaming[],
+};
 let orderAgentScript: ((params: Anthropic.MessageCreateParamsNonStreaming) => Anthropic.Message) | null = null;
+let returnsAgentScript: ((params: Anthropic.MessageCreateParamsNonStreaming) => Anthropic.Message) | null = null;
 
 const fakeLlm: Llm = {
   async create(params) {
     const system = (params.system as Anthropic.TextBlockParam[])[0]!.text;
     const last = params.messages.at(-1)!;
+    if (system.includes("iade ve değişim uzmanısın")) {
+      calls.returns.push(structuredClone(params));
+      if (returnsAgentScript) return returnsAgentScript(params);
+      return reply(`İADE UZMANI: ${textOf(last.content).split("\n").slice(0, 5).join(" | ")}`);
+    }
     if (system.includes("sipariş uzmanısın")) {
       calls.order.push(structuredClone(params));
       if (orderAgentScript) return orderAgentScript(params);
@@ -466,7 +477,11 @@ const fakeLlm: Llm = {
     if (blocks[0]?.type === "tool_result") return reply(`Lina: ${String((blocks[0] as Anthropic.ToolResultBlockParam).content)}`);
     const text = textOf(last.content);
     const number = /MO-\d+/.exec(text)?.[0] ?? "";
-    const topic = text.includes("iptal") ? "cancel" : text.includes("hasarlı") ? "complaint" : "status";
+    if (text.includes("iade") || text.includes("hasarlı")) {
+      const topic = text.includes("hasarlı") ? "damaged" : "return";
+      return toolUse("ask_returns_agent", { topic, question: text, order_number: number });
+    }
+    const topic = text.includes("iptal") ? "cancel" : text.includes("gelmedi") ? "complaint" : "status";
     if (text.includes("sipariş") || number) return toolUse("ask_order_agent", { topic, question: text, order_number: number });
     return reply("Merhaba, nasıl yardımcı olabilirim?");
   },
@@ -657,7 +672,9 @@ describe("konuşma akışı: sipariş sorusu devredilmez, ekibe bildirim düşer
     events.length = 0;
     calls.lina.length = 0;
     calls.order.length = 0;
+    calls.returns.length = 0;
     orderAgentScript = null;
+    returnsAgentScript = null;
     await database.db.delete(customers);
   });
 
@@ -748,28 +765,82 @@ describe("konuşma akışı: sipariş sorusu devredilmez, ekibe bildirim düşer
     expect(n).toMatchObject({ kind: "unverified", important: false, orderNames: [] });
   });
 
-  it("Lina'nın talimatı: sipariş kuralları, iade formu linki; devir aracı sipariş için kullanılmaz", async () => {
+  it("Lina'nın talimatı: müşteri hizmetleri yaklaşımı, iade uzmanı, iade formu; devir aracı sipariş için kullanılmaz", async () => {
     await say("sipariş durumumu öğrenebilir miyim?");
     const params = calls.lina[0]!;
     const system = (params.system as Anthropic.TextBlockParam[])[0]!.text;
     expect(system).toContain("ask_order_agent");
-    expect(system).toContain("iade formunun linkini ver (https://iade.betulsaday.com)");
-    expect(system).toContain("Ekibimize ilettim.");
+    expect(system).toContain("ask_returns_agent");
+    expect(system).toContain("Mağazanın iade ve değişim formu: https://iade.betulsaday.com");
+    // Önce anla ve sakinleştir; sorumlusuna iletme cümlesi cevabın sonunda, zaman sözü yok.
+    expect(system).toContain("*Müşteri hizmetleri yaklaşımı*");
+    expect(system).toContain(
+      '"Talebinizi {birim} süreçlerimizden sorumlu arkadaşımıza ilettim, konuyla ilgili gerekli işlem yapılacak. Bu sırada aklınıza takılan bir şey olursa buradayım."',
+    );
+    expect(system).toContain("İptal talebinizi sipariş süreçlerimizden sorumlu arkadaşımıza ilettim");
+    expect(system).toContain("ekibin ne zaman ya da nasıl döneceğini söyleme");
+    expect(system).not.toContain("Ekibimize ilettim");
     expect(system).not.toContain("Bilgiler tamamlanınca devret");
     // Başvuru yolu çelişkisinde (form mu, e-posta mı) mağazanın iade formu geçerli; rakam çelişkisinde devir.
     expect(system).toContain("İstisna: çelişki yalnızca iade, değişim ya da hasarlı ürün başvurusunun nereden yapılacağıyla ilgiliyse");
-    expect(system).toContain("ekibin ne zaman ya da nasıl döneceğini söyleme");
-    const handoffTool = params.tools!.find((t) => "name" in t && t.name === "handoff_to_human") as Anthropic.Tool;
-    expect(handoffTool.description).toContain("Sipariş, iade, iptal, değişiklik ve şikayet konularında kullanma");
+    const tool = (name: string) => params.tools!.find((t) => "name" in t && t.name === name) as Anthropic.Tool;
+    expect(tool("handoff_to_human").description).toContain("Sipariş, iade, iptal, değişiklik ve şikayet konularında kullanma");
+    // İade, değişim ve hasarlı ürün sipariş uzmanına değil iade uzmanına gider.
+    const orderTopics = (tool("ask_order_agent").input_schema.properties as Record<string, { enum?: string[] }>).topic!.enum;
+    expect(orderTopics).not.toContain("return");
+    expect(orderTopics).not.toContain("return_status");
   });
 
-  it("Shopify'ı bağlı olmayan mağazada eski davranış: sipariş uzmanı yok, iade/şikayet devredilir", async () => {
+  it("iade isteği: iade uzmanı siparişin kartını ve iade formunu görür; kendi çözebildiğini iletmez (sessiz kayıt)", async () => {
+    await say("MO-9002 siparişimi iade etmek istiyorum");
+    expect(calls.order).toHaveLength(0);
+    const request = calls.returns[0]!;
+    const card = textOf(request.messages[0]!.content);
+    expect(card).toContain("Konu: iade ya da değişim isteği, iade koşulları");
+    expect(card).toContain("#MO-9002");
+    expect(card).toContain("SONBAHAR İNDİRİMİ");
+    const system = (request.system as Anthropic.TextBlockParam[])[0]!.text;
+    expect(system).toContain("Mağazanın iade ve değişim formu: https://iade.betulsaday.com");
+    expect(sent[0]).toContain("İADE UZMANI:");
+    const [n] = await allNotifications();
+    expect(n).toMatchObject({ kind: "return_request", important: false, orderNames: ["#MO-9002"] });
+    expect(await database.db.select().from(handoffs)).toHaveLength(0);
+  });
+
+  it("kural dışı iade isteği: iade uzmanı ekibe iletir, önemli bildirim düşer, konuşma devredilmez", async () => {
+    let step = 0;
+    returnsAgentScript = () =>
+      step++ === 0
+        ? toolUse("forward_to_team", { order_number: "MO-9002", reason: "Kampanyalı ürünü beden olmadı diye iade etmek istiyor." })
+        : reply("EKİBE: iletildi");
+    await say("MO-9002 kampanyalı ama iade etmek istiyorum");
+    const [n] = await allNotifications();
+    expect(n).toMatchObject({ kind: "return_review", important: true, orderNames: ["#MO-9002"] });
+    expect(n!.details.issues).toEqual(["İade: Kampanyalı ürünü beden olmadı diye iade etmek istiyor."]);
+    expect(await database.db.select().from(handoffs)).toHaveLength(0);
+  });
+
+  it("hasarlı ürün iade uzmanına gider ve her durumda önemlidir", async () => {
+    await say("MO-9003 hasarlı geldi");
+    expect(textOf(calls.returns[0]!.messages[0]!.content)).toContain("Konu: hasarlı, hatalı ya da yanlış ürün");
+    const [n] = await allNotifications();
+    expect(n).toMatchObject({ kind: "complaint", important: true });
+  });
+
+  it("Shopify'ı bağlı olmayan mağaza: sipariş uzmanı yok; iade uzmanı politikalarla çalışır, iletilecek konu devredilir", async () => {
     await say("merhaba", OTHER_NUMBER_ID);
     const params = calls.lina[0]!;
     const system = (params.system as Anthropic.TextBlockParam[])[0]!.text;
-    expect(system).toContain("Bilgiler tamamlanınca devret");
+    expect(system).toContain('Uzman ekibe "iletilmeli" dediyse');
     expect(system).not.toContain("İstisna: çelişki");
     expect(params.tools!.some((t) => "name" in t && t.name === "ask_order_agent")).toBe(false);
+    expect(params.tools!.some((t) => "name" in t && t.name === "ask_returns_agent")).toBe(true);
+
+    await say("iade etmek istiyorum", OTHER_NUMBER_ID);
+    const request = calls.returns[0]!;
+    expect(textOf(request.messages[0]!.content)).toContain("Sipariş sistemi bağlı değil");
+    expect(request.tools!.map((t) => ("name" in t ? t.name : ""))).not.toContain("forward_to_team");
+    expect((request.system as Anthropic.TextBlockParam[])[0]!.text).toContain('EKİBE satırına "iletilmeli"');
     expect(await allNotifications()).toHaveLength(0);
   });
 });

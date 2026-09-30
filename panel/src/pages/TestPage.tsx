@@ -4,6 +4,8 @@ import { api, type Membership } from "../api";
 type Message = { role: "user" | "assistant"; text: string };
 type Result = { replies: string[]; outcome: string; runs: { agent: string; question: string | null; answer: string | null; error: string | null }[]; handoffs: { summary: string }[]; demoHelp: string[] };
 
+const AGENT_LABELS: Record<string, string> = { order: "Sipariş uzmanı", returns: "İade uzmanı", knowledge: "Mağaza bilgi uzmanı" };
+
 /** WhatsApp'taki gibi: Lina son mesajdan bu kadar sonra cevaplar; her yeni mesajda bekleme baştan başlar. */
 export const TEST_REPLY_DELAY_MS = 10_000;
 
@@ -97,7 +99,7 @@ export function TestPage({ store, replyDelayMs = TEST_REPLY_DELAY_MS }: { store:
       {result?.demoHelp.map(line => <p className="hint" key={line}>{line}</p>)}
       {result?.handoffs.map((h,i) => <p key={i}>Ekibe devir: {h.summary}</p>)}
       <h2>Son cevabın uzman çağrıları</h2>
-      {result?.runs.filter(r => r.agent !== "lina").map((r,i) => <details key={i}><summary>{r.agent === "order" ? "Sipariş uzmanı" : "Mağaza bilgi uzmanı"}</summary><p>{r.question}</p><p>{r.answer || r.error}</p></details>)}
+      {result?.runs.filter(r => r.agent !== "lina").map((r,i) => <details key={i}><summary>{AGENT_LABELS[r.agent] ?? r.agent}</summary><p>{r.question}</p><p>{r.answer || r.error}</p></details>)}
       {!result && <p className="hint">İlk cevaptan sonra burada görünecek.</p>}
       {result?.runs.some(r => r.error) && <p role="alert" className="test-error">Yapay zekâ çağrısında hata oluştu. Sunucu kayıtlarını kontrol edin.</p>}
     </aside></div>

@@ -108,6 +108,7 @@ Shopify uygulaması kurulu mağazada Lina sipariş sorularını sipariş uzmanı
 ```bash
 npm run tenant -- upsert --slug maius --returns-url https://iade.betulsaday.com     # Lina'nın vereceği iade formu
 npm run tenant -- returns --slug maius --url https://iade.betulsaday.com/mcp.php --store maius   # iade sistemi (anahtar gizli sorulur)
+npm run tenant -- returns-playbook --slug maius --file iade-el-kitabi.md   # iade uzmanının el kitabı (mağazanın talimatları)
 npm run tenant -- returns --slug maius --test      # bağlantı testi: anahtar hangi araçları görüyor?
 npm run chat -- --demo-siparis                     # Shopify bağlı değilken deneme siparişleriyle dene
 ```

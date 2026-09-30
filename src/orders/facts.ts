@@ -9,7 +9,8 @@ import type { OrderFacts, OrderItem, Shipment } from "./types.js";
  * - Tutar, ödeme ve adres kartta yoktur (zaten çekilmez).
  */
 
-export type OrderIssue = { kind: "delay" | "no_tracking"; orderName: string; text: string };
+/** return_review: iade uzmanı talebin ekip kararı gerektirdiğine karar verdi (ör. kural dışı istek). */
+export type OrderIssue = { kind: "delay" | "no_tracking" | "return_review"; orderName: string; text: string };
 
 /** Ürünün sipariş tarihindeki yazısı (kampanya arşivinden). */
 export type ProductTextAt = Pick<TextAt, "confirmed" | "beforeArchive"> & {

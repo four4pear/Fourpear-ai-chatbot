@@ -80,3 +80,21 @@ describe.each<SimulationMode>(["transaction", "copy"])("test sohbeti (%s)", (mod
     } finally { await source.close(); }
   }, 30000);
 });
+
+it("deneme siparişleri seçilmediyse canlıdaki gibi mağazanın sipariş bağlantısını kullanır", async () => {
+  const source = await openDatabase({});
+  try {
+    const [tenant] = await source.db.insert(tenants).values({ slug: "test", name: "Test" }).returning();
+    const create = vi.fn(async (_params: Anthropic.MessageCreateParams) => ({
+      id: "test", type: "message", role: "assistant", content: [{ type: "text", text: "Merhaba!", citations: null }],
+      stop_reason: "end_turn", usage: { input_tokens: 10, output_tokens: 5 },
+    } as Anthropic.Message));
+    const orderSourceFor = vi.fn(async () => ({ byName: async () => null, byPhone: async () => [] }));
+    const deps = { db: source.db, llm: { create }, wa: {}, model: "test", historyLimit: 20, timeZone: "Europe/Istanbul", log: console, orderSourceFor } as unknown as Deps;
+    await simulate(deps, tenant!.id, [{ role: "user", text: "Merhaba" }], false, undefined, "transaction");
+    expect(orderSourceFor).toHaveBeenCalledWith(tenant!.id);
+    const tools = create.mock.calls[0]![0].tools!.map((t) => ("name" in t ? t.name : ""));
+    expect(tools).toContain("ask_order_agent");
+    expect(tools).toContain("ask_returns_agent");
+  } finally { await source.close(); }
+}, 30000);

@@ -21,6 +21,8 @@
  *   npm run tenant -- returns --slug maius --url https://iade.betulsaday.com/mcp.php --store maius
  *        (iade sistemi bağlantısı; anahtar gizli sorulur, bağlantı test edilir)
  *   npm run tenant -- returns --slug maius --test | --off
+ *   npm run tenant -- returns-playbook --slug maius --file iade-el-kitabi.md   (iade uzmanının el kitabı)
+ *   npm run tenant -- returns-playbook --slug maius [--off]   (göster | sil)
  *
  * Kampanya arşivi (ürün ve site yazılarının tarihli kopyaları):
  *   npm run tenant -- archive --slug maius       (vitrinden şimdi güncelle)
@@ -89,6 +91,7 @@ const { values: args } = parseArgs({
     url: { type: "string" },
     store: { type: "string" },
     test: { type: "boolean" },
+    file: { type: "string" },
   },
 });
 
@@ -216,6 +219,18 @@ try {
         .values(values)
         .onConflictDoUpdate({ target: [integrations.tenantId, integrations.kind], set: values });
       console.log(`İade sistemi ${tenant.slug} mağazasına bağlandı (mağaza kodu: ${store}). Anahtar şifreli saklandı.`);
+    }
+  } else if (command === "returns-playbook") {
+    // İade uzmanının el kitabı: mağazanın iade ve değişimde nasıl davranılacağına dair talimatları.
+    const tenant = await tenantBySlug();
+    const settings = resolveSettings(tenant.settings);
+    if (args.file || args.off) {
+      const returnsPlaybook = args.off ? "" : (await readFile(args.file!, "utf8")).trim();
+      if (returnsPlaybook.length > 20_000) throw new Error("El kitabı en fazla 20.000 karakter olabilir");
+      await db.update(tenants).set({ settings: { ...settings, returnsPlaybook } }).where(eq(tenants.id, tenant.id));
+      console.log(returnsPlaybook ? `El kitabı kaydedildi (${returnsPlaybook.length} karakter).` : "El kitabı silindi; iade uzmanı politikalara göre çalışır.");
+    } else {
+      console.log(settings.returnsPlaybook || "(El kitabı yok; iade uzmanı politikalara göre çalışır.)");
     }
   } else if (command === "whatsapp") {
     const tenant = await tenantBySlug();

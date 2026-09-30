@@ -69,7 +69,10 @@ async function run(source: Deps, db: DB, tenantId: string, history: Turn[], demo
       markReadAndTyping: async () => {},
       downloadMedia: async () => { throw new Error("Test ekranı yalnızca metin destekler"); },
     },
-    orderSourceFor: demo ? async () => demoOrderSource(() => customerPhone) : undefined,
+    // Deneme siparişleri seçilmediyse canlıdaki gibi: mağazanın sipariş ve iade bağlantısı kullanılır.
+    // Test numarası hiçbir siparişle eşleşmez; gerçek siparişlerde Lina doğrulama ister, bilgi paylaşmaz.
+    orderSourceFor: demo ? async () => demoOrderSource(() => customerPhone) : source.orderSourceFor,
+    returnsFor: demo ? undefined : source.returnsFor,
   };
   // Görünen test sohbeti yeniden kurulur; eski turlar için yapay zekâ çağrılmaz.
   let conversationId: string | undefined;

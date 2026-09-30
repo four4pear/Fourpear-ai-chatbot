@@ -2,9 +2,11 @@ import { randomBytes } from "node:crypto";
 import type Anthropic from "@anthropic-ai/sdk";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { askOrderAgent, newFindings } from "../src/agents/orders.js";
+import { askReturnsAgent } from "../src/agents/returns.js";
+import { classifyFindings } from "../src/core/notifications.js";
 import type { Llm } from "../src/agents/runner.js";
 import { openDatabase, type Database } from "../src/db/client.js";
-import { integrations, tenants, type Tenant } from "../src/db/schema.js";
+import { integrations, resolveSettings, tenants, type Tenant } from "../src/db/schema.js";
 import { encryptSecret } from "../src/lib/crypto.js";
 import { demoOrderSource } from "../src/orders/demo.js";
 import { McpClient, kolayIadeProvider, sameReturnOrder } from "../src/returns/kolay-iade.js";
@@ -228,3 +230,99 @@ describe("iade sistemi mağaza ayarı", () => {
     expect(content).toContain("İade kargo kodu: DHL123456 (DHL)");
   });
 });
+
+describe("iade uzmanı", () => {
+  let database: Database;
+  let tenant: Tenant;
+  const CUSTOMER = "905321234567";
+  const PLAYBOOK = "Beden değişiminde önce istenen bedenin stokta olup olmadığını sor. Kampanyalı ürünlerde istisna yapma.";
+
+  beforeAll(async () => {
+    database = await openDatabase({});
+    [tenant] = (await database.db
+      .insert(tenants)
+      .values({ slug: "iade-uzmani", name: "MAIUS", settings: { returnsFormUrl: "https://iade.betulsaday.com", returnsPlaybook: PLAYBOOK } })
+      .returning()) as [Tenant];
+  });
+  afterAll(() => database.close());
+
+  /** İlk çağrıda verilen aracı kullanan, sonra "tamam" diyen sahte model; istekleri kaydeder. */
+  function scripted(first?: { name: string; input: unknown }) {
+    const calls: Anthropic.MessageCreateParamsNonStreaming[] = [];
+    const llm: Llm = {
+      async create(params) {
+        calls.push(params);
+        const content =
+          first && calls.length === 1
+            ? [{ type: "tool_use", id: "t1", name: first.name, input: first.input }]
+            : [{ type: "text", text: "tamam", citations: null }];
+        return {
+          id: "m",
+          type: "message",
+          role: "assistant",
+          model: "x",
+          content,
+          stop_reason: first && calls.length === 1 ? "tool_use" : "end_turn",
+          stop_sequence: null,
+          usage: { input_tokens: 1, output_tokens: 1 },
+        } as unknown as Anthropic.Message;
+      },
+    };
+    return { llm, calls };
+  }
+
+  const returns: ReturnsProvider = {
+    async requestsFor(orderName) {
+      return orderName === "#MO-9002"
+        ? [{ code: "IAD-2026-1", type: "EXCHANGE", status: "RECEIVED", createdAt: "2026-09-20", history: [], returnShippingCode: null, carrier: null, items: [] }]
+        : [];
+    },
+  };
+  const orders = () => ({ source: demoOrderSource(() => CUSTOMER), waId: CUSTOMER, timeZone: "Europe/Istanbul", now: new Date("2026-09-28T09:00:00Z"), returns });
+  const ctx = (llm: Llm) => ({ db: database.db, llm, model: "m", tenantId: tenant.id, conversationId: null });
+
+  it("el kitabını, iade formunu, sipariş kartını ve iade talebinin durumunu birlikte okur", async () => {
+    const { llm, calls } = scripted();
+    const findings = newFindings();
+    await askReturnsAgent(ctx(llm), tenant, { knowledge: null, orders: orders() }, { topic: "return", question: "Beden olmadı, değiştirmek istiyorum", orderNumber: "MO-9002" }, findings);
+    const system = (calls[0]!.system as Anthropic.TextBlockParam[])[0]!.text;
+    expect(system).toContain(PLAYBOOK);
+    expect(system).toContain("Mağazanın iade ve değişim formu: https://iade.betulsaday.com");
+    expect(system).toContain("iade el kitabı mağazanın sana talimatıdır");
+    const content = calls[0]!.messages[0]!.content as string;
+    expect(content).toContain("Müşterinin mesajı: Beden olmadı, değiştirmek istiyorum");
+    expect(content).toContain("Talep IAD-2026-1 (değişim): ürün depoya ulaştı");
+    expect([...findings.orders.keys()]).toEqual(["#MO-9002"]);
+  });
+
+  it("ekibe iletme: doğrulanmış siparişle önemli bildirim; başkasının siparişi adıyla yazılmaz", async () => {
+    const forward = (order_number: string) => scripted({ name: "forward_to_team", input: { order_number, reason: "Süresi geçmiş iade istiyor" } });
+    const mine = newFindings();
+    await askReturnsAgent(ctx(forward("MO-9002").llm), tenant, { knowledge: null, orders: orders() }, { topic: "return", question: "?", orderNumber: "MO-9002" }, mine);
+    expect(mine.issues).toEqual([{ kind: "return_review", orderName: "#MO-9002", text: "İade: Süresi geçmiş iade istiyor" }]);
+    mine.topics.push("return");
+    expect(classifyFindings(mine)).toMatchObject({ kind: "return_review", important: true });
+
+    const other = newFindings();
+    await askReturnsAgent(ctx(forward("MO-9005").llm), tenant, { knowledge: null, orders: orders() }, { topic: "return", question: "?", orderNumber: "MO-9005" }, other);
+    expect(other.issues[0]!.orderName).toBe("");
+    expect(other.unverified).toBe(true);
+  });
+
+  it("hasarlı ürün şikayeti, ekip kararından önce gelir", () => {
+    const f = newFindings();
+    f.topics.push("complaint", "return");
+    f.issues.push({ kind: "return_review", orderName: "#MO-9002", text: "İade: hasarlı" });
+    expect(classifyFindings(f).kinds.slice(0, 2)).toEqual(["complaint", "return_review"]);
+  });
+
+  it("sipariş sistemi yokken: sipariş araçları ve ekibe iletme aracı yok, Lina devreder", async () => {
+    const { llm, calls } = scripted();
+    await askReturnsAgent(ctx(llm), tenant, { knowledge: null, orders: null }, { topic: "return_status", question: "İadem ne oldu?", orderNumber: null }, newFindings());
+    const names = calls[0]!.tools!.map((t) => ("name" in t ? t.name : ""));
+    expect(names).toEqual(["report_conflict"]);
+    expect(calls[0]!.messages[0]!.content as string).toContain("Sipariş sistemi bağlı değil");
+    expect(resolveSettings(tenant.settings).returnsPlaybook).toBe(PLAYBOOK);
+  });
+});
+
