@@ -215,6 +215,8 @@ export const agentRuns = pgTable(
     cacheWriteTokens: integer("cache_write_tokens").notNull().default(0),
     durationMs: integer("duration_ms").notNull().default(0),
     error: text("error"),
+    /** live: gerçek müşteri konuşması · test: panel test ekranı (maliyet ayrı görünsün). */
+    source: text("source").$type<"live" | "test">().notNull().default("live"),
     createdAt: createdAtClock(),
   },
   (t) => [index("agent_runs_tenant_idx").on(t.tenantId, t.createdAt)],

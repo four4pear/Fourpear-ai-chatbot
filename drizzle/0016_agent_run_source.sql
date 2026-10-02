@@ -1,0 +1,1 @@
+ALTER TABLE "agent_runs" ADD COLUMN "source" text DEFAULT 'live' NOT NULL;

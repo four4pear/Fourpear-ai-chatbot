@@ -1,5 +1,6 @@
 import { TestPage } from "./pages/TestPage";
 import { WaitingPage } from "./pages/WaitingPage";
+import { UsagePage } from "./pages/UsagePage";
 import type { Me } from "./api";
 import { AdminPage, ComingSoon, Forbidden, NoStore, NotFound } from "./pages/SimplePages";
 import { LoginPage } from "./pages/LoginPage";
@@ -73,6 +74,8 @@ function Routes() {
           <TestPage key={store.tenantId} store={store} />
         ) : section.key === "bekleyenler" ? (
           <WaitingPage key={store.tenantId} store={store} />
+        ) : section.key === "istatistik" ? (
+          <UsagePage key={store.tenantId} store={store} />
         ) : (
           <ComingSoon section={section.key as SectionKey} />
         )}

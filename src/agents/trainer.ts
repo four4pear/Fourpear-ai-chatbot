@@ -2,7 +2,9 @@ import type Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import type { Lesson, Tenant } from "../db/schema.js";
 import { trainerSystemPrompt } from "./prompts.js";
+import type { DB } from "../db/client.js";
 import type { Llm } from "./runner.js";
+import { recordUsage } from "./usage.js";
 
 export type TestTurn = { role: "user" | "assistant"; text: string };
 export type LessonProposal = { summary: string; lessons: string[]; replaces: { id: string; text: string }[] };
@@ -39,6 +41,7 @@ const CONTEXT_TURNS = 12;
 export async function proposeLessons(
   llm: Llm,
   model: string,
+  db: DB,
   tenant: Tenant,
   conversation: TestTurn[],
   feedback: string,
@@ -49,6 +52,7 @@ export async function proposeLessons(
     .map((t) => `${t.role === "user" ? "Müşteri" : tenant.botName}: ${t.text}`)
     .join("\n");
   const known = existing.length ? existing.map((l) => `- [${l.id}] ${l.text}`).join("\n") : "(yok)";
+  const startedAt = Date.now();
   const res = await llm.create({
     model,
     max_tokens: 2000,
@@ -62,6 +66,8 @@ export async function proposeLessons(
     tools: [PROPOSE_TOOL],
     tool_choice: { type: "tool", name: PROPOSE_TOOL.name },
   });
+  // Eğitmen yalnızca test ekranında çalışır: maliyeti test harcamasına sayılır.
+  await recordUsage(db, { tenantId: tenant.id, conversationId: null, agent: "trainer", model, response: res, startedAt, input: feedback, source: "test" });
   const call = res.content.find((b): b is Anthropic.ToolUseBlock => b.type === "tool_use");
   if (!call) throw new Error("Eğitmen öneri üretmedi");
   const proposal = proposalInput.parse(call.input);

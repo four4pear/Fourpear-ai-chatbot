@@ -3,6 +3,7 @@ import { and, desc, eq, gt, lt, notInArray } from "drizzle-orm";
 import { z } from "zod";
 import { memoryWriterSystemPrompt } from "../agents/prompts.js";
 import type { Llm } from "../agents/runner.js";
+import { recordUsage } from "../agents/usage.js";
 import type { DB } from "../db/client.js";
 import { customerMemories, messages, type Tenant } from "../db/schema.js";
 
@@ -73,6 +74,7 @@ export async function updateMemory(
       return `[${dayMonth(m.createdAt, input.timeZone)}] ${who}: ${m.text ?? `[${m.type}]`}`;
     })
     .join("\n");
+  const startedAt = Date.now();
   const res = await deps.llm.create({
     model: deps.model,
     max_tokens: 1500,
@@ -89,6 +91,14 @@ export async function updateMemory(
   const call = res.content.find((b): b is Anthropic.ToolUseBlock => b.type === "tool_use");
   if (!call) throw new Error("Müşteri kartı yazılamadı");
   const text = saveInput.parse(call.input).memory.trim().slice(0, MAX_MEMORY_LENGTH);
+  await recordUsage(db, {
+    tenantId: input.tenant.id,
+    conversationId: input.conversationId,
+    agent: "memory",
+    model: deps.model,
+    response: res,
+    startedAt,
+  });
 
   const lastCustomerMessage = fresh.filter((m) => m.sender === "customer").at(-1)?.createdAt;
   const values = {

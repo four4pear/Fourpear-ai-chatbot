@@ -9,7 +9,8 @@ import { EventBus } from "../src/core/events.js";
 import type { Deps } from "../src/core/conversation.js";
 import { loadLessons, withLessons } from "../src/core/lessons.js";
 import { openDatabase, type Database } from "../src/db/client.js";
-import { lessons, memberships, tenants, users, type Tenant } from "../src/db/schema.js";
+import { agentRuns, lessons, memberships, tenants, users, type Tenant } from "../src/db/schema.js";
+import { costUsd } from "../src/core/pricing.js";
 import { hashPassword } from "../src/auth/password.js";
 
 const ORIGIN = "http://panel.test";
@@ -144,6 +145,29 @@ describe("Lina'yı eğitmek", () => {
     const res = await call("GET", `${url()}/test/demo-orders`, { cookie: ownerCookie });
     expect(res.body.scenarios).toHaveLength(14);
     expect(res.body.scenarios.find((s: { order: string }) => s.order === "MO-9013")).toMatchObject({ sample: "MO-9013 iadem 50 gündür yatmadı" });
+  });
+
+  it("eğitmenin harcaması test olarak kaydedilir; İstatistik canlı ve testi ayrı, cevap başına gösterir", async () => {
+    const trainerRuns = (await database.db.select().from(agentRuns)).filter((r) => r.agent === "trainer");
+    expect(trainerRuns.length).toBeGreaterThan(0);
+    expect(trainerRuns.every((r) => r.source === "test")).toBe(true);
+
+    await database.db.delete(agentRuns);
+    await database.db.insert(agentRuns).values([
+      { tenantId: tenant.id, agent: "lina", model: "claude-sonnet-5", inputTokens: 1000, outputTokens: 500, cacheReadTokens: 9000, cacheWriteTokens: 0, source: "live" },
+      { tenantId: tenant.id, agent: "returns", model: "claude-sonnet-5", inputTokens: 2000, outputTokens: 300, cacheReadTokens: 0, cacheWriteTokens: 8000, source: "live" },
+      { tenantId: tenant.id, agent: "memory", model: "claude-haiku-4-5-20251001", inputTokens: 1500, outputTokens: 200, source: "test" },
+    ]);
+    expect((await call("GET", `${url()}/usage?days=7`, { cookie: agentCookie })).status).toBe(403);
+    const res = await call("GET", `${url()}/usage?days=7`, { cookie: ownerCookie });
+    const live = res.body.totals.find((t: { source: string }) => t.source === "live");
+    // Lina: 1000×2 + 9000×0,2 + 500×10 = 8.800 µ$; İade: 2000×2 + 8000×2,5 + 300×10 = 27.000 µ$
+    expect(live.costUsd).toBeCloseTo(0.0358, 6);
+    expect(live.replies).toBe(1);
+    expect(live.perReplyUsd).toBeCloseTo(0.0358, 6);
+    expect(live.cacheHitRate).toBeCloseTo(9000 / 20000, 6);
+    expect(res.body.totals.find((t: { source: string }) => t.source === "test").costUsd).toBeCloseTo(0.0025, 6);
+    expect(costUsd("bilinmeyen-model", { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 })).toBeNull();
   });
 
   it("boş ya da çok uzun kural kaydedilmez", async () => {

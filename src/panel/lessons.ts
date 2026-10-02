@@ -44,7 +44,7 @@ export function registerLessonRoutes(
     const existing = await db.select({ id: lessons.id, text: lessons.text }).from(lessons).where(eq(lessons.tenantId, tenantId));
     try {
       const { llm, model } = deps.simulatorDeps;
-      res.json(await proposeLessons(llm, model, tenant, conversation, feedback, existing));
+      res.json(await proposeLessons(llm, model, db, tenant, conversation, feedback, existing));
     } catch (err) {
       deps.log.error("Geri bildirim değerlendirilemedi", err);
       res.status(502).json({ error: `Geri bildirim değerlendirilemedi (${describeLlmError(err)}). Tekrar deneyin.` });

@@ -4,7 +4,7 @@ import type { Deps } from "../core/conversation.js";
 import express, { type Express, type NextFunction, type Request, type Response } from "express";
 import { and, eq, ne } from "drizzle-orm";
 import type { DB } from "../db/client.js";
-import { memberships, tenants, users, type MemberRole, type User } from "../db/schema.js";
+import { agentRuns, memberships, tenants, users, type MemberRole, type User } from "../db/schema.js";
 import { FailureLimiter } from "../auth/rate-limit.js";
 import type { EventBus } from "../core/events.js";
 import type { WhatsAppSender } from "../whatsapp/client.js";
@@ -12,6 +12,7 @@ import { registerConversationRoutes } from "./conversations.js";
 import { registerNotificationRoutes } from "./notifications.js";
 import { registerLessonRoutes } from "./lessons.js";
 import { registerTeamQuestionRoutes } from "./team-questions.js";
+import { registerUsageRoutes } from "./usage.js";
 import {
   AuthError,
   SESSION_TTL_MS,
@@ -304,7 +305,13 @@ export function registerPanelApi(app: Express, deps: PanelApiDeps) {
         mode: deps.simulatorMode,
         memory,
       });
-      if (!abort.signal.aborted) res.json(result);
+      // Test konuşması geri alındı; harcaması "test" olarak kalır (panel İstatistik).
+      if (result.usage.length) {
+        await deps.db.insert(agentRuns).values(
+          result.usage.map((u) => ({ ...u, tenantId: param(req, "tenantId"), conversationId: null, source: "test" as const })),
+        );
+      }
+      if (!abort.signal.aborted) res.json({ ...result, usage: undefined });
     } finally { testing.delete(key); }
   });
 
@@ -312,6 +319,7 @@ export function registerPanelApi(app: Express, deps: PanelApiDeps) {
   registerNotificationRoutes(api, deps, { requireUser, requireTenant });
   registerLessonRoutes(api, deps, { requireUser, requireTenant });
   registerTeamQuestionRoutes(api, deps, { requireUser, requireTenant });
+  registerUsageRoutes(api, deps, { requireUser, requireTenant });
 
   api.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
     deps.log.error("Panel API hatası", err);

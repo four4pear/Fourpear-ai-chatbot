@@ -21,6 +21,8 @@ describe.each<SimulationMode>(["transaction", "copy"])("test sohbeti (%s)", (mod
         { role: "user", text: "Merhaba" }, { role: "assistant", text: "Merhaba, hoş geldiniz." }, { role: "user", text: "Kargo kaç gün?" },
       ], { mode });
       expect(result.replies).toEqual(["İki iş günü."]);
+      // Test geri alınsa da harcaması döner (panel bunu "test" olarak kaydeder).
+      expect(result.usage).toMatchObject([{ agent: "lina", model: "test", apiCalls: 1, inputTokens: 10, outputTokens: 5 }]);
       expect(create).toHaveBeenCalledTimes(1);
       expect(JSON.stringify(create.mock.calls)).toContain("Merhaba, hoş geldiniz.");
       expect(sendText).not.toHaveBeenCalled();

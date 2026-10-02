@@ -484,3 +484,15 @@ textarea {
 .waiting-label { font-weight: 600; color: var(--muted); }
 .waiting-question { font-size: 15px; }
 .waiting-actions { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+
+/* İstatistik: kullanım ve maliyet */
+.usage-filters { display: flex; gap: 16px; flex-wrap: wrap; margin: 12px 0 16px; }
+.usage-filters [role="group"] { display: flex; gap: 6px; flex-wrap: wrap; }
+.usage-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.usage-cards .panel-card { padding: 14px 16px; display: flex; flex-direction: column; gap: 4px; }
+.usage-cards strong { font-size: 22px; font-variant-numeric: tabular-nums; }
+.usage-table-wrap { overflow-x: auto; }
+.usage-table { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+.usage-table th, .usage-table td { text-align: right; padding: 8px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.usage-table th:first-child, .usage-table td:first-child { text-align: left; }
+.usage-table th { color: var(--muted); font-weight: 600; }

@@ -6,7 +6,7 @@ import type { Llm } from "../src/agents/runner.js";
 import type { Deps } from "../src/core/conversation.js";
 import { loadMemory, purgeExpiredMemories, updateMemory } from "../src/core/memory.js";
 import { openDatabase, type Database } from "../src/db/client.js";
-import { conversations, customerMemories, customers, messages, tenants, whatsappAccounts, type Tenant } from "../src/db/schema.js";
+import { agentRuns, conversations, customerMemories, customers, messages, tenants, whatsappAccounts, type Tenant } from "../src/db/schema.js";
 import { simulate } from "../src/panel/simulator.js";
 
 let database: Database;
@@ -89,6 +89,10 @@ describe("müşteri kartı", () => {
     expect(system).toContain("Asla yazma: adres, ödeme ve kart bilgisi, IBAN");
     expect(first.messages[0]!.content as string).toContain("Müşteri: Merhaba, ben Ayşe Yılmaz");
     expect(first.messages[0]!.content as string).toContain("(henüz kart yok)");
+
+    // Kart yazarının harcaması da kaydedilir (İstatistik).
+    const [run] = (await database.db.select().from(agentRuns)).filter((r) => r.agent === "memory");
+    expect(run).toMatchObject({ model: "haiku", conversationId, source: "live", apiCalls: 1 });
 
     // Yeni mesaj yok: model çağrılmaz.
     expect(await updateMemory(deps(), input)).toBe(next);
