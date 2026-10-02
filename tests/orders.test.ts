@@ -869,6 +869,8 @@ describe("konuşma akışı: sipariş sorusu devredilmez, ekibe bildirim düşer
     await say("sipariş durumumu öğrenebilir miyim?");
     const params = calls.lina[0]!;
     const system = (params.system as Anthropic.TextBlockParam[])[0]!.text;
+    // Lina'nın geçmişi de önbelleğe alınır (araç döngüsündeki ikinci çağrı ucuz okur); uzmanlarınki değil.
+    expect(params.cache_control).toEqual({ type: "ephemeral" });
     expect(system).toContain("ask_order_agent");
     expect(system).toContain("ask_returns_agent");
     expect(system).toContain("Mağazanın iade ve değişim formu: https://iade.betulsaday.com");
@@ -901,6 +903,8 @@ describe("konuşma akışı: sipariş sorusu devredilmez, ekibe bildirim düşer
     await say("MO-9002 siparişimi iade etmek istiyorum");
     expect(calls.order).toHaveLength(0);
     const request = calls.returns[0]!;
+    expect(request.cache_control).toBeUndefined();
+    expect((request.system as Anthropic.TextBlockParam[])[0]!.text).toContain("Mağaza notları ve mağazanın öğrettikleri");
     const card = textOf(request.messages[0]!.content);
     expect(card).toContain("Konu: iade ya da değişim isteği, iade koşulları");
     expect(card).toContain("#MO-9002");

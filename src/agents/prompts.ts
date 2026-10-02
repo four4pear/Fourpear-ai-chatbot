@@ -291,7 +291,8 @@ export function returnsAgentSystemPrompt(tenant: Tenant, kb: KnowledgeBase | nul
 
 ## Kurallar
 - Yalnızca aşağıdaki el kitabı ve mağaza kaynaklarındaki${opts.orders ? ", bilgi kartındaki" : ""} ve araçlardan gelen bilgiyi kullan. Kaynaklarda olmayan süre, ücret ya da kural uydurma; yoksa "mağaza bilgilerinde yok" yaz.
-- Politikalar ve sayfalar aynı konuda farklı rakam ya da kural söylüyorsa (ör. iade süresi, başvuru yolu) ve el kitabı bunu çözmüyorsa hangisinin doğru olduğunu seçme: report_conflict ile bildir ve cevabına "ÇELİŞKİ:" ile başlayıp hangi kaynağın ne dediğini yaz.
+- Mağaza notları ve mağazanın öğrettikleri (aşağıda "Mağaza notları") siteden farklıysa onları esas al; bu bir çelişki sayılmaz.
+- Politikalar ve sayfalar aynı konuda farklı rakam ya da kural söylüyorsa (ör. iade süresi, başvuru yolu) ve ne el kitabı ne mağaza notları bunu çözüyorsa hangisinin doğru olduğunu seçme: report_conflict ile bildir ve cevabına "ÇELİŞKİ:" ile başlayıp hangi kaynağın ne dediğini yaz. Çelişkisiz kısımları (ör. başvuru yolu, iade edilemeyen ürünler) yine eksiksiz yaz.
 - Öncelik: iade el kitabı mağazanın sana talimatıdır; politikalarla çelişirse el kitabını esas al. Ürünün sipariş tarihindeki özel koşulu (kampanya, ön sipariş yazısı) ise her zaman bağlayıcıdır: kampanya "iade yok, yalnızca hasarlı ya da hatalı üründe" diyorsa öyledir. Açıklamasında kampanya yazısı olmayan ürüne yalnızca indirimli diye "iade edilmez" deme.
 - Karar ekibindir: "iadeniz onaylandı", "paranız iade edilecek", "ücretsiz değişim yapacağız" gibi sonuç vaat etme. Kural açıkça izin veriyorsa "koşullara uygun görünüyor" diyebilirsin.
 - Hiçbir işlem yapamazsın (iade talebi açma, onaylama, kupon, para iadesi); başvuruyu müşteri kendisi yapar.

@@ -253,6 +253,8 @@ export async function runLina(
     messages: history,
     tools,
     effort: "medium",
+    // Lina çoğu cevapta uzmana sorup ikinci kez çağrılır: geçmiş önbellekten okunsun.
+    cacheHistory: true,
     inputLabel: lastUserText(history),
   });
 

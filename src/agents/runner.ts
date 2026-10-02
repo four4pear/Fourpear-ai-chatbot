@@ -68,6 +68,11 @@ type RunOptions = {
   effort: "low" | "medium" | "high";
   /** Loglarda görünecek girdi (ör. uzmana sorulan soru). */
   inputLabel?: string;
+  /**
+   * Konuşma geçmişi de önbelleğe alınsın: araç döngüsünde ikinci çağrı aynı geçmişi 0,1 fiyatına
+   * okur. Genelde birden fazla çağrı yapan ajanlar için (Lina); tek çağrılık uzmanlarda yazma ek maliyettir.
+   */
+  cacheHistory?: boolean;
   maxIterations?: number;
 };
 
@@ -97,6 +102,8 @@ export async function runAgent(ctx: AgentContext, opts: RunOptions): Promise<Age
             ...(opts.systemContext ? [{ type: "text" as const, text: opts.systemContext }] : []),
           ],
           ...(tools.length ? { tools: tools.map((t) => t.definition) } : {}),
+          // Otomatik önbellek: son içerik bloğuna kadar (geçmiş + araç sonuçları) önbelleğe alınır.
+          ...(opts.cacheHistory ? { cache_control: { type: "ephemeral" as const } } : {}),
           thinking: { type: "adaptive" },
           output_config: { effort: opts.effort },
           messages,
