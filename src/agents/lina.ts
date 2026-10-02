@@ -4,6 +4,7 @@ import type { Tenant } from "../db/schema.js";
 import type { KnowledgeBase } from "../knowledge/base.js";
 import { askKnowledgeAgent } from "./knowledge.js";
 import { askOrderAgent, newFindings, type OrderAgentDeps, type OrderFindings } from "./orders.js";
+import type { AskedQuestion } from "../core/team-questions.js";
 import { linaSystemPrompt, turnContext, type TurnInfo } from "./prompts.js";
 import { askReturnsAgent, RETURN_TOPICS } from "./returns.js";
 import { CancelledError, runAgent, type AgentContext, type AgentTool } from "./runner.js";
@@ -15,12 +16,13 @@ export type HandoffRequest = { reason: HandoffReason; summary: string };
 
 export type LinaResult =
   /** orders: bu cevapta sipariş uzmanına soruldu; cevap gidince ekibe bildirim kurulur. */
-  | { kind: "reply"; text: string; handoff: HandoffRequest | null; orders: OrderFindings | null }
+  | { kind: "reply"; text: string; handoff: HandoffRequest | null; orders: OrderFindings | null; teamQuestions: AskedQuestion[] }
   /** Model cevap üretemedi (reddetti ya da boş döndü); çağıran taraf devreder. */
   | { kind: "failed"; stopReason: string | null };
 
 const questionInput = z.object({ question: z.string().min(1) });
 const handoffInput = z.object({ reason: z.enum(HANDOFF_REASONS), summary: z.string().min(1) });
+const askTeamInput = z.object({ question: z.string().min(1), context: z.string() });
 /** İade, değişim ve hasarlı ürün iade uzmanına gider; sipariş uzmanı geri kalan sipariş konularına bakar. */
 const ORDER_AGENT_TOPICS = ["status", "cancel", "change", "complaint", "other"] as const;
 const identityFields = { order_number: z.string(), customer_name: z.string(), order_phone: z.string() };
@@ -187,13 +189,37 @@ export async function runLina(
     });
   }
 
+  // Lina soruyor: bilmediği konuyu arka planda ekibe sorar; cevap gelince müşteriye kendisi iletir.
+  const teamQuestions: AskedQuestion[] = [];
+  tools.push({
+    definition: {
+      name: "ask_team",
+      description:
+        "Bilmediğin, uzmanların bilmediği ya da kaynaklarda çelişkili olan bir bilgiyi arka planda mağaza ekibine sorar. Ekip panelden cevaplayınca cevap sana iç bilgi olarak gelir ve müşteriye sen iletirsin. Müşteriye ekipten bahsetme.",
+      strict: true,
+      input_schema: {
+        type: "object",
+        properties: {
+          question: { type: "string", description: "Ekibe tek başına anlaşılır, kısa cevaplanabilir soru, ör. 'MO-9013 iadesinin parası bankaya gönderildi mi?'" },
+          context: { type: "string", description: "Ekip için bağlam: müşteri ne istiyor, bilinenler (sipariş no, ürün, tarih, uzmanların söyledikleri)." },
+        },
+        required: ["question", "context"],
+        additionalProperties: false,
+      },
+    },
+    run: async (input) => {
+      teamQuestions.push(askTeamInput.parse(input));
+      return "Soru arka planda ekibe iletildi. Müşteriye kişiden bahsetmeden kontrol ettiğini ve kısa süre içinde buradan bilgi vereceğini söyle. Cevap gelince sana iletilecek.";
+    },
+  });
+
   let handoff: HandoffRequest | null = null;
   tools.push({
     definition: {
       name: "handoff_to_human",
       description: orders
-        ? "Konuşmayı mağaza ekibine devreder: cevabı bilinmeyen sorular, mağaza bilgilerinde çelişki ve ısrarla temsilci isteyen ya da öfkesi süren müşteriler için. Sipariş, iade, iptal, değişiklik ve şikayet konularında kullanma; bunlar için ask_order_agent ve ask_returns_agent var."
-        : "Konuşmayı mağaza ekibine devreder: iade uzmanının ekibe iletilmeli dediği talepler, iptal/değişiklik/adres talepleri ve şikayetler (bilgiler toplandıktan sonra), cevabı bilinmeyen sorular ve ısrarla temsilci isteyen müşteriler için.",
+        ? "Konuşmayı mağaza ekibine devreder (ekip konuşmayı üstlenir): yalnızca ısrarla temsilci isteyen ya da öfkesi süren müşteriler için. Bilmediğin bir bilgi için değil (ask_team var); sipariş, iade, iptal, değişiklik ve şikayet için de değil (ask_order_agent, ask_returns_agent var)."
+        : "Konuşmayı mağaza ekibine devreder (ekip konuşmayı üstlenir): iade uzmanının ekibe iletilmeli dediği talepler, iptal/değişiklik/adres talepleri ve şikayetler (bilgiler toplandıktan sonra) ve ısrarla temsilci isteyen müşteriler için. Bilmediğin bir bilgi için değil; onun için ask_team var.",
       strict: true,
       input_schema: {
         type: "object",
@@ -231,7 +257,7 @@ export async function runLina(
   });
 
   if (result.stopReason === "refusal" || !result.text) return { kind: "failed", stopReason: result.stopReason };
-  return { kind: "reply", text: result.text, handoff, orders: findings.topics.length ? findings : null };
+  return { kind: "reply", text: result.text, handoff, orders: findings.topics.length ? findings : null, teamQuestions };
 }
 
 function lastUserText(history: Anthropic.MessageParam[]): string | undefined {

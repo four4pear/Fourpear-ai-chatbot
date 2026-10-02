@@ -11,6 +11,7 @@ import type { WhatsAppSender } from "../whatsapp/client.js";
 import { registerConversationRoutes } from "./conversations.js";
 import { registerNotificationRoutes } from "./notifications.js";
 import { registerLessonRoutes } from "./lessons.js";
+import { registerTeamQuestionRoutes } from "./team-questions.js";
 import {
   AuthError,
   SESSION_TTL_MS,
@@ -52,6 +53,8 @@ export type PanelApiDeps = {
   heartbeatMs?: number;
   /** Ekip devralınca Lina'nın bekleyen cevabını iptal eder (createApp bağlar). */
   cancelPendingReply?: (conversationId: string) => void;
+  /** Ekip "Lina soruyor" sorusunu cevaplayınca Lina müşteriye hemen yazsın. */
+  triggerReply?: (conversationId: string) => void;
 };
 
 export const SESSION_COOKIE = "lina_session";
@@ -282,9 +285,11 @@ export function registerPanelApi(app: Express, deps: PanelApiDeps) {
     if (!deps.simulatorDeps) return res.status(503).json({ error: "Test sohbeti kullanılamıyor" });
     const history = req.body?.history;
     // Müşteri art arda birkaç mesaj yazabilir (WhatsApp'taki gibi tek cevapta toplanır); sohbet müşteriyle başlar ve biter.
+    // "team": ekibin "Lina soruyor" cevabı (test ekranında ekip yerine sahip cevaplar).
     if (!Array.isArray(history) || history.length < 1 || history.length > 40 || history.some((m: any) =>
-      !m || (m.role !== "user" && m.role !== "assistant") || typeof m.text !== "string" || !m.text.trim() || m.text.length > 4000
-    ) || history[0].role !== "user" || history.at(-1).role !== "user") return res.status(400).json({ error: "Geçersiz sohbet. En fazla 40 mesaj deneyebilirsiniz; ardından yeni sohbet açın." });
+      !m || !["user", "assistant", "team"].includes(m.role) || typeof m.text !== "string" || !m.text.trim() || m.text.length > 4000 ||
+      (m.role === "team" && (typeof m.question !== "string" || m.question.length > 2000))
+    ) || history[0].role !== "user" || history.at(-1).role === "assistant") return res.status(400).json({ error: "Geçersiz sohbet. En fazla 40 mesaj deneyebilirsiniz; ardından yeni sohbet açın." });
     const key = `${(res.locals as Locals).user!.id}:${param(req, "tenantId")}`;
     if (testing.has(key) || testing.size >= 4) return res.status(429).json({ error: "Devam eden cevabın tamamlanmasını bekleyin." });
     testing.add(key);
@@ -306,6 +311,7 @@ export function registerPanelApi(app: Express, deps: PanelApiDeps) {
   registerConversationRoutes(api, deps, { requireUser, requireTenant });
   registerNotificationRoutes(api, deps, { requireUser, requireTenant });
   registerLessonRoutes(api, deps, { requireUser, requireTenant });
+  registerTeamQuestionRoutes(api, deps, { requireUser, requireTenant });
 
   api.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
     deps.log.error("Panel API hatası", err);

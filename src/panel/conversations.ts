@@ -130,7 +130,7 @@ export function registerConversationRoutes(
             })
             .from(messages)
             .where(and(inArray(messages.conversationId, ids), ne(messages.type, "note")))
-            .orderBy(messages.conversationId, desc(messages.createdAt)),
+            .orderBy(messages.conversationId, desc(messages.createdAt), desc(messages.seq)),
         ])
       : [[], []];
 
@@ -185,7 +185,7 @@ export function registerConversationRoutes(
         .leftJoin(users, eq(users.id, messages.authorUserId))
         .leftJoin(media, eq(media.messageId, messages.id))
         .where(eq(messages.conversationId, c.id))
-        .orderBy(desc(messages.createdAt))
+        .orderBy(desc(messages.createdAt), desc(messages.seq))
         .limit(200),
       db
         .select({ agent: agentRuns.agent, question: agentRuns.input, answer: agentRuns.output, createdAt: agentRuns.createdAt })

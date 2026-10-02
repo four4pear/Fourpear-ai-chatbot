@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { api, type Membership } from "../api";
 
-type Turn = { role: "user" | "assistant"; text: string };
-type Result = { replies: string[]; outcome: string; runs: { agent: string; question: string | null; answer: string | null; error: string | null }[]; handoffs: { summary: string }[]; demoHelp: string[]; memory?: string | null };
+/** team: ekibin "Lina soruyor" cevabı (testte ekip yerine siz cevaplarsınız). */
+type Turn = { role: "user" | "assistant" | "team"; text: string; question?: string };
+type Result = { replies: string[]; outcome: string; runs: { agent: string; question: string | null; answer: string | null; error: string | null }[]; handoffs: { summary: string }[]; demoHelp: string[]; memory?: string | null; teamQuestions?: { question: string; context: string }[] };
 type Proposal = { summary: string; lessons: string[]; replaces: { id: string; text: string }[] };
 type Lesson = { id: string; text: string };
 type Scenario = { order: string; label: string; sample: string };
@@ -13,7 +14,9 @@ type Entry =
   /** superseded: ders sonrası "tekrar sor" ile yerine yenisi gelen cevap (Lina'ya gönderilmez). */
   | { kind: "assistant"; text: string; superseded?: boolean }
   | { kind: "feedback"; text: string }
-  | { kind: "proposal"; feedback: string; proposal: Proposal; drafts: string[]; state: "open" | "saving" | "saved" | "dismissed"; error?: string };
+  | { kind: "proposal"; feedback: string; proposal: Proposal; drafts: string[]; state: "open" | "saving" | "saved" | "dismissed"; error?: string }
+  /** Lina soruyor: Lina'nın arka planda ekibe sorduğu soru; testte ekip yerine siz cevaplarsınız. */
+  | { kind: "asked"; question: string; context: string; draft: string; teach: boolean; state: "open" | "answered"; answer?: string };
 
 const AGENT_LABELS: Record<string, string> = { order: "Sipariş uzmanı", returns: "İade uzmanı", knowledge: "Mağaza bilgi uzmanı" };
 
@@ -25,9 +28,12 @@ export const TEST_REPLY_DELAY_MS = 10_000;
 
 /** Lina'ya giden konuşma: yalnızca müşteri ve (yerine yenisi gelmemiş) Lina mesajları. */
 const conversationOf = (entries: Entry[]): Turn[] =>
-  entries.flatMap((e): Turn[] =>
-    e.kind === "user" ? [{ role: "user", text: e.text }] : e.kind === "assistant" && !e.superseded ? [{ role: "assistant", text: e.text }] : [],
-  );
+  entries.flatMap((e): Turn[] => {
+    if (e.kind === "user") return [{ role: "user", text: e.text }];
+    if (e.kind === "assistant" && !e.superseded) return [{ role: "assistant", text: e.text }];
+    if (e.kind === "asked" && e.answer) return [{ role: "team", question: e.question, text: e.answer }];
+    return [];
+  });
 
 export function TestPage({ store, replyDelayMs = TEST_REPLY_DELAY_MS }: { store: Membership; replyDelayMs?: number }) {
   const [entries, setEntries] = useState<Entry[]>([]);
@@ -98,7 +104,8 @@ export function TestPage({ store, replyDelayMs = TEST_REPLY_DELAY_MS }: { store:
   async function ask() {
     setWaitUntil(null);
     const asked = conversationOf(current.current);
-    if (asked.at(-1)?.role !== "user") return;
+    // Lina müşteri mesajına ya da ekibin cevabına (Lina soruyor) cevap verir.
+    if (asked.at(-1)?.role !== "user" && asked.at(-1)?.role !== "team") return;
     const controller = new AbortController();
     request.current = controller; setBusy(true);
     try {
@@ -106,7 +113,10 @@ export function TestPage({ store, replyDelayMs = TEST_REPLY_DELAY_MS }: { store:
       if (controller.signal.aborted) return;
       setResult(data);
       if (data.memory !== undefined) setMemory(data.memory);
-      if (data.replies.length) show([...current.current, { kind: "assistant", text: data.replies.join("\n\n") }]);
+      if (data.replies.length) {
+        const askedTeam = (data.teamQuestions ?? []).map((q): Entry => ({ kind: "asked", ...q, draft: "", teach: false, state: "open" }));
+        show([...current.current, { kind: "assistant", text: data.replies.join("\n\n") }, ...askedTeam]);
+      }
       else restore("Lina cevap vermedi. Mağazanın bot ayarlarını kontrol edin veya yeni sohbet açın.");
     } catch (e) {
       if (!controller.signal.aborted) restore(e instanceof Error ? e.message : "Mesaj gönderilemedi");
@@ -158,6 +168,21 @@ export function TestPage({ store, replyDelayMs = TEST_REPLY_DELAY_MS }: { store:
     show(list.map((e, i) => (i === last && e.kind === "assistant" ? { ...e, superseded: true } : e)));
     void ask();
   }
+  /** Testte ekip yerine cevap: cevap Lina'ya iç bilgi olarak gider, Lina müşteriye iletir. */
+  async function answerAsked(index: number) {
+    const entry = current.current[index];
+    if (entry?.kind !== "asked" || !entry.draft.trim()) return;
+    const answer = entry.draft.trim();
+    update(index, { ...entry, state: "answered", answer });
+    if (entry.teach) {
+      try {
+        await api(`${base}/lessons`, { method: "POST", body: { texts: [`${entry.question} → ${answer}`], source: "team" } });
+        await loadLessons();
+      } catch (e) { setError(e instanceof Error ? e.message : "Lina'ya öğretilemedi"); }
+    }
+    cancelReply();
+    void ask();
+  }
   async function removeLesson(lesson: Lesson) {
     if (!window.confirm(`Bu ders silinsin mi?\n\n${lesson.text}`)) return;
     try { await api(`${base}/lessons/${lesson.id}`, { method: "DELETE" }); await loadLessons(); }
@@ -188,6 +213,19 @@ export function TestPage({ store, replyDelayMs = TEST_REPLY_DELAY_MS }: { store:
             return <div key={i} className={`test-message ${e.kind}${old ? " superseded" : ""}`}><span>{e.kind === "user" ? "Siz" : old ? "Lina (önceki cevap)" : "Lina"}</span><p>{e.text}</p></div>;
           }
           if (e.kind === "feedback") return <div key={i} className="test-message feedback"><span>Geri bildiriminiz</span><p>{e.text}</p></div>;
+          if (e.kind === "asked") return <div key={i} className="test-lesson test-asked" aria-label="Lina ekibe sordu">
+            <p><strong>Lina ekibe sordu</strong> <span className="hint">(müşteri görmez; canlıda Bekleyenler’e düşer)</span></p>
+            <p>{e.question}</p>
+            {e.context && <p className="hint">Bağlam: {e.context}</p>}
+            {e.state === "open" ? <>
+              <textarea aria-label="Ekibin cevabı" rows={2} maxLength={2000} placeholder="Ekip olarak kısa cevabınız…" value={e.draft}
+                onChange={ev => update(i, { ...e, draft: ev.target.value })} />
+              <div className="test-lesson-actions">
+                <label><input type="checkbox" checked={e.teach} onChange={ev => update(i, { ...e, teach: ev.target.checked })} /> Lina’ya öğret</label>
+                <button className="btn btn-primary" disabled={!e.draft.trim() || busy} onClick={() => void answerAsked(i)}>Ekip olarak cevapla</button>
+              </div>
+            </> : <p><strong>Ekibin cevabı:</strong> {e.answer}</p>}
+          </div>;
           return <div key={i} className="test-lesson" aria-label="Lina'nın çıkardığı ders">
             <p><strong>{e.proposal.summary}</strong></p>
             {e.state === "dismissed" && !e.proposal.lessons.length && <p className="hint">Bu geri bildirimden kaydedilecek bir kural çıkmadı.</p>}

@@ -471,3 +471,16 @@ textarea {
 .test-scenario:hover { border-color: var(--accent); background: var(--accent-tint); }
 .test-scenario strong { font-family: var(--mono); font-weight: 600; margin-right: 4px; }
 @media(max-width: 850px) { .test-layout { grid-template-columns: 1fr; } .test-compose { flex-wrap: wrap; } }
+
+/* Bekleyenler: Lina soruyor */
+.waiting-page section { margin-top: 8px; }
+.waiting-notice { padding: 10px 14px; border-radius: 8px; background: var(--accent-soft); color: var(--accent-hover); }
+.waiting-list { display: flex; flex-direction: column; gap: 12px; margin: 12px 0 16px; }
+.waiting-card { padding: 16px; display: flex; flex-direction: column; gap: 8px; }
+.waiting-card p { margin: 0; overflow-wrap: anywhere; }
+.waiting-card header { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.waiting-card textarea { width: 100%; box-sizing: border-box; resize: vertical; border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; background: var(--surface); font: inherit; }
+.waiting-card.answered { opacity: .85; }
+.waiting-label { font-weight: 600; color: var(--muted); }
+.waiting-question { font-size: 15px; }
+.waiting-actions { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; }

@@ -15,7 +15,9 @@ export type PanelEvent =
   /** Sipariş konusunda ekibe yeni bildirim; önemliyse panelde sesli uyarı. */
   | { type: "notification"; conversationId: string; important: boolean }
   /** Bildirim tamamlandı: açık paneller listeyi yenilesin. */
-  | { type: "notification_update"; conversationId: string };
+  | { type: "notification_update"; conversationId: string }
+  /** Lina ekibe soru sordu ya da soru cevaplandı ("Lina soruyor"); panel listeyi yenilesin. */
+  | { type: "team_question"; conversationId: string };
 
 type Listener = (event: PanelEvent) => void;
 

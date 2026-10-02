@@ -887,7 +887,10 @@ describe("konuşma akışı: sipariş sorusu devredilmez, ekibe bildirim düşer
     // Başvuru yolu çelişkisinde (form mu, e-posta mı) mağazanın iade formu geçerli; rakam çelişkisinde devir.
     expect(system).toContain("İstisna: çelişki yalnızca iade, değişim ya da hasarlı ürün başvurusunun nereden yapılacağıyla ilgiliyse");
     const tool = (name: string) => params.tools!.find((t) => "name" in t && t.name === name) as Anthropic.Tool;
-    expect(tool("handoff_to_human").description).toContain("Sipariş, iade, iptal, değişiklik ve şikayet konularında kullanma");
+    expect(tool("handoff_to_human").description).toContain("sipariş, iade, iptal, değişiklik ve şikayet için de değil");
+    // Bilmediği bilgi devredilmez, arka planda ekibe sorulur.
+    expect(tool("ask_team").description).toContain("arka planda mağaza ekibine sorar");
+    expect(system).toContain("ask_team ile ekibe sor (konuşmayı devretme)");
     // İade, değişim ve hasarlı ürün sipariş uzmanına değil iade uzmanına gider.
     const orderTopics = (tool("ask_order_agent").input_schema.properties as Record<string, { enum?: string[] }>).topic!.enum;
     expect(orderTopics).not.toContain("return");

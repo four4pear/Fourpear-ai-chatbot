@@ -1,4 +1,5 @@
 import { TestPage } from "./pages/TestPage";
+import { WaitingPage } from "./pages/WaitingPage";
 import type { Me } from "./api";
 import { AdminPage, ComingSoon, Forbidden, NoStore, NotFound } from "./pages/SimplePages";
 import { LoginPage } from "./pages/LoginPage";
@@ -66,7 +67,15 @@ function Routes() {
     if (!m.section) return <Redirect to={`/m/${store.slug}/bekleyenler`} />;
     return (
       <Shell me={me} store={store} active={section.key}>
-        {section.ownerOnly && store.role !== "owner" ? <Forbidden /> : section.key === "test" ? <TestPage key={store.tenantId} store={store} /> : <ComingSoon section={section.key as SectionKey} />}
+        {section.ownerOnly && store.role !== "owner" ? (
+          <Forbidden />
+        ) : section.key === "test" ? (
+          <TestPage key={store.tenantId} store={store} />
+        ) : section.key === "bekleyenler" ? (
+          <WaitingPage key={store.tenantId} store={store} />
+        ) : (
+          <ComingSoon section={section.key as SectionKey} />
+        )}
       </Shell>
     );
   }

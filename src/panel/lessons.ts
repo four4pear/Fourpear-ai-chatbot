@@ -77,6 +77,8 @@ export function registerLessonRoutes(
       return res.status(400).json({ error: `Her kural boş olmamalı ve en fazla ${MAX_LESSON_LENGTH} karakter olmalı.` });
     }
     const feedback = cleanText(req.body?.feedback).slice(0, 4000) || null;
+    // team: test ekranında "Lina soruyor" cevabından öğretilen bilgi.
+    const source = req.body?.source === "team" ? ("team" as const) : ("feedback" as const);
     const userId = (res.locals as Locals).user!.id;
     const saved = await db.transaction(async (tx) => {
       if (replaces.length) {
@@ -86,7 +88,7 @@ export function registerLessonRoutes(
       if (n + texts.length > MAX_LESSONS) return null;
       return tx
         .insert(lessons)
-        .values(texts.map((t) => ({ tenantId, text: cleanText(t), source: "feedback" as const, feedback, createdBy: userId })))
+        .values(texts.map((t) => ({ tenantId, text: cleanText(t), source, feedback, createdBy: userId })))
         .returning({ id: lessons.id, text: lessons.text });
     });
     if (!saved) return res.status(409).json({ error: `En fazla ${MAX_LESSONS} ders kaydedilebilir; önce eskileri silin.` });

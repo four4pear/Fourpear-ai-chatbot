@@ -74,7 +74,7 @@ Talebin işleme alındığını söylerken ne zaman ya da nasıl sonuçlanacağ�
 /** Çelişki kuralı: başvuru yolu için mağazanın belirlediği iade formu geçerlidir. */
 function conflictRule(orders: boolean, returnsFormUrl: string): string {
   const base =
-    `Bilgi uzmanı ya da iade uzmanı "ÇELİŞKİ" derse müşteriye o konuda rakam ya da kural söyleme ve tutarsızlıktan bahsetme; devret (sebep: unknown_answer), özete çelişkiyi yaz ve müşteriye ${CHECKING_SENTENCE} de.`;
+    `Bilgi uzmanı ya da iade uzmanı "ÇELİŞKİ" derse müşteriye o konuda rakam ya da kural söyleme ve tutarsızlıktan bahsetme; ask_team ile hangisinin doğru olduğunu sor (çelişkiyi bağlama yaz) ve müşteriye ${CHECKING_SENTENCE} de.`;
   if (!orders || !returnsFormUrl) return base;
   return `${base} İstisna: çelişki yalnızca iade, değişim ya da hasarlı ürün başvurusunun nereden yapılacağıyla ilgiliyse (ör. form mu, e-posta mı) mağazanın belirlediği iade formu (${returnsFormUrl}) geçerlidir; devretme, yukarıdaki iade ya da şikayet adımlarını uygula. Çelişki mağazaya zaten bildirilir. Süre, ücret gibi rakam ve kurallardaki çelişkide yine devret.`;
 }
@@ -99,7 +99,8 @@ export function linaSystemPrompt(
 
 ## Uzmanların
 ${specialistList}
-- handoff_to_human: konuşmayı mağaza ekibine devreder.
+- ask_team: bilmediğin bir bilgiyi arka planda mağaza ekibine sorar; cevap gelince sana iç bilgi olarak iletilir, müşteriye sen söylersin.
+- handoff_to_human: konuşmayı mağaza ekibine devreder (ekip konuşmayı üstlenir).
 
 ## Temel kural
 ${coreRule}${taught}
@@ -120,7 +121,10 @@ ${CUSTOMER_SERVICE_RULES}
 ${opts.orders ? orderRules(resolveSettings(tenant.settings).returnsFormUrl) : HANDOFF_ORDER_RULES}
 
 *Cevabını bilmediğin soru*
-Uzmanlar bilmiyorsa ya da konu uzmanlarının kapsamında değilse devret ve müşteriye ${CHECKING_SENTENCE} de. Bilmediğini ya da kime sorduğunu söyleme.
+Uzmanlar bilmiyorsa ya da konu uzmanlarının kapsamında değilse ask_team ile ekibe sor (konuşmayı devretme) ve müşteriye ${CHECKING_SENTENCE} de. Bilmediğini ya da kime sorduğunu söyleme; tahmin yürütme.
+
+*Ekipten iç bilgi geldiğinde*
+Geçmişte "[İç bilgi, müşteri görmez ...]" ile başlayan mesaj ekibin cevabıdır. Bu bilgiyi kendi cümlelerinle, sıcak ve net biçimde müşteriye ilet; ekipten, sorduğundan ya da beklettiğinden uzun uzun bahsetme ("Kontrol ettim:" gibi kısa bir girişle doğrudan bilgiyi ver).
 
 *Mağaza bilgilerinde çelişki*
 ${conflictRule(opts.orders, resolveSettings(tenant.settings).returnsFormUrl)}
@@ -150,6 +154,8 @@ export type TurnInfo = {
   openHandoff: { reason: string; summary: string } | null;
   /** Müşteri kartı (core/memory.ts): önceki konuşmalardan hatırlananlar. */
   memory?: string | null;
+  /** Bu konuşmada ekibe sorulmuş, cevabı beklenen sorular ("Lina soruyor"). */
+  askedTeam?: string[];
 };
 
 /** Mesaja özel durum bilgisi (sistem isteminin önbelleğe alınmayan ikinci bloğu). */
@@ -181,6 +187,13 @@ export function turnContext(tenant: Tenant, turn: TurnInfo): string {
       "- Müşteri kartı (önceki konuşmalardan hatırladıkların; müşteri bunu görmez):",
       `<kart>\n${turn.memory}\n</kart>`,
       '  Kartı yalnızca doğru ve kişisel cevap vermek için sessizce kullan. Müşteriye hatırladığını belli etme: geçmiş konuları kendiliğinden açma; "hatırlıyorum", "geçen sefer", "daha önce yazmıştınız" gibi ifadeler kullanma. Müşteri bir konuyu kendisi sorarsa bildiklerinle cevap ver. Ad soyadı biliyorsan hitapta kullanabilirsin ve doğrulama için uzmana customer_name olarak verirsin; tekrar sorma. Kartla konuşma geçmişi çelişirse konuşma geçmişi doğrudur.',
+    );
+  }
+
+  if (turn.askedTeam?.length) {
+    lines.push(
+      `- Ekibe sorduğun, cevabı henüz gelmeyen soru(lar): ${turn.askedTeam.map((q) => `"${q}"`).join("; ")}`,
+      "  Müşteri bu konuyu tekrar sorarsa hâlâ kontrol ettiğini ve kısa süre içinde bilgi vereceğini söyle; aynı soruyu ekibe yeniden sorma.",
     );
   }
 

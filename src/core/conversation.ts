@@ -26,6 +26,7 @@ import type { InboundEvent, WaIncomingMessage } from "../whatsapp/types.js";
 import { loadKnowledge } from "../knowledge/base.js";
 import { loadLessons, withLessons } from "./lessons.js";
 import { loadMemory, updateMemory } from "./memory.js";
+import { openTeamQuestions, recordTeamQuestions, TEAM_ANSWER_TYPE, type AskedQuestion } from "./team-questions.js";
 import { businessStatus } from "./business-hours.js";
 import type { EventBus } from "./events.js";
 import { recordOrderNotification } from "./notifications.js";
@@ -86,7 +87,8 @@ export type RespondOutcome =
 export type RespondControl = { signal: AbortSignal; isCurrent: () => boolean };
 
 /** Lina'nın okuyabildiği mesaj tipleri; diğerleri sabit metinle cevaplanır. */
-const UNDERSTOOD_TYPES = new Set(["text", "image"]);
+/** Ekibin cevabı ("Lina soruyor") da Lina'nın okuyup müşteriye ileteceği bir girdidir. */
+const UNDERSTOOD_TYPES = new Set(["text", "image", TEAM_ANSWER_TYPE]);
 /**
  * Cevap beklemeyen olaylar: emoji tepkisi, sticker (çoğunlukla teşekkür), WhatsApp sistem
  * bildirimi (ör. numara değişti), sohbeti ilk açma. Panelde görünsün diye kaydedilir;
@@ -236,13 +238,14 @@ export async function respond(deps: Deps, conversationId: string, ctl: RespondCo
       deps.log.error(`${what} alınamadı (tenant=${tenant.slug})`, err);
       return null;
     });
-  const [history, firstContact, openHandoff, storeKnowledge, lessons, memory, orderSource, returns] = await Promise.all([
+  const [history, firstContact, openHandoff, storeKnowledge, lessons, memory, askedTeam, orderSource, returns] = await Promise.all([
     loadHistory(db, conversationId, deps.historyLimit),
     isFirstContact(db, conversationId),
     findOpenHandoff(db, conversationId),
     loadKnowledge(db, tenant),
     loadLessons(db, tenant.id),
     loadMemory(db, conversation.customerId),
+    openTeamQuestions(db, conversationId),
     optional(deps.orderSourceFor?.(tenant.id), "Sipariş kaynağı"),
     optional(deps.returnsFor?.(tenant.id), "İade sistemi bağlantısı"),
   ]);
@@ -252,6 +255,7 @@ export async function respond(deps: Deps, conversationId: string, ctl: RespondCo
     business: businessStatus(settings.businessHours, deps.timeZone, now),
     openHandoff: openHandoff && { reason: openHandoff.reason, summary: openHandoff.summary },
     memory,
+    askedTeam,
   };
   const ctx = { db, llm: deps.llm, model: deps.model, tenantId: tenant.id, conversationId, signal: ctl.signal, log: deps.log };
   const orders = orderSource ? { source: orderSource, waId, timeZone: deps.timeZone, now, returns } : null;
@@ -260,6 +264,7 @@ export async function respond(deps: Deps, conversationId: string, ctl: RespondCo
   let reply: string;
   let handoff: HandoffRequest | null;
   let orderFindings: OrderFindings | null = null;
+  let teamQuestions: AskedQuestion[] = [];
   try {
     const result = await runLina(ctx, tenant, history, turn, withLessons(storeKnowledge, lessons), orders, lessons);
     if (result.kind === "failed") {
@@ -269,6 +274,7 @@ export async function respond(deps: Deps, conversationId: string, ctl: RespondCo
       reply = result.text;
       handoff = result.handoff;
       orderFindings = result.orders;
+      teamQuestions = result.teamQuestions;
     }
   } catch (err) {
     // İptal bir hata değildir: özür mesajı yok, devir yok.
@@ -287,6 +293,11 @@ export async function respond(deps: Deps, conversationId: string, ctl: RespondCo
     deps.events?.publish(tenant.id, { type: openHandoff ? "conversation" : "handoff", conversationId });
   }
   const delivery = await sendAndStore(deps, tenant, conversation, wa, reply, "bot");
+  // Lina soruyor: soru panelde ekibe düşer; cevap gelince Lina müşteriye kendisi iletir.
+  if (teamQuestions.length) {
+    await recordTeamQuestions(db, { tenantId: tenant.id, conversationId, customerMessage: lastText, items: teamQuestions });
+    deps.events?.publish(tenant.id, { type: "team_question", conversationId });
+  }
   // Müşteri kartı arka planda güncellenir; cevabı geciktirmez, hatası cevabı etkilemez.
   if (deps.memory?.schedule) {
     const { model } = deps.memory;
@@ -320,11 +331,12 @@ async function unansweredCustomerMessages(db: DB, conversationId: string) {
     .select({ sender: messages.sender, type: messages.type, text: messages.text })
     .from(messages)
     .where(and(eq(messages.conversationId, conversationId), ne(messages.type, "note")))
-    .orderBy(desc(messages.createdAt))
+    .orderBy(desc(messages.createdAt), desc(messages.seq))
     .limit(50);
   const batch: typeof recent = [];
   for (const m of recent) {
-    if (m.sender !== "customer") break;
+    // Ekibin cevabı müşteri mesajı gibi cevap bekler: Lina müşteriye iletir.
+    if (m.sender !== "customer" && m.type !== TEAM_ANSWER_TYPE) break;
     if (!SILENT_TYPES.includes(m.type)) batch.push(m);
   }
   return batch.reverse();
@@ -344,8 +356,8 @@ export async function findUnansweredConversations(db: DB, since: Date): Promise<
     })
     .from(messages)
     .where(and(ne(messages.type, "note"), notInArray(messages.type, SILENT_TYPES), gte(messages.createdAt, since)))
-    .orderBy(messages.conversationId, desc(messages.createdAt));
-  const candidates = latest.filter((m) => m.sender === "customer").map((m) => m.conversationId);
+    .orderBy(messages.conversationId, desc(messages.createdAt), desc(messages.seq));
+  const candidates = latest.filter((m) => m.sender === "customer" || m.type === TEAM_ANSWER_TYPE).map((m) => m.conversationId);
   if (candidates.length === 0) return [];
   const rows = await db
     .select({ id: conversations.id })
@@ -458,7 +470,7 @@ async function loadHistory(db: DB, conversationId: string, limit: number): Promi
     .from(messages)
     .leftJoin(media, eq(media.messageId, messages.id))
     .where(eq(messages.conversationId, conversationId))
-    .orderBy(desc(messages.createdAt))
+    .orderBy(desc(messages.createdAt), desc(messages.seq))
     .limit(limit);
 
   // Rows yeniden eskiye sıralı: yalnızca en yeni birkaç fotoğraf görsel olarak gider.
@@ -481,7 +493,7 @@ export function toClaudeMessages(rows: HistoryRow[]): Anthropic.MessageParam[] {
     // Panel notları iç nottur; tepki/sticker cevap beklemez. Otomatik mesajlar (sabit metinler)
     // müşterinin gördüğü mesajlardır: Lina tekrar etmesin diye geçmişte yer alır.
     if (row.type === "note" || SILENT_TYPES.includes(row.type)) continue;
-    const role = row.sender === "customer" ? "user" : "assistant";
+    const role = row.sender === "customer" || row.type === TEAM_ANSWER_TYPE ? "user" : "assistant";
     const blocks: Anthropic.ContentBlockParam[] = [];
 
     if (row.type === "image") {
@@ -501,6 +513,9 @@ export function toClaudeMessages(rows: HistoryRow[]): Anthropic.MessageParam[] {
     } else {
       let text = row.text ?? `[müşteri ${MEDIA_LABELS[row.type] ?? row.type} gönderdi]`;
       if (row.sender === "agent") text = `(Mağaza ekibi yazdı) ${text}`;
+      if (row.type === TEAM_ANSWER_TYPE) {
+        text = `[İç bilgi, müşteri görmez: ekibe sorduğun sorunun cevabı geldi]\n${text}\n[Bu bilgiyi kendi cümlelerinle müşteriye ilet; ekipten ya da sorduğundan bahsetme.]`;
+      }
       blocks.push({ type: "text", text });
     }
 

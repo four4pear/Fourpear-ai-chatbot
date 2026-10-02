@@ -133,3 +133,21 @@ it("deneme siparişleri kutu işaretlenince sağda listelenir; tıklayınca örn
   fireEvent.click(await screen.findByRole("button", { name: "MO-9013 iade 50 gündür yatmadı" }));
   expect((screen.getByLabelText("Mesajınız") as HTMLTextAreaElement).value).toBe("MO-9013 iadem 50 gündür yatmadı");
 });
+
+it("Lina ekibe sorarsa soru kartı çıkar; ekip olarak cevaplanınca cevap Lina'ya 'team' olarak gider", async () => {
+  let n = 0;
+  const s = server(() => ++n === 1
+    ? json({ replies: ["Hemen kontrol ediyorum."], runs: [], handoffs: [], demoHelp: [], teamQuestions: [{ question: "Hediye paketi var mı?", context: "" }] })
+    : reply("Evet, hediye paketi ücretsiz."));
+  render(<TestPage store={store} replyDelayMs={0} />);
+  write("Hediye paketi yapıyor musunuz?");
+  await screen.findByText("Hediye paketi var mı?");
+  fireEvent.change(screen.getByLabelText("Ekibin cevabı"), { target: { value: "Evet, ücretsiz." } });
+  fireEvent.click(screen.getByRole("button", { name: "Ekip olarak cevapla" }));
+  await screen.findByText("Evet, hediye paketi ücretsiz.");
+  expect(s.body(1).history).toEqual([
+    { role: "user", text: "Hediye paketi yapıyor musunuz?" },
+    { role: "assistant", text: "Hemen kontrol ediyorum." },
+    { role: "team", question: "Hediye paketi var mı?", text: "Evet, ücretsiz." },
+  ]);
+});

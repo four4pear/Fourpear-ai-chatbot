@@ -87,7 +87,13 @@ export function createApp(
   if (shopify) registerShopifyRoutes(app, shopify);
   if (panel) {
     // Ekip konuşmayı devralınca Lina'nın bekleyen/hazırlanan cevabı iptal edilir.
-    registerPanelApi(app, { ...panel, simulatorDeps: deps, cancelPendingReply: (id) => scheduler.cancel(id) });
+    registerPanelApi(app, {
+      ...panel,
+      simulatorDeps: deps,
+      cancelPendingReply: (id) => scheduler.cancel(id),
+      // Ekibin cevabı geldi: Lina kısa bir beklemeyle (art arda cevaplar birleşsin) müşteriye yazar.
+      triggerReply: (id) => scheduler.onCustomerMessage(id, { delayMs: 2_000, maxWaitMs: 2_000 }),
+    });
     registerPanelStatic(app, panel.distDir ?? DEFAULT_PANEL_DIST, deps.log);
   }
 

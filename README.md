@@ -69,6 +69,10 @@ mesajlara tek cevap verilir (cevap hazırlanırken yazılırsa hazırlanan cevap
 metin geçmişi yeniden kurulur. Bu ekran fotoğraf ve ekip devralma akışlarını simüle etmez. En fazla 40 mesajdan
 sonra yeni sohbet açın.
 
+**Lina soruyor:** Lina bilmediği bilgiyi arka planda ekibe sorar ("Hemen kontrol ediyorum…"); ekip panelde
+**Bekleyenler → Lina soruyor**'dan kısa cevap yazar, Lina müşteriye iletir. Sahip "Lina'ya öğret" derse cevap ders olur
+(`team_questions` tablosu, docs/lina-davranis.md §15).
+
 **Müşteri kartı:** Lina her müşteri için kısa bir kart tutar (ad soyad, açık konular, geçmiş talepler, tercihler); her
 cevaptan sonra arka planda `CLAUDE_MEMORY_MODEL` (varsayılan Haiku) ile güncellenir, son mesajdan 6 ay sonra silinir.
 Test ekranında sağda görünür; "Aynı müşteri, yeni sohbet" ile geri dönen müşteri denenir (docs/lina-davranis.md §14).

@@ -1,5 +1,5 @@
 import { randomBytes, randomInt, randomUUID } from "node:crypto";
-import { eq, sql, TransactionRollbackError } from "drizzle-orm";
+import { and, eq, sql, TransactionRollbackError } from "drizzle-orm";
 import { openDatabase, type DB } from "../db/client.js";
 import {
   agentRuns,
@@ -10,16 +10,19 @@ import {
   knowledgeDocs,
   lessons,
   messages,
+  teamQuestions,
   tenants,
   textArchive,
   whatsappAccounts,
 } from "../db/schema.js";
+import { TEAM_ANSWER_TYPE, teamAnswerText } from "../core/team-questions.js";
 import { updateMemory } from "../core/memory.js";
 import { ingestInbound, respond, type Deps } from "../core/conversation.js";
 import { encryptSecret } from "../lib/crypto.js";
 import { demoOrderSource, demoReturnsProvider, DEMO_ORDERS_HELP } from "../orders/demo.js";
 
-type Turn = { role: "user" | "assistant"; text: string };
+/** team: ekibin "Lina soruyor" cevabı (test ekranında ekip yerine siz cevaplarsınız). */
+type Turn = { role: "user" | "assistant" | "team"; text: string; question?: string };
 
 /**
  * Test sohbeti hiçbir kayıt bırakmaz ve WhatsApp'a göndermez:
@@ -119,10 +122,23 @@ async function runTest(source: Deps, db: DB, tenantId: string, history: Turn[], 
       outcome = result.outcome;
       // Son cevaptan beri yazılan mesajların hepsine tek cevap (art arda mesajlar tek yazı gibi okunur).
       if (index === history.length - 1 && result.outcome === "queued") outcome = await respond(deps, result.conversationId, { signal, isCurrent: () => !signal.aborted });
+    } else if (entry.role === "team" && conversationId) {
+      // Ekibin cevabı canlıdaki gibi iç bilgi olarak eklenir; son girdiyse Lina müşteriye iletir.
+      await db.insert(messages).values({
+        tenantId, conversationId, sender: "system", type: TEAM_ANSWER_TYPE, text: teamAnswerText(entry.question ?? "", entry.text),
+      });
+      if (index === history.length - 1) outcome = await respond(deps, conversationId, { signal, isCurrent: () => !signal.aborted });
     } else if (conversationId) {
       await db.insert(messages).values({ tenantId, conversationId, sender: "bot", type: "text", text: entry.text });
     }
   }
+  // Bu cevapta Lina'nın ekibe sorduğu sorular (test ekranında ekip yerine siz cevaplarsınız).
+  const asked = conversationId
+    ? await db
+        .select({ question: teamQuestions.question, context: teamQuestions.context })
+        .from(teamQuestions)
+        .where(and(eq(teamQuestions.conversationId, conversationId), eq(teamQuestions.status, "open")))
+    : [];
   // Müşteri kartı canlıdaki gibi cevaptan sonra güncellenir (burada beklenir ki ekranda görünsün).
   let updatedMemory = memory;
   if (conversationId && source.memory && outcome !== "cancelled" && !signal.aborted) {
@@ -152,5 +168,6 @@ async function runTest(source: Deps, db: DB, tenantId: string, history: Turn[], 
     handoffs: handedOff,
     demoHelp: demo ? DEMO_ORDERS_HELP : [],
     memory: updatedMemory,
+    teamQuestions: asked,
   };
 }

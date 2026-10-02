@@ -62,13 +62,16 @@ export async function updateMemory(
         current ? gt(messages.createdAt, current.updatedAt) : undefined,
       ),
     )
-    .orderBy(desc(messages.createdAt))
+    .orderBy(desc(messages.createdAt), desc(messages.seq))
     .limit(MAX_NEW_MESSAGES);
   if (!fresh.length) return current?.text ?? null;
 
   const lines = fresh
     .reverse()
-    .map((m) => `[${dayMonth(m.createdAt, input.timeZone)}] ${SENDER_LABELS[m.sender] ?? m.sender}: ${m.text ?? `[${m.type}]`}`)
+    .map((m) => {
+      const who = m.type === "team_answer" ? "Ekibin iç bilgisi" : (SENDER_LABELS[m.sender] ?? m.sender);
+      return `[${dayMonth(m.createdAt, input.timeZone)}] ${who}: ${m.text ?? `[${m.type}]`}`;
+    })
     .join("\n");
   const res = await deps.llm.create({
     model: deps.model,

@@ -56,7 +56,7 @@ Sipariş uzmanının kaynakları:
 
 **Tamamlayıcı ve çelişkili bilgi**
 - Tamamlayıcıysa birleştirir: ör. "Ürünler sipariş üzerine üretiliyor; üretimden sonra kargo 1–7 gün."
-- Aynı konuda kaynaklar farklı rakam/kural söylüyorsa (ör. biri 14 gün iade, diğeri 30 gün) müşteriye rakam vermez ve tutarsızlıktan bahsetmez: "Hemen kontrol ediyorum, kısa süre içinde size buradan bilgi vereceğim." der, **devreder**; devir notuna çelişkiyi yazar.
+- Aynı konuda kaynaklar farklı rakam/kural söylüyorsa (ör. biri 14 gün iade, diğeri 30 gün) müşteriye rakam vermez ve tutarsızlıktan bahsetmez: "Hemen kontrol ediyorum, kısa süre içinde size buradan bilgi vereceğim." der ve **arka planda ekibe hangisinin doğru olduğunu sorar** (§15).
 - **İstisna (28 Eylül 2026):** Çelişki yalnızca iade, değişim ya da hasarlı ürün başvurusunun *nereden* yapılacağıyla ilgiliyse (ör. bir sayfada form, diğerinde e-posta) ve mağaza iade formunu ayarlarda belirlediyse, form geçerlidir. Lina devretmez, §3'teki iade/şikayet adımlarını uygular; çelişki uyarısı mağazaya yine düşer.
 - Çelişki bulunduğunda panelde mağazaya **uyarı** çıkar ("Kargo politikanız ile SSS sayfanız farklı süre söylüyor"), mağaza sitesini düzeltir.
 
@@ -124,7 +124,7 @@ Lina bir müşteri temsilcisi gibi davranır; amacı sorunu çözmek ve müşter
 - **Sahiplenir ve yol gösterir:** Bilgiyi verir, müşterinin ne yapacağını adım adım anlatır. Kendi çözebildiğini ekibe iletmez.
 - **Kişiden ve iç süreçten bahsetmez:** Müşteriye asla bir kişiye, ekibe ya da arkadaşına ilettiğini söylemez; kaynaklardaki tutarsızlığı, uzmanları, sistemi anlatmaz. Müşteri için tek muhatap Lina'dır.
 - **Talep bildirildiğinde:** Cevabın başında değil, bilgileri verdikten sonra: "Talebiniz işleme alındı. Başka bir konuda yardımcı olabileceğim bir şey var mı?"
-- **Bilgi ekipten gerekiyorsa** (cevabı bilinmeyen soru, kaynaklarda çelişki): "Hemen kontrol ediyorum, kısa süre içinde size buradan bilgi vereceğim." Arka planda ekibe sorulur (şimdilik devir; "Lina soruyor" özelliği gelince ekip panelden cevaplar, Lina müşteriye kendisi iletir).
+- **Bilgi ekipten gerekiyorsa** (cevabı bilinmeyen soru, kaynaklarda çelişki): "Hemen kontrol ediyorum, kısa süre içinde size buradan bilgi vereceğim." Arka planda ekibe sorulur, ekip panelden cevaplar, Lina müşteriye kendisi iletir (§15).
 - Ne zaman ya da nasıl dönüleceğine dair söz vermez; kararı ekibe ait konularda sonuç vaat etmez ("iadeniz onaylanacak" gibi).
 - Yalnızca müşteri açıkça temsilciyle görüşmek istediğinde (§4.2) ekibin ne zaman döneceği mesai bilgisine göre söylenir.
 
@@ -147,7 +147,7 @@ Müşteri hizmetleri ekibinin ilk uzmanı. İade, değişim, hasarlı/hatalı/ya
 Devredilen konuşmayı ekip panelde devralır ve müşteriyle yazışır. Devirde Lina müşteriye ne zaman dönüleceğini söyler (§6).
 
 ### 4.1 Cevabı bilmediğinde
-SSS'de/verilerde yoksa **devreder**, müşteriye kişiden bahsetmeden: "Hemen kontrol ediyorum, kısa süre içinde size buradan bilgi vereceğim."
+SSS'de/verilerde yoksa devretmez, **arka planda ekibe sorar** (§15) ve müşteriye kişiden bahsetmeden: "Hemen kontrol ediyorum, kısa süre içinde size buradan bilgi vereceğim."
 
 ### 4.2 Müşteri temsilci isterse / sinirliyse
 1. İlk seferde yardım teklif eder: "Size ben de yardımcı olabilirim, konu nedir?" Sinirliyse empatiyle sorunu anlamaya çalışır.
@@ -251,6 +251,18 @@ Lina son 20 mesajdan eskisini görmez; bu yüzden her müşteri için bir **kart
 - **Kullanım (sessiz):** Lina kartı yalnızca doğru ve kişisel cevap için kullanır; hatırladığını belli etmez, geçmiş konuları kendiliğinden açmaz ("geçen sefer", "hatırlıyorum" demez). Müşteri bir konuyu kendisi sorarsa bildikleriyle cevaplar. Ad soyadı biliyorsa hitapta kullanır ve doğrulama için tekrar sormaz (sipariş eşleşmesi yine kodda kontrol edilir). Kartı olan müşteriye yeniden tanıtım yapılmaz.
 - **Saklama:** Müşterinin son mesajından **6 ay** sonra kart silinir (günde bir kontrol). Müşteri silinince (Shopify `customers/redact` dahil) kart da silinir.
 - **Test ekranı:** Sağda "Müşteri kartı" görünür. "Aynı müşteri, yeni sohbet" kartı koruyup müşteri günler sonra tekrar yazmış gibi dener.
+
+## 15. Lina soruyor (arka planda ekibe sorma)
+Lina bilmediği bir bilgiyi uydurmaz ve konuşmayı devretmez; **arka planda ekibe sorar**, cevap gelince müşteriye kendisi iletir. Amaç ekibe en az iş çıkarmak: ekip yalnızca kısa bir cevap yazar.
+- **Ne zaman:** Uzmanlar bilmiyorsa ya da konu kapsamlarında değilse; mağaza kaynaklarında çelişki varsa (hangisi doğru diye sorar).
+- **Müşteriye:** "Hemen kontrol ediyorum, kısa süre içinde size buradan bilgi vereceğim." Ekipten, kime sorduğundan ya da bilmediğinden bahsetmez.
+- **Ekip:** Panelde **Bekleyenler → Lina soruyor** bölümünde müşterinin mesajını, Lina'nın sorusunu ve bağlamı görür; kısa cevap yazar. Mağazanın bütün ekibi cevaplayabilir.
+- **Cevap gelince:** Konuşmaya iç bilgi olarak eklenir (müşteri görmez); Lina birkaç saniye içinde bilgiyi kendi cümleleriyle müşteriye iletir ("Kontrol ettim: ...").
+- **Lina'ya öğret:** Mağaza sahibi işaretlerse cevap ders olur (§13); Lina aynı şeyi bir daha sormaz.
+- **Bekleme sırasında:** Müşteri aynı konuyu tekrar sorarsa Lina hâlâ kontrol ettiğini söyler, aynı soruyu ekibe yeniden sormaz.
+- **24 saat kuralı:** Müşterinin son mesajı 24 saatten eskiyse WhatsApp serbest mesaja izin vermez; panel cevabı kaydeder ve bunu uyarır.
+- **Devir ne zaman:** Yalnızca müşteri ısrarla temsilci isterse ya da öfkesi sürerse (§4.2); o zaman ekip konuşmayı üstlenir.
+- **Test ekranı:** Lina ekibe sorarsa sohbette "Lina ekibe sordu" kartı çıkar; ekip yerine cevaplayıp akışı deneyebilirsiniz.
 
 ## 12. Ekibe bildirimler
 Sipariş konularında (§3) konuşma devredilmez; ekip panelde bildirim görür.

@@ -1,15 +1,16 @@
 import { sql } from "drizzle-orm";
 import {
+  bigserial,
   boolean,
   customType,
-  pgTable,
-  uuid,
-  text,
-  integer,
-  timestamp,
-  jsonb,
-  uniqueIndex,
   index,
+  integer,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
 } from "drizzle-orm/pg-core";
 
 /** Mağazanın panelden değiştirebildiği sabit metinlerin anahtarları. */
@@ -186,6 +187,11 @@ export const messages = pgTable(
     waMessageId: text("wa_message_id").unique(),
     meta: jsonb("meta").$type<Record<string, unknown>>(),
     createdAt: createdAtClock(),
+    /**
+     * Eklenme sırası: aynı anda (aynı milisaniyede) eklenen mesajlar karışmasın diye sıralamada
+     * zamandan sonra bakılır (gömülü PGlite saati milisaniye hassasiyetinde).
+     */
+    seq: bigserial("seq", { mode: "number" }).notNull(),
   },
   (t) => [index("messages_conversation_idx").on(t.conversationId, t.createdAt)],
 );
@@ -435,6 +441,32 @@ export const lessons = pgTable(
   (t) => [index("lessons_tenant_idx").on(t.tenantId, t.createdAt)],
 );
 
+/**
+ * Lina soruyor (docs/lina-davranis.md "Lina soruyor"): Lina'nın bilmediği bir konuyu arka planda ekibe
+ * sorması. Ekip panelden kısa cevap yazar; cevap konuşmaya iç bilgi (messages.type "team_answer") olarak
+ * eklenir ve Lina müşteriye kendisi iletir. Müşteriye ekipten bahsedilmez.
+ */
+export const teamQuestions = pgTable(
+  "team_questions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+    conversationId: uuid("conversation_id").notNull().references(() => conversations.id, { onDelete: "cascade" }),
+    /** Lina'nın ekibe sorduğu net soru. */
+    question: text("question").notNull(),
+    /** Ekip için bağlam: müşteri ne istiyor, bilinenler (sipariş no, ürün...). */
+    context: text("context").notNull().default(""),
+    /** Müşterinin o anki mesajları (kısa). */
+    customerMessage: text("customer_message"),
+    status: text("status").$type<"open" | "answered">().notNull().default("open"),
+    answer: text("answer"),
+    answeredBy: uuid("answered_by").references(() => users.id, { onDelete: "set null" }),
+    answeredAt: timestamp("answered_at", { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [index("team_questions_tenant_idx").on(t.tenantId, t.status, t.createdAt)],
+);
+
 /** Müşterinin gönderdiği fotoğraflar (ekip panelde görür, Lina okur). */
 export const media = pgTable("media", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -527,3 +559,4 @@ export type Notification = typeof notifications.$inferSelect;
 export type Integration = typeof integrations.$inferSelect;
 export type Lesson = typeof lessons.$inferSelect;
 export type CustomerMemory = typeof customerMemories.$inferSelect;
+export type TeamQuestion = typeof teamQuestions.$inferSelect;
