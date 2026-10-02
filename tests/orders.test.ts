@@ -680,6 +680,7 @@ describe("konuşma akışı: sipariş sorusu devredilmez, ekibe bildirim düşer
   const MASTER_KEY = randomBytes(32).toString("base64");
   const sent: string[] = [];
   const events: PanelEvent[] = [];
+  const scheduledMemory: string[] = [];
   let database: Database;
   let server: Server;
   let baseUrl: string;
@@ -731,6 +732,8 @@ describe("konuşma akışı: sipariş sorusu devredilmez, ekibe bildirim düşer
       now: () => NOW,
       events: bus,
       replyDelayOverrideMs: 0,
+      // Müşteri kartı güncellemesi sıraya alınır (burada çalıştırılmaz; core/memory testlerinde).
+      memory: { model: "haiku", schedule: (customerId) => void scheduledMemory.push(customerId) },
       // Yalnızca MAIUS'ta sipariş kaynağı var (Shopify bağlı). MO-9999 sorgusu Shopify hatası verir.
       orderSourceFor: async (id) => {
         if (id !== tenantId) return null;
@@ -801,8 +804,11 @@ describe("konuşma akışı: sipariş sorusu devredilmez, ekibe bildirim düşer
   const allNotifications = () => database.db.select().from(notifications);
 
   it("gecikmiş ön sipariş: Lina cevaplar, önemli bildirim düşer, konuşma devredilmez", async () => {
+    scheduledMemory.length = 0;
     await say("MO-9001 numaralı siparişim nerede?");
     expect(sent).toHaveLength(1);
+    // Cevaptan sonra müşteri kartı güncellemesi sıraya girdi.
+    expect(scheduledMemory).toHaveLength(1);
     expect(sent[0]).toContain("Lina: UZMAN: Konu: sipariş durumu, kargo, ön sipariş");
 
     const [n] = await allNotifications();

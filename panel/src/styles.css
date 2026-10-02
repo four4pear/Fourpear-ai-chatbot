@@ -436,6 +436,8 @@ textarea {
 
 .test-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .test-heading h1, .test-heading p { margin: 0; }
+.test-heading-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.test-memory { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; font-size: 13px; margin: 0 0 16px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); }
 .test-layout { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 20px; align-items: start; }
 .test-chat { padding: 0; overflow: hidden; }
 .test-messages { height: 52vh; min-height: 280px; overflow-y: auto; padding: 24px; display: flex; flex-direction: column; gap: 16px; }

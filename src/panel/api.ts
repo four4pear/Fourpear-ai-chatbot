@@ -292,7 +292,13 @@ export function registerPanelApi(app: Express, deps: PanelApiDeps) {
     const abort = new AbortController();
     res.on("close", () => { if (!res.writableFinished) abort.abort(); });
     try {
-      const result = await simulate(deps.simulatorDeps, param(req, "tenantId"), history, req.body.demo === true, abort.signal, deps.simulatorMode);
+      const memory = typeof req.body.memory === "string" && req.body.memory.trim() ? req.body.memory.slice(0, 2000) : null;
+      const result = await simulate(deps.simulatorDeps, param(req, "tenantId"), history, {
+        demo: req.body.demo === true,
+        signal: abort.signal,
+        mode: deps.simulatorMode,
+        memory,
+      });
       if (!abort.signal.aborted) res.json(result);
     } finally { testing.delete(key); }
   });

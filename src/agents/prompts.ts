@@ -146,6 +146,8 @@ export type TurnInfo = {
   firstContact: boolean;
   business: BusinessStatus;
   openHandoff: { reason: string; summary: string } | null;
+  /** Müşteri kartı (core/memory.ts): önceki konuşmalardan hatırlananlar. */
+  memory?: string | null;
 };
 
 /** Mesaja özel durum bilgisi (sistem isteminin önbelleğe alınmayan ikinci bloğu). */
@@ -171,6 +173,14 @@ export function turnContext(tenant: Tenant, turn: TurnInfo): string {
   lines.push(
     "  Bu zaman bilgisi yalnızca müşteri açıkça temsilciyle görüşmek istediği için devrettiğinde söylenir. Diğer durumlarda ekipten ve zamandan bahsetme.",
   );
+
+  if (turn.memory) {
+    lines.push(
+      "- Müşteri kartı (önceki konuşmalardan hatırladıkların; müşteri bunu görmez):",
+      `<kart>\n${turn.memory}\n</kart>`,
+      '  Kartı yalnızca doğru ve kişisel cevap vermek için sessizce kullan. Müşteriye hatırladığını belli etme: geçmiş konuları kendiliğinden açma; "hatırlıyorum", "geçen sefer", "daha önce yazmıştınız" gibi ifadeler kullanma. Müşteri bir konuyu kendisi sorarsa bildiklerinle cevap ver. Ad soyadı biliyorsan hitapta kullanabilirsin ve doğrulama için uzmana customer_name olarak verirsin; tekrar sorma. Kartla konuşma geçmişi çelişirse konuşma geçmişi doğrudur.',
+    );
+  }
 
   if (turn.openHandoff) {
     lines.push(
@@ -316,4 +326,27 @@ export function trainerSystemPrompt(tenant: Tenant): string {
 - Aynı konuda mevcut bir ders varsa ve yenisi onu değiştiriyor ya da onunla çelişiyorsa o dersin kimliğini replaces'e yaz; yeni kural eskisinin yerine geçer.
 - Geri bildirim bir kural içermiyorsa (ör. yalnızca "güzel cevap") lessons boş kalsın.
 - summary: mağaza sahibine ne anladığını tek cümleyle, "Anladım: ..." diye başlayarak yaz.`;
+}
+
+/**
+ * Müşteri kartı yazarı (docs/lina-davranis.md "Müşteri kartı"): konuşmadan bu müşteri hakkında
+ * hatırlanması gerekenleri kısa bir kartta tutar. Adres, ödeme ve hassas bilgi yazılmaz.
+ */
+export function memoryWriterSystemPrompt(tenant: Tenant): string {
+  const lina = tenant.botName;
+  return `Sen ${tenant.name} mağazasının müşteri kartı yazarısın. ${lina} müşterilerle WhatsApp'ta konuşuyor; sen konuşmadan bu müşteri hakkında hatırlanması gerekenleri kısa bir kartta tutuyorsun. Kart ${lina}'ya müşteri tekrar yazdığında yardımcı olur. Kartı save_memory ile kaydet.
+
+## Kartın bölümleri (bilgisi olmayan bölümü yazma)
+Ad soyad ve hitap: müşterinin kendisinin yazdığı ad soyad ve nasıl hitap edileceği (ör. Ayşe Yılmaz, "Ayşe Hanım").
+Açık konular: henüz sonuçlanmamış işler; sipariş numarası ve tarihiyle (ör. "MO-9013: iade parası bekliyor, 2 Ekim'de sordu, işleme alındı").
+Geçmiş talepler: sonuçlanan konular, kısaca ve en yenisi üstte; en fazla 8 madde.
+Tercihler ve tarz: beden ve renk tercihleri, yazışma tarzı (kısa yazar, emoji kullanır), hassasiyetler (bir kez sinirlendi, hızlı cevap bekler).
+
+## Kurallar
+- Yalnızca konuşmada açıkça geçenleri yaz; tahmin etme, yorum katma.
+- Mevcut kartı güncelle: yeni bilgiyi ekle, sonuçlanan açık konuyu geçmişe taşı, değişen bilgiyi düzelt, artık önemsizleri çıkar.
+- Tarihleri gün ve ayla yaz; "dün", "geçen hafta" gibi göreli ifadeler kullanma.
+- Asla yazma: adres, ödeme ve kart bilgisi, IBAN, kimlik numarası, telefon, e-posta, sağlık bilgisi, sipariş tutarı, başka kişilere ait bilgiler.
+- Kart Türkçe, maddeli ve toplam en fazla 1200 karakter olsun.
+- Değişecek bir şey yoksa mevcut kartı aynen kaydet.`;
 }

@@ -15,6 +15,8 @@ import { createShopifyApi } from "./shopify/client.js";
 import { createWhatsAppClient } from "./whatsapp/client.js";
 import { EventBus } from "./core/events.js";
 import { findUnansweredConversations, type Deps } from "./core/conversation.js";
+import { purgeExpiredMemories } from "./core/memory.js";
+import { KeyedQueue } from "./core/queue.js";
 
 /** Düzenli işler üst üste binmesin: önceki çalışma bitmeden yenisi başlamaz. */
 function exclusive(task: () => Promise<unknown>): () => Promise<void> {
@@ -43,6 +45,8 @@ const { db, close } = await openDatabase({ databaseUrl: config.DATABASE_URL, pgl
 
 // WhatsApp tarafı ile panel aynı olay kanalını paylaşır (canlı güncelleme).
 const events = new EventBus();
+// Müşteri kartı güncellemeleri müşteri başına sırayla (aynı kart üst üste yazılmasın).
+const memoryQueue = new KeyedQueue((err, key) => console.error(`Müşteri kartı güncellenemedi (${key})`, err));
 
 const deps: Deps = {
   db,
@@ -56,6 +60,7 @@ const deps: Deps = {
   log: console,
   // İade sistemi bağlı mağazada Lina iade talebinin durumunu okur (yalnızca okuma).
   returnsFor: (tenantId) => returnsProviderFor(db, config.MASTER_KEY, tenantId),
+  memory: { model: config.CLAUDE_MEMORY_MODEL, schedule: (customerId, task) => void memoryQueue.push(customerId, task) },
 };
 
 let shopifyRoutes;
@@ -106,6 +111,15 @@ const runArchive = exclusive(() => archiveAllTenants(db, console).catch((err) =>
 void runArchive();
 const archiveTimer = setInterval(runArchive, config.ARCHIVE_SYNC_MINUTES * 60 * 1000);
 
+// Müşteri kartı saklama süresi: son mesajdan 6 ay sonra silinir (günde bir kontrol).
+const purgeMemories = exclusive(() =>
+  purgeExpiredMemories(db)
+    .then((n) => n && console.log(`Süresi dolan ${n} müşteri kartı silindi.`))
+    .catch((err) => console.error("Müşteri kartı temizliği", err)),
+);
+void purgeMemories();
+const memoryTimer = setInterval(purgeMemories, 24 * 60 * 60 * 1000);
+
 const localUrl = `http://localhost:${config.PORT}`;
 const publicUrl = (config.APP_URL ?? localUrl).replace(/\/$/, "");
 const panel = {
@@ -146,10 +160,12 @@ async function shutdown() {
   console.log("Kapanıyor, bekleyen mesajlar tamamlanıyor...");
   clearInterval(syncTimer);
   clearInterval(archiveTimer);
+  clearInterval(memoryTimer);
   // Bekleyen cevaplar bir sonraki açılışta yeniden kurulur (findUnansweredConversations).
   scheduler.stop();
   server.close();
   await queue.idle();
+  await memoryQueue.idle();
   await close();
   process.exit(0);
 }

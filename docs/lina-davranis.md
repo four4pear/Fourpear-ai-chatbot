@@ -241,6 +241,15 @@ Mağaza sahibi panelde **Lina'yı test et** ekranında Lina'nın cevabını beğ
 - **Son soruyu tekrar sor:** Lina'nın önceki cevabı üstü çizili kalır, aynı soru yeni kurallarla yeniden cevaplanır.
 - Dersler ekranın sağında listelenir ve silinebilir. Mağaza başına en fazla 200 ders, her biri en fazla 1000 karakter. Yalnızca mağaza sahibi.
 
+## 14. Müşteri kartı (Lina'nın hafızası)
+Lina son 20 mesajdan eskisini görmez; bu yüzden her müşteri için bir **kart** tutulur.
+- **İçerik:** ad soyad ve hitap; açık konular (sonuçlanmamış işler, sipariş no ve tarihle); geçmiş talepler (sonuçlananlar, en fazla 8); tercihler ve tarz (beden, renk, yazışma tarzı, hassasiyetler).
+- **Asla yazılmaz:** adres, ödeme ve kart bilgisi, IBAN, kimlik no, telefon, e-posta, sağlık bilgisi, sipariş tutarı, başka kişilere ait bilgiler. Yalnızca konuşmada açıkça geçenler yazılır.
+- **Güncelleme:** Lina'nın her cevabından sonra arka planda, hızlı ve ucuz bir modelle (`CLAUDE_MEMORY_MODEL`, varsayılan Haiku). Cevabı geciktirmez; yalnızca kartın son güncellemesinden sonraki mesajlar okunur.
+- **Kullanım (sessiz):** Lina kartı yalnızca doğru ve kişisel cevap için kullanır; hatırladığını belli etmez, geçmiş konuları kendiliğinden açmaz ("geçen sefer", "hatırlıyorum" demez). Müşteri bir konuyu kendisi sorarsa bildikleriyle cevaplar. Ad soyadı biliyorsa hitapta kullanır ve doğrulama için tekrar sormaz (sipariş eşleşmesi yine kodda kontrol edilir). Kartı olan müşteriye yeniden tanıtım yapılmaz.
+- **Saklama:** Müşterinin son mesajından **6 ay** sonra kart silinir (günde bir kontrol). Müşteri silinince (Shopify `customers/redact` dahil) kart da silinir.
+- **Test ekranı:** Sağda "Müşteri kartı" görünür. "Aynı müşteri, yeni sohbet" kartı koruyup müşteri günler sonra tekrar yazmış gibi dener.
+
 ## 12. Ekibe bildirimler
 Sipariş konularında (§3) konuşma devredilmez; ekip panelde bildirim görür.
 - **Her sipariş sorusu kaydedilir:** müşteri, sipariş no, konu, müşterinin sorusu (kısa), Lina'nın cevabı (kısa), zaman ve konuşmaya bağlantı.

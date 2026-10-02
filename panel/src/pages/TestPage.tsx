@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { api, type Membership } from "../api";
 
 type Turn = { role: "user" | "assistant"; text: string };
-type Result = { replies: string[]; outcome: string; runs: { agent: string; question: string | null; answer: string | null; error: string | null }[]; handoffs: { summary: string }[]; demoHelp: string[] };
+type Result = { replies: string[]; outcome: string; runs: { agent: string; question: string | null; answer: string | null; error: string | null }[]; handoffs: { summary: string }[]; demoHelp: string[]; memory?: string | null };
 type Proposal = { summary: string; lessons: string[]; replaces: { id: string; text: string }[] };
 type Lesson = { id: string; text: string };
 type Scenario = { order: string; label: string; sample: string };
@@ -41,6 +41,9 @@ export function TestPage({ store, replyDelayMs = TEST_REPLY_DELAY_MS }: { store:
   const [result, setResult] = useState<Result | null>(null);
   const [lessons, setLessons] = useState<Lesson[] | null>(null);
   const [scenarios, setScenarios] = useState<Scenario[]>([]);
+  // Müşteri kartı: Lina'nın bu test müşterisi hakkında hatırladıkları (her cevaptan sonra güncellenir).
+  const [memory, setMemoryState] = useState<string | null>(null);
+  const memoryRef = useRef<string | null>(null);
   const bottom = useRef<HTMLDivElement>(null);
   // Zamanlayıcı ve istek, ekranın o anki sohbetini okur (eski çizimin kopyasını değil).
   const current = useRef<Entry[]>([]);
@@ -65,6 +68,7 @@ export function TestPage({ store, replyDelayMs = TEST_REPLY_DELAY_MS }: { store:
     try { setLessons((await api<{ lessons: Lesson[] }>(`${base}/lessons`)).lessons); } catch { setLessons([]); }
   }
   function show(next: Entry[]) { current.current = next; setEntries(next); }
+  function setMemory(next: string | null) { memoryRef.current = next; setMemoryState(next); }
   function update(index: number, entry: Entry) { show(current.current.map((e, i) => (i === index ? entry : e))); }
   function cancelReply() {
     clearTimeout(timer.current); setWaitUntil(null);
@@ -98,9 +102,10 @@ export function TestPage({ store, replyDelayMs = TEST_REPLY_DELAY_MS }: { store:
     const controller = new AbortController();
     request.current = controller; setBusy(true);
     try {
-      const data = await api<Result>(`${base}/test`, { method: "POST", body: { history: asked, demo }, signal: controller.signal });
+      const data = await api<Result>(`${base}/test`, { method: "POST", body: { history: asked, demo, memory: memoryRef.current }, signal: controller.signal });
       if (controller.signal.aborted) return;
       setResult(data);
+      if (data.memory !== undefined) setMemory(data.memory);
       if (data.replies.length) show([...current.current, { kind: "assistant", text: data.replies.join("\n\n") }]);
       else restore("Lina cevap vermedi. Mağazanın bot ayarlarını kontrol edin veya yeni sohbet açın.");
     } catch (e) {
@@ -158,13 +163,20 @@ export function TestPage({ store, replyDelayMs = TEST_REPLY_DELAY_MS }: { store:
     try { await api(`${base}/lessons/${lesson.id}`, { method: "DELETE" }); await loadLessons(); }
     catch (e) { setError(e instanceof Error ? e.message : "Ders silinemedi"); }
   }
-  function reset() { cancelReply(); show([]); setResult(null); setError(""); setText(""); }
+  /** Yeni sohbet: yeni müşteri (kart da sıfırlanır). Aynı müşteri: kart kalır, müşteri günler sonra tekrar yazmış gibi. */
+  function reset(keepCustomer = false) {
+    cancelReply(); show([]); setResult(null); setError(""); setText("");
+    if (!keepCustomer) setMemory(null);
+  }
 
   const canRetry = !busy && entries.some((e) => e.kind === "assistant" && !e.superseded);
   const seconds = waitUntil === null ? 0 : Math.max(0, Math.ceil((waitUntil - now) / 1000));
   return <main className="page test-page">
     <div className="test-heading"><div><p className="hint">{store.name} · Deneme alanı</p><h1>Lina’yı test et</h1></div>
-      <button className="btn btn-secondary" onClick={reset}>Yeni sohbet</button></div>
+      <div className="test-heading-actions">
+        <button className="btn btn-secondary" disabled={!memory} title="Müşteri kartı kalır; müşteri günler sonra tekrar yazmış gibi" onClick={() => reset(true)}>Aynı müşteri, yeni sohbet</button>
+        <button className="btn btn-secondary" onClick={() => reset()}>Yeni sohbet</button>
+      </div></div>
     <p className="hint">Müşteri gibi yazın, Lina’nın cevabını deneyin. Gerçek mağaza bilgileri ve yapay zekâ kullanılır; WhatsApp’a mesaj gönderilmez.</p>
     <div className="test-layout"><section className="panel-card test-chat" aria-label="Test sohbeti">
       <div className="test-messages" role="log" aria-live="polite">
@@ -220,6 +232,9 @@ export function TestPage({ store, replyDelayMs = TEST_REPLY_DELAY_MS }: { store:
       <p className="hint">WhatsApp’taki gibi: Lina son mesajınızdan {replyDelayMs / 1000} sn sonra cevaplar. Bu sürede yazarsanız bekleme baştan başlar; art arda mesajlarınızı tek mesaj gibi okuyup tek cevap verir.</p>
       <p className="hint">Bu ekran metin sohbetini test eder. Konuşma geçmişi bu sayfada tutulur; müşteri kayıtlarına yazılmaz. Gerçek API kullanımı ücretlidir.</p>
       {result?.handoffs.map((h,i) => <p key={i}>Ekibe devir: {h.summary}</p>)}
+      <h2>Müşteri kartı</h2>
+      <p className="hint">Lina’nın bu müşteri hakkında hatırladıkları. Müşteriye gösterilmez; Lina sessizce kullanır.</p>
+      {memory ? <pre className="test-memory">{memory}</pre> : <p className="hint">Henüz boş; ilk cevaptan sonra dolar.</p>}
       <h2>Lina’nın öğrendikleri{lessons?.length ? ` (${lessons.length})` : ""}</h2>
       <p className="hint">Lina’nın cevabı yanlış ya da eksikse “geri bildirim: …” diye yazın. Lina bundan bir kural çıkarır; siz onaylayınca kaydedilir ve WhatsApp’ta da hemen geçerli olur.</p>
       {lessons?.length === 0 && <p className="hint">Henüz ders yok.</p>}

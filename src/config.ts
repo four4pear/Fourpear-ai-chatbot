@@ -11,6 +11,8 @@ const schema = z.object({
   }),
   ANTHROPIC_API_KEY: z.string().optional(),
   CLAUDE_MODEL: z.string().default("claude-sonnet-5"),
+  /** Müşteri kartını güncelleyen model: her cevaptan sonra arka planda çalışır, hızlı ve ucuz olmalı. */
+  CLAUDE_MEMORY_MODEL: z.string().default("claude-haiku-4-5-20251001"),
   /**
    * Meta WhatsApp: uygulamanın gizli anahtarı ve webhook'ta girilen doğrulama metni. İkisi de
    * girilene kadar WhatsApp webhook'u kapalıdır (panel, Shopify ve arşiv yine çalışır).

@@ -25,6 +25,7 @@ import type { WhatsAppSender } from "../whatsapp/client.js";
 import type { InboundEvent, WaIncomingMessage } from "../whatsapp/types.js";
 import { loadKnowledge } from "../knowledge/base.js";
 import { loadLessons, withLessons } from "./lessons.js";
+import { loadMemory, updateMemory } from "./memory.js";
 import { businessStatus } from "./business-hours.js";
 import type { EventBus } from "./events.js";
 import { recordOrderNotification } from "./notifications.js";
@@ -48,6 +49,11 @@ export type Deps = {
   orderSourceFor?: (tenantId: string) => Promise<OrderSource | null>;
   /** Mağazanın iade sistemi bağlantısı (varsa, yalnızca okuma). */
   returnsFor?: (tenantId: string) => Promise<ReturnsProvider | null>;
+  /**
+   * Müşteri kartı (core/memory.ts): her cevaptan sonra arka planda güncellenir. `schedule` aynı
+   * müşterinin güncellemelerini sıraya koyar; yoksa güncelleme kartı okumaz ama yazmaz (test ekranı).
+   */
+  memory?: { model: string; schedule?: (customerId: string, task: () => Promise<void>) => void };
 };
 
 /** Gelen mesajın alınma sonucu. "queued": cevap zamanlayıcıya bırakıldı (bkz. reply-scheduler.ts). */
@@ -230,19 +236,22 @@ export async function respond(deps: Deps, conversationId: string, ctl: RespondCo
       deps.log.error(`${what} alınamadı (tenant=${tenant.slug})`, err);
       return null;
     });
-  const [history, firstContact, openHandoff, storeKnowledge, lessons, orderSource, returns] = await Promise.all([
+  const [history, firstContact, openHandoff, storeKnowledge, lessons, memory, orderSource, returns] = await Promise.all([
     loadHistory(db, conversationId, deps.historyLimit),
     isFirstContact(db, conversationId),
     findOpenHandoff(db, conversationId),
     loadKnowledge(db, tenant),
     loadLessons(db, tenant.id),
+    loadMemory(db, conversation.customerId),
     optional(deps.orderSourceFor?.(tenant.id), "Sipariş kaynağı"),
     optional(deps.returnsFor?.(tenant.id), "İade sistemi bağlantısı"),
   ]);
   const turn = {
-    firstContact,
+    // Kartı olan müşteri daha önce yazmıştır (ör. eski mesajları silinmiş olsa da): yeniden tanıtım yok.
+    firstContact: firstContact && !memory,
     business: businessStatus(settings.businessHours, deps.timeZone, now),
     openHandoff: openHandoff && { reason: openHandoff.reason, summary: openHandoff.summary },
+    memory,
   };
   const ctx = { db, llm: deps.llm, model: deps.model, tenantId: tenant.id, conversationId, signal: ctl.signal, log: deps.log };
   const orders = orderSource ? { source: orderSource, waId, timeZone: deps.timeZone, now, returns } : null;
@@ -278,6 +287,16 @@ export async function respond(deps: Deps, conversationId: string, ctl: RespondCo
     deps.events?.publish(tenant.id, { type: openHandoff ? "conversation" : "handoff", conversationId });
   }
   const delivery = await sendAndStore(deps, tenant, conversation, wa, reply, "bot");
+  // Müşteri kartı arka planda güncellenir; cevabı geciktirmez, hatası cevabı etkilemez.
+  if (deps.memory?.schedule) {
+    const { model } = deps.memory;
+    deps.memory.schedule(conversation.customerId, async () => {
+      await updateMemory(
+        { db, llm: deps.llm, model },
+        { tenant, customerId: conversation.customerId, conversationId, now: deps.now?.() ?? new Date(), timeZone: deps.timeZone },
+      );
+    });
+  }
   // Sipariş konularında devir yok: ekibe bildirim (docs/lina-davranis.md "Ekibe bildirimler").
   if (orderFindings) {
     await recordOrderNotification(deps, {

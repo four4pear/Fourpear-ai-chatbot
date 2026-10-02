@@ -121,6 +121,23 @@ export const customers = pgTable(
 );
 
 /**
+ * Müşteri kartı (docs/lina-davranis.md "Müşteri kartı"): Lina'nın bu müşteri hakkında hatırladıkları
+ * (ad soyad ve hitap, geçmiş talepler, açık konular, tercihler ve tarz). Her cevaptan sonra arka planda
+ * güncellenir; adres, ödeme ve hassas bilgi yazılmaz. Müşteri silinince silinir; son mesajdan 6 ay
+ * sonra kendiliğinden silinir (core/memory.ts).
+ */
+export const customerMemories = pgTable("customer_memories", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  tenantId: uuid("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  customerId: uuid("customer_id").notNull().references(() => customers.id, { onDelete: "cascade" }).unique(),
+  text: text("text").notNull(),
+  /** Kartın en son güncellendiği an; sonraki güncellemede yalnızca bundan sonraki mesajlar okunur. */
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  /** Müşterinin son mesajı; saklama süresi buna göre işler. */
+  lastActivityAt: timestamp("last_activity_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/**
  * bot: Lina cevaplıyor
  * waiting: devredildi, ekip henüz devralmadı; Lina basit sorulara cevap vermeye devam eder
  * human: ekipten biri devraldı; Lina susar
@@ -509,3 +526,4 @@ export type ArchivedText = typeof textArchive.$inferSelect;
 export type Notification = typeof notifications.$inferSelect;
 export type Integration = typeof integrations.$inferSelect;
 export type Lesson = typeof lessons.$inferSelect;
+export type CustomerMemory = typeof customerMemories.$inferSelect;
