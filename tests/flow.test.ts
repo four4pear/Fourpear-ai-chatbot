@@ -260,7 +260,7 @@ describe("mesaj akışı", () => {
     await post(text("merhaba"));
     await post(text("nasılsınız"));
     expect(systemContextOf(linaCalls[0]!)).toContain("İlk temas");
-    expect(systemContextOf(linaCalls[0]!)).toContain("Merhaba, ben Lina, MAIUS'un dijital asistanıyım.");
+    expect(systemContextOf(linaCalls[0]!)).toContain('Cevabın "Merhaba, ben Lina." ile başlasın');
     expect(systemContextOf(linaCalls[1]!)).toContain("kendini yeniden tanıtma");
   });
 });
