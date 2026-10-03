@@ -1,4 +1,4 @@
-import { simulate, type SimulationMode } from "./simulator.js";
+import { replySummary, simulate, type SimulationMode } from "./simulator.js";
 import { DEMO_SCENARIOS } from "../orders/demo.js";
 import type { Deps } from "../core/conversation.js";
 import express, { type Express, type NextFunction, type Request, type Response } from "express";
@@ -9,7 +9,7 @@ import { FailureLimiter } from "../auth/rate-limit.js";
 import type { EventBus } from "../core/events.js";
 import type { WhatsAppSender } from "../whatsapp/client.js";
 import { registerConversationRoutes } from "./conversations.js";
-import { registerNotificationRoutes } from "./notifications.js";
+import { NOTIFICATION_LABELS, registerNotificationRoutes } from "./notifications.js";
 import { registerLessonRoutes } from "./lessons.js";
 import { registerTeamQuestionRoutes } from "./team-questions.js";
 import { registerUsageRoutes } from "./usage.js";
@@ -311,7 +311,14 @@ export function registerPanelApi(app: Express, deps: PanelApiDeps) {
           result.usage.map((u) => ({ ...u, tenantId: param(req, "tenantId"), conversationId: null, source: "test" as const })),
         );
       }
-      if (!abort.signal.aborted) res.json({ ...result, usage: undefined });
+      if (abort.signal.aborted) return;
+      // Karar özeti: ekibe ne gitti, cevap kaça mal oldu.
+      res.json({
+        ...result,
+        usage: undefined,
+        notifications: result.notifications.map((n) => ({ label: NOTIFICATION_LABELS[n.kind], important: n.important, orders: n.orderNames, issues: n.issues })),
+        summary: replySummary(result.usage),
+      });
     } finally { testing.delete(key); }
   });
 

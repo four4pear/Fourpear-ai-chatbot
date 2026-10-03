@@ -152,6 +152,40 @@ it("Lina ekibe sorarsa soru kartı çıkar; ekip olarak cevaplanınca cevap Lina
   ]);
 });
 
+it("son cevabın karar özeti: kime soruldu, ekibe ne gitti, harcama", async () => {
+  server(() => json({
+    replies: ["Çok üzgünüm, hemen ilgileniyorum."],
+    runs: [
+      { agent: "lina", question: null, answer: "Çok üzgünüm, hemen ilgileniyorum.", error: null },
+      { agent: "returns", question: "[Hasarlı ürün] Ürün hasarlı geldi", answer: "EKİBE: iletildi", error: null },
+      { agent: "memory", question: null, answer: null, error: null },
+    ],
+    handoffs: [], demoHelp: [],
+    notifications: [{ label: "İade: ekip kararı gerekiyor", important: true, orders: ["#MO-9010"], issues: ["Hasarlı ürün bildirildi."] }],
+    summary: { costUsd: 0.0312, memoryCostUsd: 0.002, durationMs: 14200, apiCalls: 4 },
+  }));
+  render(<TestPage store={store} replyDelayMs={0} />);
+  expect(screen.getByText(/İlk cevaptan sonra burada görünecek/)).toBeTruthy();
+  write("MO-9010 hasarlı geldi");
+  await screen.findByText("Çok üzgünüm, hemen ilgileniyorum.");
+  expect(screen.getByText("İade uzmanı")).toBeTruthy();
+  expect(screen.queryByText("memory")).toBeNull(); // müşteri kartı uzman değildir
+  expect(screen.getByText("Önemli bildirim:").parentElement!.textContent).toBe("Önemli bildirim: İade: ekip kararı gerekiyor (#MO-9010)");
+  expect(screen.getByText("Hasarlı ürün bildirildi.")).toBeTruthy();
+  expect(screen.getByText("Yaklaşık $0.0312 · 14 sn · 4 yapay zekâ çağrısı")).toBeTruthy();
+  expect(screen.getByText(/Müşteri kartı güncellemesi ayrıca \$0\.0020/)).toBeTruthy();
+});
+
+it("karar özeti: Lina tek başına cevapladıysa ve ekibe bir şey gitmediyse bunu söyler", async () => {
+  server(() => json({ replies: ["Kargo iki gün."], runs: [{ agent: "lina", question: null, answer: "Kargo iki gün.", error: null }], handoffs: [], demoHelp: [], notifications: [], summary: { costUsd: 0.004, memoryCostUsd: null, durationMs: 3600, apiCalls: 1 } }));
+  render(<TestPage store={store} replyDelayMs={0} />);
+  write("Kargo?");
+  await screen.findByText("Kargo iki gün.");
+  expect(screen.getByText("Lina kendi bilgisiyle cevapladı; uzmana sormadı.")).toBeTruthy();
+  expect(screen.getByText("Ekibe bir şey gitmedi.")).toBeTruthy();
+  expect(screen.getByText("Yaklaşık $0.0040 · 4 sn · 1 yapay zekâ çağrısı")).toBeTruthy();
+});
+
 it("ders yerinde düzenlenir", async () => {
   let lessons = [{ id: "l1", text: "Eski metin." }];
   const patched: unknown[] = [];

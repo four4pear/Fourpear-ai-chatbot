@@ -63,7 +63,8 @@ Mağaza sahibi veya yönetici hesabıyla `/m/<mağaza>/test` ekranını açın (
 Gerçek mağaza bilgileri ve Claude ile metin sohbetini deneyebilirsiniz. Testler iz bırakmaz: canlıda
 (Postgres) sonunda geri alınan bir işlem içinde, yerelde bellekteki ayrı bir veritabanında çalışır;
 müşteri kayıtlarına yazılmaz ve WhatsApp’a mesaj göndermez. Gerçek API kullanımı
-ücretlidir. İsteğe bağlı deneme siparişleri, uzman çağrıları ve yeni sohbet düğmesi bulunur.
+ücretlidir. İsteğe bağlı deneme siparişleri, son cevabın karar özeti (Lina hangi uzmana sordu, ekibe ne
+gitti, cevap kaça mal oldu) ve yeni sohbet düğmesi bulunur.
 Lina son mesajdan 10 sn sonra cevaplar; bu sürede yeni mesaj yazılırsa bekleme baştan başlar ve art arda
 mesajlara tek cevap verilir (cevap hazırlanırken yazılırsa hazırlanan cevap iptal edilir). Her istekte görünür
 metin geçmişi yeniden kurulur. Bu ekran fotoğraf ve ekip devralma akışlarını simüle etmez. En fazla 40 mesajdan

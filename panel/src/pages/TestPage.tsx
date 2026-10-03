@@ -1,9 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { api, type Membership } from "../api";
+import { usd } from "./UsagePage";
 
 /** team: ekibin "Lina soruyor" cevabı (testte ekip yerine siz cevaplarsınız). */
 type Turn = { role: "user" | "assistant" | "team"; text: string; question?: string };
-type Result = { replies: string[]; outcome: string; runs: { agent: string; question: string | null; answer: string | null; error: string | null }[]; handoffs: { summary: string }[]; demoHelp: string[]; memory?: string | null; teamQuestions?: { question: string; context: string }[] };
+/** notifications ve summary: son cevabın karar özeti (ekibe ne gitti, cevap kaça mal oldu). */
+type Result = { replies: string[]; outcome: string; runs: { agent: string; question: string | null; answer: string | null; error: string | null }[]; handoffs: { summary: string }[]; demoHelp: string[]; memory?: string | null; teamQuestions?: { question: string; context: string }[];
+  notifications?: { label: string; important: boolean; orders: string[]; issues: string[] }[];
+  summary?: { costUsd: number | null; memoryCostUsd: number | null; durationMs: number; apiCalls: number } };
 type Proposal = { summary: string; lessons: string[]; replaces: { id: string; text: string }[] };
 type Lesson = { id: string; text: string };
 type Scenario = { order: string; label: string; sample: string };
@@ -205,6 +209,9 @@ export function TestPage({ store, replyDelayMs = TEST_REPLY_DELAY_MS }: { store:
   }
 
   const canRetry = !busy && entries.some((e) => e.kind === "assistant" && !e.superseded);
+  const experts = result?.runs.filter((r) => r.agent !== "lina" && r.agent !== "memory") ?? [];
+  const asked = result?.teamQuestions?.length ?? 0;
+  const nothingToTeam = !result?.notifications?.length && !asked && !result?.handoffs.length;
   const seconds = waitUntil === null ? 0 : Math.max(0, Math.ceil((waitUntil - now) / 1000));
   return <main className="page test-page">
     <div className="test-heading"><div><p className="hint">{store.name} · Deneme alanı</p><h1>Lina’yı test et</h1></div>
@@ -279,7 +286,29 @@ export function TestPage({ store, replyDelayMs = TEST_REPLY_DELAY_MS }: { store:
       </div>}
       <p className="hint">WhatsApp’taki gibi: Lina son mesajınızdan {replyDelayMs / 1000} sn sonra cevaplar. Bu sürede yazarsanız bekleme baştan başlar; art arda mesajlarınızı tek mesaj gibi okuyup tek cevap verir.</p>
       <p className="hint">Bu ekran metin sohbetini test eder. Konuşma geçmişi bu sayfada tutulur; müşteri kayıtlarına yazılmaz. Gerçek API kullanımı ücretlidir.</p>
-      {result?.handoffs.map((h,i) => <p key={i}>Ekibe devir: {h.summary}</p>)}
+      <h2>Son cevabın karar özeti</h2>
+      {!result && <p className="hint">İlk cevaptan sonra burada görünecek: Lina kime sordu, ekibe ne gitti, cevap kaça mal oldu.</p>}
+      {result && <div className="test-decision">
+        <h3>Kime soruldu</h3>
+        {experts.length === 0 && <p>Lina kendi bilgisiyle cevapladı; uzmana sormadı.</p>}
+        {experts.map((r,i) => <details key={i}><summary>{AGENT_LABELS[r.agent] ?? r.agent}</summary><p>{r.question}</p><p>{r.answer || r.error}</p></details>)}
+        <h3>Ekibe ne gitti</h3>
+        {nothingToTeam && <p>Ekibe bir şey gitmedi.</p>}
+        {result.notifications?.map((n,i) => <div key={i}>
+          <p><strong>{n.important ? "Önemli bildirim" : "Sessiz kayıt"}:</strong> {n.label}{n.orders.length > 0 && ` (${n.orders.join(", ")})`}</p>
+          {n.issues.length > 0 && <ul>{n.issues.map((issue,j) => <li key={j}>{issue}</li>)}</ul>}
+        </div>)}
+        {asked > 0 && <p>Lina ekibe {asked} soru sordu; soru sohbette görünüyor.</p>}
+        {result.handoffs.map((h,i) => <p key={i}>Ekibe devir: {h.summary}</p>)}
+        {result.summary && <>
+          <h3>Harcama</h3>
+          {result.summary.apiCalls === 0
+            ? <p>Bu cevapta yapay zekâ kullanılmadı.</p>
+            : <p>Yaklaşık {usd(result.summary.costUsd)} · {Math.round(result.summary.durationMs / 1000)} sn · {result.summary.apiCalls} yapay zekâ çağrısı</p>}
+          {result.summary.memoryCostUsd !== null && <p className="hint">Müşteri kartı güncellemesi ayrıca {usd(result.summary.memoryCostUsd)}. Canlıda her cevapta değil, müşteri susunca bir kez yapılır.</p>}
+        </>}
+        {result.runs.some(r => r.error) && <p role="alert" className="test-error">Yapay zekâ çağrısında hata oluştu. Sunucu kayıtlarını kontrol edin.</p>}
+      </div>}
       <h2>Müşteri kartı</h2>
       <p className="hint">Lina’nın bu müşteri hakkında hatırladıkları. Müşteriye gösterilmez; Lina sessizce kullanır.</p>
       {memory ? <pre className="test-memory">{memory}</pre> : <p className="hint">Henüz boş; ilk cevaptan sonra dolar.</p>}
@@ -299,10 +328,6 @@ export function TestPage({ store, replyDelayMs = TEST_REPLY_DELAY_MS }: { store:
               <button className="btn btn-secondary" aria-label={`Dersi düzenle: ${l.text}`} onClick={() => setEditing(l)}>Düzenle</button>
               <button className="btn btn-secondary" aria-label={`Dersi sil: ${l.text}`} onClick={() => void removeLesson(l)}>Sil</button>
             </span></li>)}</ul>}
-      <h2>Son cevabın uzman çağrıları</h2>
-      {result?.runs.filter(r => r.agent !== "lina").map((r,i) => <details key={i}><summary>{AGENT_LABELS[r.agent] ?? r.agent}</summary><p>{r.question}</p><p>{r.answer || r.error}</p></details>)}
-      {!result && <p className="hint">İlk cevaptan sonra burada görünecek.</p>}
-      {result?.runs.some(r => r.error) && <p role="alert" className="test-error">Yapay zekâ çağrısında hata oluştu. Sunucu kayıtlarını kontrol edin.</p>}
     </aside></div>
   </main>;
 }

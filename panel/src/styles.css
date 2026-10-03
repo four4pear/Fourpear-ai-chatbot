@@ -452,6 +452,12 @@ textarea {
 .test-details h2 { font-size: 15px; margin-top: 0; }
 .test-details details { margin: 12px 0; overflow-wrap: anywhere; }
 .test-details details p { white-space: pre-wrap; font-size: 13px; }
+.test-decision { margin-bottom: 16px; font-size: 13px; }
+.test-decision h3 { font-size: 13px; margin: 12px 0 4px; color: var(--muted); }
+.test-decision p { margin: 4px 0; overflow-wrap: anywhere; }
+.test-decision ul { margin: 4px 0; padding-left: 18px; }
+.test-decision details { margin: 4px 0; }
+.test-decision .test-error { padding: 0; }
 .test-error { color: var(--danger); padding: 0 16px; }
 .test-message.superseded { opacity: .55; }
 .test-message.superseded p { text-decoration: line-through; }

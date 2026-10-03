@@ -10,6 +10,7 @@ import {
   knowledgeDocs,
   lessons,
   messages,
+  notifications,
   teamQuestions,
   tenants,
   textArchive,
@@ -17,6 +18,7 @@ import {
 } from "../db/schema.js";
 import { TEAM_ANSWER_TYPE, teamAnswerText } from "../core/team-questions.js";
 import { updateMemory } from "../core/memory.js";
+import { costUsd, type TokenUsage } from "../core/pricing.js";
 import { ingestInbound, respond, type Deps } from "../core/conversation.js";
 import { encryptSecret } from "../lib/crypto.js";
 import { demoOrderSource, demoReturnsProvider, DEMO_ORDERS_HELP } from "../orders/demo.js";
@@ -44,6 +46,29 @@ export type SimulateOptions = {
    */
   memory?: string | null;
 };
+
+type RunUsage = TokenUsage & { agent: string; model: string; apiCalls: number; durationMs: number };
+
+/**
+ * Test ekranındaki "karar özeti" için cevabın tahmini tutarı, süresi ve yapay zekâ çağrısı sayısı.
+ * Müşteri kartı ayrı tutulur: canlıda her cevapta değil, müşteri susunca bir kez güncellenir.
+ */
+export function replySummary(usage: RunUsage[]) {
+  const cost = (rows: RunUsage[]) =>
+    rows.reduce<number | null>((sum, u) => {
+      const c = costUsd(u.model, u);
+      return sum === null || c === null ? null : sum + c;
+    }, 0);
+  const reply = usage.filter((u) => u.agent !== "memory");
+  const memory = usage.filter((u) => u.agent === "memory");
+  return {
+    costUsd: cost(reply),
+    memoryCostUsd: memory.length ? cost(memory) : null,
+    // Uzmanlar Lina'nın çağrısı içinde çalışır: Lina'nın süresi cevabın toplam süresidir.
+    durationMs: reply.find((u) => u.agent === "lina")?.durationMs ?? 0,
+    apiCalls: reply.reduce((n, u) => n + u.apiCalls, 0),
+  };
+}
 
 export async function simulate(source: Deps, tenantId: string, history: Turn[], opts: SimulateOptions = {}) {
   const mode = opts.mode ?? "copy";
@@ -161,6 +186,8 @@ async function runTest(source: Deps, db: DB, tenantId: string, history: Turn[], 
     ? await db.select().from(agentRuns).where(eq(agentRuns.conversationId, conversationId)).orderBy(agentRuns.createdAt)
     : [];
   const handedOff = conversationId ? await db.select().from(handoffs).where(eq(handoffs.conversationId, conversationId)) : [];
+  // Bu cevabın ekibe düşürdüğü bildirim (eski turlar için yapay zekâ çalışmadığından yalnızca son cevabınki vardır).
+  const notified = conversationId ? await db.select().from(notifications).where(eq(notifications.conversationId, conversationId)) : [];
   return {
     replies,
     outcome,
@@ -179,6 +206,7 @@ async function runTest(source: Deps, db: DB, tenantId: string, history: Turn[], 
       error: r.error,
     })),
     handoffs: handedOff,
+    notifications: notified.map((n) => ({ kind: n.kind, important: n.important, orderNames: n.orderNames, issues: n.details.issues ?? [] })),
     demoHelp: demo ? DEMO_ORDERS_HELP : [],
     memory: updatedMemory,
     teamQuestions: asked,

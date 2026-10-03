@@ -31,7 +31,7 @@ const PERIODS = [
   { days: 30, label: "Son 30 gün" },
 ];
 
-const usd = (n: number | null) => (n === null ? "—" : `$${n < 0.1 ? n.toFixed(4) : n.toFixed(2)}`);
+export const usd = (n: number | null) => (n === null ? "—" : `$${n < 0.1 ? n.toFixed(4) : n.toFixed(2)}`);
 const num = (n: number) => n.toLocaleString("tr-TR");
 const pct = (n: number | null) => (n === null ? "—" : `%${Math.round(n * 100)}`);
 

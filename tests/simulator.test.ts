@@ -1,8 +1,8 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { describe, expect, it, vi } from "vitest";
 import { openDatabase } from "../src/db/client.js";
-import { agentRuns, customers, messages, tenants, whatsappAccounts } from "../src/db/schema.js";
-import { simulate, type SimulationMode } from "../src/panel/simulator.js";
+import { agentRuns, customers, messages, notifications, tenants, whatsappAccounts } from "../src/db/schema.js";
+import { replySummary, simulate, type SimulationMode } from "../src/panel/simulator.js";
 import type { Deps } from "../src/core/conversation.js";
 
 // Canlıda (Postgres) test sohbeti geri alınan işlemde, yerelde bellekteki kopyada çalışır; ikisi de iz bırakmaz.
@@ -66,6 +66,35 @@ describe.each<SimulationMode>(["transaction", "copy"])("test sohbeti (%s)", (mod
       const sent = create.mock.calls[0]![0].messages;
       expect(sent).toHaveLength(1);
       expect(JSON.stringify(sent[0])).toContain("Merhaba\\nsiparişim gelmedi\\n#1045");
+    } finally { await source.close(); }
+  }, 30000);
+
+  it("karar özeti: cevabın ekibe düşürdüğü bildirimi ve harcamasını döner, iz bırakmaz", async () => {
+    const source = await openDatabase({});
+    try {
+      const [tenant] = await source.db.insert(tenants).values({ slug: "test", name: "Test" }).returning();
+      const answer = (content: unknown[], stop: string) =>
+        ({ id: "test", type: "message", role: "assistant", content, stop_reason: stop, usage: { input_tokens: 1000, output_tokens: 100 } }) as unknown as Anthropic.Message;
+      // Lina şikayeti sipariş uzmanına sorar (1. çağrı), uzman cevaplar (2.), Lina müşteriye yazar (3.).
+      const create = vi.fn(async (params: Anthropic.MessageCreateParams) => {
+        const tools = (params.tools ?? []).map((t) => ("name" in t ? t.name : ""));
+        if (!tools.includes("ask_order_agent")) return answer([{ type: "text", text: "Sipariş doğrulandı; şikayet ekibe bildirilecek.", citations: null }], "end_turn");
+        const last = params.messages.at(-1)!.content;
+        if (Array.isArray(last) && last[0]?.type === "tool_result") return answer([{ type: "text", text: "Çok üzgünüm, hemen ilgileniyorum.", citations: null }], "end_turn");
+        return answer(
+          [{ type: "tool_use", id: "t1", name: "ask_order_agent", input: { topic: "complaint", question: "Ürün hasarlı geldi.", order_number: "MO-9001", customer_name: "", order_phone: "" } }],
+          "tool_use",
+        );
+      });
+      const deps = { db: source.db, llm: { create }, wa: {}, model: "claude-sonnet-5", historyLimit: 20, timeZone: "Europe/Istanbul", log: console } as unknown as Deps;
+      const result = await simulate(deps, tenant!.id, [{ role: "user", text: "MO-9001 hasarlı geldi" }], { mode, demo: true });
+      expect(result.replies).toEqual(["Çok üzgünüm, hemen ilgileniyorum."]);
+      expect(result.notifications).toMatchObject([{ kind: "complaint", important: true, orderNames: [expect.stringContaining("MO-9001")] }]);
+      const summary = replySummary(result.usage);
+      expect(summary).toMatchObject({ apiCalls: 3, memoryCostUsd: null });
+      // 3 çağrı × (1000 girdi × 2 $ + 100 çıktı × 10 $) / 1 milyon
+      expect(summary.costUsd).toBeCloseTo(0.009, 6);
+      expect(await source.db.select().from(notifications)).toEqual([]);
     } finally { await source.close(); }
   }, 30000);
 
