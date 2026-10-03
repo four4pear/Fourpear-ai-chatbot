@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, type Membership } from "../api";
+import { Link } from "../router";
+import { HANDOFF_REASONS, statusLabel, type ConversationRow } from "./ConversationsPage";
 
 type Question = {
   id: string;
@@ -43,6 +45,7 @@ const timeAgo = (iso: string) => {
  * - "Lina soruyor": Lina'nın bilmediği ve arka planda ekibe sorduğu sorular. Ekip kısa bir cevap yazar;
  *   Lina müşteriye kendi cümleleriyle iletir.
  * - "Ekibe iletilenler": Lina'nın ekibe bıraktığı talepler (önemli bildirimler). Ekip işlemi yapıp tamamlar.
+ * - "Devredilen konuşmalar": müşteri temsilci istedi ya da öfkesi sürdü; Lina konuşmayı ekibe devretti.
  */
 export function WaitingPage({ store }: { store: Membership }) {
   const [open, setOpen] = useState<Question[] | null>(null);
@@ -52,6 +55,7 @@ export function WaitingPage({ store }: { store: Membership }) {
   const [teach, setTeach] = useState<Record<string, boolean>>({});
   const [sending, setSending] = useState<string | null>(null);
   const [forwarded, setForwarded] = useState<Forwarded[] | null>(null);
+  const [handedOff, setHandedOff] = useState<ConversationRow[] | null>(null);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const base = `/tenants/${store.tenantId}/team-questions`;
@@ -63,6 +67,7 @@ export function WaitingPage({ store }: { store: Membership }) {
       setOpen((await api<{ questions: Question[] }>(base)).questions);
       if (showAnswered) setAnswered((await api<{ questions: Question[] }>(`${base}?status=answered`)).questions);
       setForwarded((await api<{ notifications: Forwarded[] }>(`${notifications}?filter=important`)).notifications);
+      setHandedOff((await api<{ conversations: ConversationRow[] }>(`/tenants/${store.tenantId}/conversations?view=waiting`)).conversations);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Bekleyenler yüklenemedi");
     }
@@ -158,6 +163,21 @@ export function WaitingPage({ store }: { store: Membership }) {
           <p className="waiting-text"><span className="waiting-label">Müşteri:</span> {n.question}</p>
           {n.answer && <p className="waiting-text"><span className="waiting-label">Lina:</span> {n.answer}</p>}
           <div className="waiting-actions"><span /><button className="btn btn-primary" onClick={() => void complete(n)}>Tamamlandı</button></div>
+        </article>)}
+      </div>
+    </section>
+
+    <section aria-labelledby="handed-off">
+      <h2 id="handed-off">Devredilen konuşmalar{handedOff?.length ? ` (${handedOff.length})` : ""}</h2>
+      <p className="hint">Müşteri temsilciyle görüşmek istedi ya da Lina konuyu çözemedi. Kimse devralmadıysa en uzun bekleyen üstte. Siz devralana kadar Lina basit sorulara cevap vermeye devam eder.</p>
+      {handedOff === null && <p className="hint" role="status">Yükleniyor…</p>}
+      {handedOff?.length === 0 && <p className="hint">Şu an devredilen konuşma yok.</p>}
+      <div className="waiting-list">
+        {handedOff?.map((c) => <article key={c.id} className="panel-card waiting-card" aria-label={`${c.customer.name} ile konuşma`}>
+          <header><strong>{c.customer.name}</strong> <span className="hint">{c.customer.phone}{c.openHandoff ? ` · ${timeAgo(c.openHandoff.createdAt)}` : ""} · {statusLabel(c)}</span></header>
+          {c.openHandoff && <p className="waiting-question">{HANDOFF_REASONS[c.openHandoff.reason] ?? c.openHandoff.reason}</p>}
+          {c.openHandoff && <p className="waiting-text">{c.openHandoff.summary}</p>}
+          <div className="waiting-actions"><span /><Link className="btn btn-secondary" to={`/m/${store.slug}/sohbetler/${c.id}`}>Konuşmayı aç</Link></div>
         </article>)}
       </div>
     </section>

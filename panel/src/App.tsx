@@ -1,5 +1,6 @@
 import { TestPage } from "./pages/TestPage";
 import { WaitingPage } from "./pages/WaitingPage";
+import { ConversationPage, ConversationsPage } from "./pages/ConversationsPage";
 import { UsagePage } from "./pages/UsagePage";
 import type { Me } from "./api";
 import { AdminPage, ComingSoon, Forbidden, NoStore, NotFound } from "./pages/SimplePages";
@@ -60,6 +61,17 @@ function Routes() {
     );
   }
 
+  const chat = matchPath("/m/:slug/sohbetler/:conversationId", path);
+  if (chat) {
+    const store = me.memberships.find((s) => s.slug === chat.slug);
+    if (!store) return <NotFound />;
+    return (
+      <Shell me={me} store={store} active="sohbetler">
+        <ConversationPage key={chat.conversationId} store={store} conversationId={chat.conversationId!} />
+      </Shell>
+    );
+  }
+
   const m = matchPath("/m/:slug/:section", path) ?? matchPath("/m/:slug", path);
   if (m) {
     const store = me.memberships.find((s) => s.slug === m.slug);
@@ -76,6 +88,8 @@ function Routes() {
           <WaitingPage key={store.tenantId} store={store} />
         ) : section.key === "istatistik" ? (
           <UsagePage key={store.tenantId} store={store} />
+        ) : section.key === "sohbetler" ? (
+          <ConversationsPage key={store.tenantId} store={store} />
         ) : (
           <ComingSoon section={section.key as SectionKey} />
         )}

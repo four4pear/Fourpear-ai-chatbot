@@ -15,9 +15,16 @@ const forwarded = {
   question: "İadem 50 gündür yatmadı", answer: "İade birimine ilettim.", issues: ["Para iadesi 50 gündür yapılmadı."], createdAt: new Date().toISOString(),
 };
 
+const handedOff = {
+  id: "c9", status: "waiting", updatedAt: new Date().toISOString(), customer: { name: "Zehra", phone: "+90 533 444 55 66" }, assignedTo: null,
+  openHandoff: { reason: "customer_request", summary: "Müşteri temsilciyle görüşmek istiyor; kargo gecikmesinden şikayetçi.", createdAt: new Date().toISOString() },
+  lastMessage: null,
+};
+
 function server(role: "owner" | "agent") {
   const posted: unknown[] = [];
   vi.stubGlobal("fetch", vi.fn(async (url: string, init: RequestInit = {}) => {
+    if (url.includes("/conversations")) return json({ conversations: [handedOff] });
     if (url.includes("/notifications")) {
       if (init.method === "POST") { posted.push(url); return json({ ok: true }); }
       return json({ notifications: [forwarded] });
@@ -56,4 +63,11 @@ it("ekibe iletilen talep listelenir; 'Tamamlandı' denince listeden düşer", as
   expect(posted).toEqual(["/api/tenants/t/notifications/n1/done"]);
   expect(screen.queryByText("İade: ekip kararı gerekiyor (#MO-9013)")).toBeNull();
   expect(screen.getByText("Şu an ekibe iletilen talep yok.")).toBeTruthy();
+});
+
+it("devredilen konuşma sebebi ve özetiyle listelenir; konuşmaya bağlantı verir", async () => {
+  server("agent");
+  await screen.findByText("Temsilci istedi");
+  expect(screen.getByText("Müşteri temsilciyle görüşmek istiyor; kargo gecikmesinden şikayetçi.")).toBeTruthy();
+  expect(screen.getByRole("link", { name: "Konuşmayı aç" }).getAttribute("href")).toBe("/m/s/sohbetler/c9");
 });
