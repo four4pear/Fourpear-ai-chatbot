@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { ConversationPage, ConversationsPage } from "./ConversationsPage";
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
@@ -38,7 +38,7 @@ it("konuşma yokken bunu söyler", async () => {
 
 it("konuşma: mesajlar kimin yazdığıyla, iç notlar ayrı, devir ve iletilenler yanda görünür", async () => {
   vi.stubGlobal("fetch", vi.fn(async () => json({
-    conversation: { id: "c1", status: "waiting", assignedTo: null },
+    conversation: { id: "c1", status: "waiting", assignedTo: null, canReply: false },
     customer: { name: "Zehra", phone: "+90 533 444 55 66" },
     messages: [
       { id: "m1", sender: "customer", type: "text", text: "Ürün hasarlı geldi", createdAt: at, author: null, hasImage: false, sendError: null },
@@ -56,7 +56,7 @@ it("konuşma: mesajlar kimin yazdığıyla, iç notlar ayrı, devir ve iletilenl
       { id: "n2", label: "Sipariş sorusu", important: false, status: "open", orderNames: [], issues: [] },
     ],
   })));
-  render(<ConversationPage store={store} conversationId="c1" />);
+  render(<ConversationPage store={store} conversationId="c1" userId="u1" />);
   await screen.findByText("Ürün hasarlı geldi");
   expect(screen.getByRole("heading", { name: "Zehra" })).toBeTruthy();
   expect(screen.getByAltText("Müşterinin gönderdiği fotoğraf").getAttribute("src")).toBe("/api/tenants/t/media/m2");
@@ -72,4 +72,82 @@ it("konuşma: mesajlar kimin yazdığıyla, iç notlar ayrı, devir ve iletilenl
   expect(screen.getByText("İade: ekip kararı gerekiyor")).toBeTruthy();
   expect(screen.queryByText("Sipariş sorusu")).toBeNull(); // sessiz kayıt ekibin işi değildir
   expect(screen.getByText(/^İade uzmanı/)).toBeTruthy();
+});
+
+/** Sahte sunucu: devral/geri ver/gönder isteklerini kaydeder ve konuşmanın durumunu ona göre değiştirir. */
+function chatServer(start: { status: string; assignedTo: { id: string; name: string } | null; canReply?: boolean }, fail?: { path: string; status: number; error: string }) {
+  let state = { canReply: false, ...start };
+  const posted: { path: string; body: unknown }[] = [];
+  vi.stubGlobal("fetch", vi.fn(async (url: string, init: RequestInit = {}) => {
+    if (init.method === "POST") {
+      const path = url.split("/").at(-1)!;
+      posted.push({ path, body: init.body ? JSON.parse(String(init.body)) : undefined });
+      if (fail?.path === path) return json({ error: fail.error }, fail.status);
+      if (path === "takeover") state = { status: "human", assignedTo: { id: "u1", name: "Zeynep" }, canReply: true };
+      if (path === "release") state = { status: "bot", assignedTo: null, canReply: false };
+      return json({ ok: true });
+    }
+    return json({
+      conversation: { id: "c1", ...state },
+      customer: { name: "Zehra", phone: "+90 533 444 55 66" },
+      messages: [{ id: "m1", sender: "customer", type: "text", text: "Yetkiliyle görüşmek istiyorum", createdAt: at, author: null, hasImage: false, sendError: null }],
+      expertCalls: [], handoffs: [], notifications: [],
+    });
+  }));
+  return posted;
+}
+
+it("devral → yaz → Lina'ya geri ver", async () => {
+  const posted = chatServer({ status: "waiting", assignedTo: null });
+  render(<ConversationPage store={store} conversationId="c1" userId="u1" />);
+  await screen.findByText("Yetkiliyle görüşmek istiyorum");
+  // Devralmadan yazma kutusu yoktur.
+  expect(screen.queryByLabelText("Müşteriye mesajınız")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Devral" }));
+  const box = await screen.findByLabelText("Müşteriye mesajınız");
+  expect(screen.queryByRole("button", { name: "Devral" })).toBeNull();
+  expect(screen.getAllByText("Ekipte: Zeynep").length).toBeGreaterThan(0);
+
+  fireEvent.change(box, { target: { value: " Merhaba Zehra Hanım " } });
+  fireEvent.click(screen.getByRole("button", { name: "Gönder" }));
+  await vi.waitFor(() => expect((screen.getByLabelText("Müşteriye mesajınız") as HTMLTextAreaElement).value).toBe(""));
+
+  fireEvent.click(screen.getByRole("button", { name: "Lina’ya geri ver" }));
+  await screen.findByRole("button", { name: "Devral" });
+  expect(screen.queryByLabelText("Müşteriye mesajınız")).toBeNull();
+  expect(posted).toEqual([
+    { path: "takeover", body: undefined },
+    { path: "messages", body: { text: "Merhaba Zehra Hanım" } },
+    { path: "release", body: undefined },
+  ]);
+});
+
+it("başkasının devraldığı konuşmada çalışan devralamaz ve geri veremez; mağaza sahibi yapabilir", async () => {
+  chatServer({ status: "human", assignedTo: { id: "u2", name: "Ali" } });
+  const { unmount } = render(<ConversationPage store={store} conversationId="c1" userId="u1" />);
+  await screen.findByText(/Yalnızca devralan kişi yazabilir/);
+  expect(screen.queryByRole("button", { name: "Devral" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Lina’ya geri ver" })).toBeNull();
+  expect(screen.queryByLabelText("Müşteriye mesajınız")).toBeNull();
+  unmount();
+
+  render(<ConversationPage store={{ ...store, role: "owner" }} conversationId="c1" userId="u1" />);
+  await screen.findByRole("button", { name: "Devral" });
+  expect(screen.getByRole("button", { name: "Lina’ya geri ver" })).toBeTruthy();
+});
+
+it("24 saat geçtiyse yazma kutusu kapanır ve nedeni yazar; gönderilemeyen mesajda taslak silinmez", async () => {
+  chatServer({ status: "human", assignedTo: { id: "u1", name: "Zeynep" }, canReply: false });
+  const { unmount } = render(<ConversationPage store={store} conversationId="c1" userId="u1" />);
+  await screen.findByText(/Müşterinin son mesajından 24 saat geçti/);
+  expect(screen.queryByLabelText("Müşteriye mesajınız")).toBeNull();
+  expect(screen.getByRole("button", { name: "Lina’ya geri ver" })).toBeTruthy();
+  unmount();
+
+  chatServer({ status: "human", assignedTo: { id: "u1", name: "Zeynep" }, canReply: true }, { path: "messages", status: 502, error: "Mesaj WhatsApp'a gönderilemedi. Lütfen tekrar deneyin." });
+  render(<ConversationPage store={store} conversationId="c1" userId="u1" />);
+  fireEvent.change(await screen.findByLabelText("Müşteriye mesajınız"), { target: { value: "Merhaba" } });
+  fireEvent.click(screen.getByRole("button", { name: "Gönder" }));
+  await screen.findByText("Mesaj WhatsApp'a gönderilemedi. Lütfen tekrar deneyin.");
+  expect((screen.getByLabelText("Müşteriye mesajınız") as HTMLTextAreaElement).value).toBe("Merhaba");
 });

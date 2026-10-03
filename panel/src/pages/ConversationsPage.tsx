@@ -28,7 +28,8 @@ type Message = {
 };
 
 type Detail = {
-  conversation: { id: string; status: Status; assignedTo: Person | null };
+  /** canReply: konuşma bende ve WhatsApp'ın 24 saatlik yazma süresi açık. */
+  conversation: { id: string; status: Status; assignedTo: Person | null; canReply: boolean };
   customer: { name: string; phone: string };
   messages: Message[];
   expertCalls: { agent: string; question: string | null; answer: string | null; createdAt: string }[];
@@ -120,38 +121,82 @@ export function ConversationsPage({ store }: { store: Membership }) {
   </main>;
 }
 
-/** Bir konuşma: mesajlar, Lina'nın uzmanlara sordukları ve ekibe düşenler. Bu adımda yalnızca okunur. */
-export function ConversationPage({ store, conversationId }: { store: Membership; conversationId: string }) {
+/**
+ * Bir konuşma: mesajlar, Lina'nın uzmanlara sordukları ve ekibe düşenler. Ekip konuşmayı devralır (Lina
+ * susar), müşteriye yazar ve işi bitince Lina'ya geri verir (docs/panel.md "Sohbetler").
+ */
+export function ConversationPage({ store, conversationId, userId }: { store: Membership; conversationId: string; userId: string }) {
   const [detail, setDetail] = useState<Detail | null>(null);
   const [error, setError] = useState("");
+  const [loadError, setLoadError] = useState("");
+  const [draft, setDraft] = useState("");
+  const [busy, setBusy] = useState(false);
+  const base = `/tenants/${store.tenantId}/conversations/${conversationId}`;
   const thread = useRef<HTMLElement>(null);
   // Konuşma en yeni mesajdan açılır; yeni mesaj gelince de aşağı iner.
   const lastId = detail?.messages.at(-1)?.id;
   useEffect(() => { if (thread.current) thread.current.scrollTop = thread.current.scrollHeight; }, [lastId]);
 
-  useRefresh(async () => {
-    try { setDetail(await api<Detail>(`/tenants/${store.tenantId}/conversations/${conversationId}`)); setError(""); }
-    catch (e) { setError(e instanceof Error ? e.message : "Konuşma yüklenemedi"); }
-  }, [store.tenantId, conversationId]);
+  async function load() {
+    try { setDetail(await api<Detail>(base)); setLoadError(""); }
+    catch (e) { setLoadError(e instanceof Error ? e.message : "Konuşma yüklenemedi"); }
+  }
+  useRefresh(load, [store.tenantId, conversationId]);
 
+  /** Devral, geri ver, gönder: sonuç ne olursa olsun konuşma yeniden yüklenir (başkası devralmış olabilir). */
+  async function act(path: string, body?: unknown) {
+    setBusy(true); setError("");
+    try { await api(`${base}/${path}`, { method: "POST", body }); return true; }
+    catch (e) { setError(e instanceof Error ? e.message : "İşlem yapılamadı"); return false; }
+    finally { await load(); setBusy(false); }
+  }
+  async function send() {
+    const text = draft.trim();
+    if (!text || busy) return;
+    if (await act("messages", { text })) setDraft("");
+  }
+
+  const c = detail?.conversation;
+  const mine = c?.status === "human" && c.assignedTo?.id === userId;
+  const isOwner = store.role === "owner";
+  // Başkasının devraldığını yalnızca mağaza sahibi alabilir ve geri verebilir.
+  const canTakeOver = c && !mine && (c.status !== "human" || isOwner);
+  const canRelease = c && (mine || c.status === "waiting" || (c.status === "human" && isOwner));
   const openHandoff = detail?.handoffs.find((h) => h.status === "open");
   const forwarded = detail?.notifications.filter((n) => n.status === "open" && n.important) ?? [];
   return <main className="page conversation-page">
     <p><Link to={`/m/${store.slug}/sohbetler`}>← Tüm sohbetler</Link></p>
-    {error && <p role="alert" className="test-error">{error}</p>}
-    {!detail && !error && <p className="hint" role="status">Yükleniyor…</p>}
+    {(error || loadError) && <p role="alert" className="test-error">{error || loadError}</p>}
+    {!detail && !loadError && <p className="hint" role="status">Yükleniyor…</p>}
     {detail && <>
       <div className="test-heading"><div><p className="hint">{detail.customer.phone}</p><h1>{detail.customer.name}</h1></div>
         <span className={`conversation-status ${detail.conversation.status}`}>{statusLabel(detail.conversation)}</span></div>
       <div className="test-layout">
-        <section ref={thread} className="panel-card conversation-messages" aria-label="Mesajlar">
-          {detail.messages.length === 0 && <p className="hint">Bu konuşmada mesaj yok.</p>}
-          {detail.messages.map((m) => <ChatMessage key={m.id} m={m} tenantId={store.tenantId} />)}
-        </section>
+        <div className="panel-card test-chat">
+          <section ref={thread} className="conversation-messages" aria-label="Mesajlar">
+            {detail.messages.length === 0 && <p className="hint">Bu konuşmada mesaj yok.</p>}
+            {detail.messages.map((m) => <ChatMessage key={m.id} m={m} tenantId={store.tenantId} />)}
+          </section>
+          {mine && detail.conversation.canReply && <div className="test-compose">
+            <label className="sr-only" htmlFor="reply">Müşteriye mesajınız</label>
+            <textarea id="reply" rows={3} maxLength={4000} placeholder="Müşteriye yazın… Mesaj mağaza adına, imzasız gider." value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send(); } }} />
+            <button className="btn btn-primary" disabled={busy || !draft.trim()} onClick={() => void send()}>Gönder</button>
+          </div>}
+          {mine && !detail.conversation.canReply && <p className="conversation-closed">Müşterinin son mesajından 24 saat geçti. WhatsApp kuralı gereği müşteri yeniden yazana kadar mesaj gönderilemez.</p>}
+        </div>
         <aside className="panel-card test-details">
           <h2>Durum</h2>
           <p>{statusLabel(detail.conversation)}</p>
-          <p className="hint">Bu ekrandan devralma ve müşteriye yazma bir sonraki adımda eklenecek.</p>
+          {mine && <p className="hint">Konuşma sizde: Lina bu müşteriye cevap vermiyor. İşiniz bitince Lina’ya geri verin.</p>}
+          {!mine && detail.conversation.status === "human" && <p className="hint">Lina bu konuşmada susuyor.{!isOwner && " Yalnızca devralan kişi yazabilir."}</p>}
+          {detail.conversation.status === "waiting" && <p className="hint">Siz devralana kadar Lina basit sorulara cevap vermeye devam eder.</p>}
+          <div className="conversation-actions">
+            {canTakeOver && <button className="btn btn-primary" disabled={busy} onClick={() => void act("takeover")}>Devral</button>}
+            {canRelease && <button className="btn btn-secondary" disabled={busy} onClick={() => void act("release")}>Lina’ya geri ver</button>}
+          </div>
+          {canTakeOver && <p className="hint">Devralınca Lina susar ve müşteriye siz yazarsınız.</p>}
           {openHandoff && <>
             <h2>Lina devretti</h2>
             <p><strong>{HANDOFF_REASONS[openHandoff.reason] ?? openHandoff.reason}</strong> · <span className="hint">{time(openHandoff.createdAt)}</span></p>

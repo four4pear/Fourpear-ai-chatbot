@@ -67,7 +67,7 @@ function Routes() {
     if (!store) return <NotFound />;
     return (
       <Shell me={me} store={store} active="sohbetler">
-        <ConversationPage key={chat.conversationId} store={store} conversationId={chat.conversationId!} />
+        <ConversationPage key={chat.conversationId} store={store} conversationId={chat.conversationId!} userId={me.user.id} />
       </Shell>
     );
   }

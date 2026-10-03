@@ -503,7 +503,9 @@ textarea {
 .conversation-status { font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--border); justify-self: end; align-self: start; white-space: nowrap; }
 .conversation-status.waiting { background: var(--danger-soft); color: var(--danger); border-color: transparent; }
 .conversation-status.human { background: var(--accent-soft); color: var(--accent-hover); border-color: transparent; }
-.conversation-messages { padding: 24px; display: flex; flex-direction: column; gap: 12px; max-height: 70vh; overflow-y: auto; }
+.conversation-messages { padding: 24px; display: flex; flex-direction: column; gap: 12px; max-height: 62vh; overflow-y: auto; }
+.conversation-actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0; }
+.conversation-closed { margin: 0; padding: 12px 16px; border-top: 1px solid var(--border); font-size: 13px; color: var(--muted); }
 .chat-bubble { max-width: 88%; padding: 10px 14px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 12px; align-self: flex-start; }
 .chat-bubble.ours { align-self: flex-end; background: var(--accent-soft); border-color: transparent; }
 .chat-bubble span { font-size: 12px; font-weight: 600; color: var(--muted); }

@@ -16,7 +16,8 @@ Bir kişi birden fazla mağazada farklı rollerle olabilir (ör. ajans).
 Ekranlar: **Tüm sohbetler** (liste: müşteri, durum, son mesaj; satıra tıklayınca konuşma açılır) ve **konuşma**
 (mesajlar kimin yazdığıyla, müşterinin fotoğrafları, iç notlar ayrı; yanda Lina'nın devir özeti, ekibe iletilenler
 ve Lina'nın uzmanlara sordukları). Devredilen konuşmalar ayrıca **Bekleyenler → Devredilen konuşmalar** bölümünde
-listelenir. Devralma, cevap yazma ve bota geri verme düğmeleri sıradaki adımda eklenecek (arka uç hazır).
+listelenir. Konuşma ekranında **Devral**, mesaj yazma kutusu ve **Lina'ya geri ver** düğmeleri vardır; kurallar aşağıda.
+Lina'nın cevap taslağı henüz yapılmadı.
 
 - **Bekleyenler:** Lina'nın devrettiği, açık devri olan konuşmalar. Kimsenin devralmadığı en uzun bekleyen en üstte; devralınmış olanlar altta, kimde olduğu yazar.
 - **Bende:** Benim devraldığım konuşmalar. **Tümü:** bütün konuşmalar, en son hareket eden üstte.
