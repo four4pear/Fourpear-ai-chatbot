@@ -123,7 +123,7 @@ export async function runLina(
           question: {
             type: "string",
             description:
-              "Uzmana tek başına anlaşılır soru: müşterinin ne istediği ve söylediği ayrıntılar (ürün, beden, renk, sebep, para iadesi mi değişim mi, fotoğraf gönderdi mi). Müşteriye kuralı daha önce söylediysen ve yine de istiyorsa bunu da yaz.",
+              "Uzmana tek başına anlaşılır soru: müşterinin ne istediği ve söylediği ayrıntılar (ürün, beden, renk, sebep, para iadesi mi değişim mi, fotoğraf gönderdi mi). Müşteriye kuralı daha önce söylediysen ve yine de istiyorsa, müşteri sinirliyse ya da gecikmeden şikâyetçiyse bunu da yaz.",
           },
           ...identityProperties,
         },

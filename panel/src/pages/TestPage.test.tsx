@@ -151,3 +151,18 @@ it("Lina ekibe sorarsa soru kartı çıkar; ekip olarak cevaplanınca cevap Lina
     { role: "team", question: "Hediye paketi var mı?", text: "Evet, ücretsiz." },
   ]);
 });
+
+it("ders yerinde düzenlenir", async () => {
+  let lessons = [{ id: "l1", text: "Eski metin." }];
+  const patched: unknown[] = [];
+  server(() => reply("x"), {
+    "GET /lessons": () => json({ lessons }),
+    "PATCH /lessons/l1": (init) => { const body = JSON.parse(String(init.body)); patched.push(body); lessons = [{ id: "l1", text: body.text }]; return json({ lesson: lessons[0] }); },
+  });
+  render(<TestPage store={store} replyDelayMs={0} />);
+  fireEvent.click(await screen.findByRole("button", { name: "Dersi düzenle: Eski metin." }));
+  fireEvent.change(screen.getByLabelText("Dersin metni"), { target: { value: "Yeni metin." } });
+  fireEvent.click(screen.getByRole("button", { name: "Kaydet" }));
+  await screen.findByText("Yeni metin.");
+  expect(patched).toEqual([{ text: "Yeni metin." }]);
+});

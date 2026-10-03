@@ -466,6 +466,9 @@ textarea {
 .test-lessons li { display: flex; gap: 8px; align-items: flex-start; justify-content: space-between; font-size: 13px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); }
 .test-lessons li span { overflow-wrap: anywhere; }
 .test-lessons .btn { flex-shrink: 0; padding: 2px 10px; font-size: 12px; }
+.test-lesson-buttons { display: flex; flex-direction: column; gap: 4px; flex-shrink: 0; }
+.test-lessons li.editing { flex-direction: column; align-items: stretch; }
+.test-lessons li.editing textarea { width: 100%; box-sizing: border-box; resize: vertical; border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; background: var(--surface); font: inherit; font-size: 13px; }
 .test-scenarios ul { list-style: none; margin: 0 0 16px; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .test-scenario { width: 100%; text-align: left; font: inherit; font-size: 13px; line-height: 1.4; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); color: var(--text); cursor: pointer; }
 .test-scenario:hover { border-color: var(--accent); background: var(--accent-tint); }

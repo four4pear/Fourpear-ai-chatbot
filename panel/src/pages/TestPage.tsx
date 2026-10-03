@@ -47,6 +47,8 @@ export function TestPage({ store, replyDelayMs = TEST_REPLY_DELAY_MS }: { store:
   const [result, setResult] = useState<Result | null>(null);
   const [lessons, setLessons] = useState<Lesson[] | null>(null);
   const [scenarios, setScenarios] = useState<Scenario[]>([]);
+  // Düzenlenen ders (sağdaki listede).
+  const [editing, setEditing] = useState<Lesson | null>(null);
   // Müşteri kartı: Lina'nın bu test müşterisi hakkında hatırladıkları (her cevaptan sonra güncellenir).
   const [memory, setMemoryState] = useState<string | null>(null);
   const memoryRef = useRef<string | null>(null);
@@ -183,6 +185,14 @@ export function TestPage({ store, replyDelayMs = TEST_REPLY_DELAY_MS }: { store:
     cancelReply();
     void ask();
   }
+  async function saveLessonEdit() {
+    if (!editing || !editing.text.trim()) return;
+    try {
+      await api(`${base}/lessons/${editing.id}`, { method: "PATCH", body: { text: editing.text.trim() } });
+      setEditing(null);
+      await loadLessons();
+    } catch (e) { setError(e instanceof Error ? e.message : "Ders kaydedilemedi"); }
+  }
   async function removeLesson(lesson: Lesson) {
     if (!window.confirm(`Bu ders silinsin mi?\n\n${lesson.text}`)) return;
     try { await api(`${base}/lessons/${lesson.id}`, { method: "DELETE" }); await loadLessons(); }
@@ -276,8 +286,19 @@ export function TestPage({ store, replyDelayMs = TEST_REPLY_DELAY_MS }: { store:
       <h2>Lina’nın öğrendikleri{lessons?.length ? ` (${lessons.length})` : ""}</h2>
       <p className="hint">Lina’nın cevabı yanlış ya da eksikse “geri bildirim: …” diye yazın. Lina bundan bir kural çıkarır; siz onaylayınca kaydedilir ve WhatsApp’ta da hemen geçerli olur.</p>
       {lessons?.length === 0 && <p className="hint">Henüz ders yok.</p>}
-      {lessons && lessons.length > 0 && <ul className="test-lessons">{lessons.map(l => <li key={l.id}><span>{l.text}</span>
-        <button className="btn btn-secondary" aria-label={`Dersi sil: ${l.text}`} onClick={() => void removeLesson(l)}>Sil</button></li>)}</ul>}
+      {lessons && lessons.length > 0 && <ul className="test-lessons">{lessons.map(l => editing?.id === l.id
+        ? <li key={l.id} className="editing">
+            <textarea aria-label="Dersin metni" rows={5} maxLength={1000} value={editing.text} onChange={e => setEditing({ ...editing, text: e.target.value })} />
+            <div className="test-lesson-actions">
+              <button className="btn btn-primary" disabled={!editing.text.trim()} onClick={() => void saveLessonEdit()}>Kaydet</button>
+              <button className="btn btn-secondary" onClick={() => setEditing(null)}>Vazgeç</button>
+            </div>
+          </li>
+        : <li key={l.id}><span>{l.text}</span>
+            <span className="test-lesson-buttons">
+              <button className="btn btn-secondary" aria-label={`Dersi düzenle: ${l.text}`} onClick={() => setEditing(l)}>Düzenle</button>
+              <button className="btn btn-secondary" aria-label={`Dersi sil: ${l.text}`} onClick={() => void removeLesson(l)}>Sil</button>
+            </span></li>)}</ul>}
       <h2>Son cevabın uzman çağrıları</h2>
       {result?.runs.filter(r => r.agent !== "lina").map((r,i) => <details key={i}><summary>{AGENT_LABELS[r.agent] ?? r.agent}</summary><p>{r.question}</p><p>{r.answer || r.error}</p></details>)}
       {!result && <p className="hint">İlk cevaptan sonra burada görünecek.</p>}

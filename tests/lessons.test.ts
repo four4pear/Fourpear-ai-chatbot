@@ -170,6 +170,17 @@ describe("Lina'yı eğitmek", () => {
     expect(costUsd("bilinmeyen-model", { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 })).toBeNull();
   });
 
+  it("ders düzenlenir; boş metin, başka mağaza ve çalışan reddedilir", async () => {
+    const created = await call("POST", `${url()}/lessons`, { cookie: ownerCookie, body: { texts: ["İlk hali."] } });
+    const id = created.body.lessons[0].id as string;
+    expect((await call("PATCH", `${url()}/lessons/${id}`, { cookie: agentCookie, body: { text: "x" } })).status).toBe(403);
+    expect((await call("PATCH", `${url()}/lessons/${id}`, { cookie: ownerCookie, body: { text: "  " } })).status).toBe(400);
+    expect((await call("PATCH", `/api/tenants/${other.id}/lessons/${id}`, { cookie: ownerCookie, body: { text: "x" } })).status).toBe(404);
+    const edited = await call("PATCH", `${url()}/lessons/${id}`, { cookie: ownerCookie, body: { text: " Düzenlenmiş hali. " } });
+    expect(edited.body.lesson).toEqual({ id, text: "Düzenlenmiş hali." });
+    expect(await loadLessons(database.db, tenant.id)).toContain("Düzenlenmiş hali.");
+  });
+
   it("boş ya da çok uzun kural kaydedilmez", async () => {
     expect((await call("POST", `${url()}/lessons`, { cookie: ownerCookie, body: { texts: [" "] } })).status).toBe(400);
     expect((await call("POST", `${url()}/lessons`, { cookie: ownerCookie, body: { texts: ["x".repeat(1001)] } })).status).toBe(400);

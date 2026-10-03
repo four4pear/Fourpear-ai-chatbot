@@ -95,6 +95,23 @@ export function registerLessonRoutes(
     res.status(201).json({ lessons: saved });
   });
 
+  /** Dersi düzenle: metin değişir, kimliği ve tarihi kalır. */
+  api.patch("/tenants/:tenantId/lessons/:lessonId", ...owner, async (req, res) => {
+    const lessonId = param(req, "lessonId");
+    const text = cleanText(req.body?.text);
+    if (!isUuid(lessonId)) return res.status(404).json({ error: "Ders bulunamadı" });
+    if (!text || text.length > MAX_LESSON_LENGTH) {
+      return res.status(400).json({ error: `Ders boş olmamalı ve en fazla ${MAX_LESSON_LENGTH} karakter olmalı.` });
+    }
+    const updated = await db
+      .update(lessons)
+      .set({ text })
+      .where(and(eq(lessons.tenantId, param(req, "tenantId")), eq(lessons.id, lessonId)))
+      .returning({ id: lessons.id, text: lessons.text });
+    if (!updated.length) return res.status(404).json({ error: "Ders bulunamadı" });
+    res.json({ lesson: updated[0] });
+  });
+
   api.delete("/tenants/:tenantId/lessons/:lessonId", ...owner, async (req, res) => {
     const lessonId = param(req, "lessonId");
     if (!isUuid(lessonId)) return res.status(404).json({ error: "Ders bulunamadı" });

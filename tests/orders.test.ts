@@ -877,7 +877,9 @@ describe("konuşma akışı: sipariş sorusu devredilmez, ekibe bildirim düşer
     // Önce anla ve sakinleştir; kişiye iletildiği söylenmez, "işleme alındı" cevabın sonunda, zaman sözü yok.
     expect(system).toContain("*Müşteri hizmetleri yaklaşımı*");
     expect(system).toContain('"Talebiniz işleme alındı. Başka bir konuda yardımcı olabileceğim bir şey var mı?"');
-    expect(system).toContain("Müşteriye asla bir kişiye, ekibe ya da arkadaşına ilettiğini söyleme");
+    expect(system).toContain("Müşteriye bir kişiye, temsilciye ya da arkadaşına ilettiğini veya devrettiğini söyleme");
+    // Birim adı serbest, ama yalnızca talep gerçekten ekibe bildirildiyse.
+    expect(system).toContain('Talebin ilgili birime iletildiğini söylemek serbest ("iade birimine ilettim" gibi), ama yalnızca talep gerçekten ekibe bildirildiyse');
     expect(system).toContain('"İptal talebiniz işleme alındı."');
     expect(system).toContain("ne zaman ya da nasıl sonuçlanacağını söyleme");
     expect(system).not.toContain("arkadaşımıza ilettim");
