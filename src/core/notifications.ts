@@ -101,3 +101,32 @@ export async function recordOrderNotification(
   });
   deps.events?.publish(input.tenantId, { type: "notification", conversationId: input.conversationId, important });
 }
+
+/**
+ * Müşteri günlük mesaj sınırını aştı (docs/lina-davranis.md §9): Lina o gün cevap vermeyi durdurur ve
+ * müşteriye bir şey yazılmaz; ekip konuşmayı "Ekibe iletilenler"de görür. Açık bildirim varsa yenisi açılmaz.
+ */
+export async function recordLimitNotification(
+  deps: { db: DB; events?: EventBus },
+  input: { tenantId: string; conversationId: string; limit: number; lastMessage: string },
+) {
+  const [open] = await deps.db
+    .select({ id: notifications.id })
+    .from(notifications)
+    .where(and(eq(notifications.conversationId, input.conversationId), eq(notifications.kind, "daily_limit"), eq(notifications.status, "open")))
+    .limit(1);
+  if (open) return;
+  await deps.db.insert(notifications).values({
+    tenantId: input.tenantId,
+    conversationId: input.conversationId,
+    kind: "daily_limit",
+    important: true,
+    question: input.lastMessage.slice(0, MAX_TEXT),
+    answer: "",
+    details: {
+      kinds: ["daily_limit"],
+      issues: [`Müşteri bugün ${input.limit} mesajı aştı. Lina bugün bu müşteriye cevap vermeyi durdurdu; müşteriye bilgi verilmedi. Yarın kendiliğinden devam eder.`],
+    },
+  });
+  deps.events?.publish(input.tenantId, { type: "notification", conversationId: input.conversationId, important: true });
+}

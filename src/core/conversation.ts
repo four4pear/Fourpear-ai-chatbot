@@ -29,7 +29,7 @@ import { loadMemory, updateMemory } from "./memory.js";
 import { openTeamQuestions, recordTeamQuestions, TEAM_ANSWER_TYPE, type AskedQuestion } from "./team-questions.js";
 import { businessStatus } from "./business-hours.js";
 import type { EventBus } from "./events.js";
-import { recordOrderNotification } from "./notifications.js";
+import { recordLimitNotification, recordOrderNotification } from "./notifications.js";
 import { fixedText } from "./texts.js";
 
 export type Deps = {
@@ -173,8 +173,13 @@ export async function ingestInbound(deps: Deps, event: InboundEvent): Promise<In
   const todayCount = await countCustomerMessagesToday(db, conversationId, deps.timeZone, now);
   const limit = settings.dailyMessageLimit;
   if (todayCount > limit) {
-    // Uyarı sadece sınır ilk aşıldığında bir kez gönderilir.
-    if (todayCount === limit + 1) await sendAndStore(deps, tenant, conversation, wa, fixedText(settings, "dailyLimit"), "system");
+    // Spam ve bot döngüsüne karşı fatura koruması: Lina sessizce durur, müşteriye sınırdan söz edilmez.
+    // Sınır ilk aşıldığında ekibe bir kez önemli bildirim düşer.
+    if (todayCount === limit + 1) {
+      await recordLimitNotification(deps, { tenantId: tenant.id, conversationId, limit, lastMessage: messageText(message) ?? "" }).catch(
+        (err: unknown) => deps.log.error(`Sınır bildirimi kaydedilemedi (tenant=${tenant.slug})`, err),
+      );
+    }
     return { outcome: "daily_limit", conversationId };
   }
 

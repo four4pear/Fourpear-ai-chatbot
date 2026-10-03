@@ -17,6 +17,7 @@ import {
   knowledgeDocs,
   media,
   messages,
+  notifications,
   tenants,
   whatsappAccounts,
   type TenantSettings,
@@ -391,12 +392,17 @@ describe("sabit metinler ve ayarlar", () => {
     expect(sent).toHaveLength(0);
   });
 
-  it("günlük limit aşılınca bir kez uyarır, sonra susar", async () => {
+  it("günlük limit aşılınca müşteriye bir şey yazmaz, susar; ekibe bir kez önemli bildirim düşer", async () => {
     await setSettings({ dailyMessageLimit: 1 });
     await post(text("bir"));
     await post(text("iki"));
     await post(text("üç"));
-    expect(sent.map((s) => s.text)).toEqual(["Merhaba, nasıl yardımcı olabilirim?", DEFAULT_TEXTS.dailyLimit]);
+    expect(sent.map((s) => s.text)).toEqual(["Merhaba, nasıl yardımcı olabilirim?"]);
+    const notified = await database.db.select().from(notifications);
+    expect(notified).toMatchObject([{ kind: "daily_limit", important: true, status: "open", question: "iki", answer: "" }]);
+    expect(notified[0]!.details.issues).toEqual([
+      "Müşteri bugün 1 mesajı aştı. Lina bugün bu müşteriye cevap vermeyi durdurdu; müşteriye bilgi verilmedi. Yarın kendiliğinden devam eder.",
+    ]);
   });
 
   it("bot kapalıysa cevap vermez", async () => {

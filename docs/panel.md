@@ -41,7 +41,7 @@ listelenir; ekip işlemi yapınca "Tamamlandı" der. Sessiz kayıtların ekranı
 
 | Tür | Önem |
 |---|---|
-| Şikayet, İade: ekip kararı gerekiyor, İptal isteği (kargoya verilmemiş), Değişiklik isteği, Sipariş bilgisine ulaşılamadı, Gecikme, Takip numarası yok | ⚠️ Önemli: sesli uyarı + tarayıcı bildirimi |
+| Şikayet, İade: ekip kararı gerekiyor, İptal isteği (kargoya verilmemiş), Değişiklik isteği, Sipariş bilgisine ulaşılamadı, Gecikme, Takip numarası yok, Günlük mesaj sınırı aşıldı | ⚠️ Önemli: sesli uyarı + tarayıcı bildirimi |
 | İade/değişim isteği, İade durumu sorusu, Doğrulanamayan sipariş sorusu, Sipariş sorusu | Kayıt (sessiz) |
 
 Lina'nın cevabı WhatsApp'a gönderilemediyse bildirim her durumda önemlidir ve `replyFailed` işaretlidir (müşteri cevap almadı).

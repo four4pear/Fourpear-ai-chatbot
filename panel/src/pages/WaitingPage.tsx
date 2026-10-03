@@ -147,7 +147,7 @@ export function WaitingPage({ store }: { store: Membership }) {
 
     <section aria-labelledby="forwarded">
       <h2 id="forwarded">Ekibe iletilenler{forwarded?.length ? ` (${forwarded.length})` : ""}</h2>
-      <p className="hint">Lina’nın size bıraktığı talepler: şikayet, iade kararı, iptal, değişiklik, gecikme. Lina müşteriye talebin iletildiğini söylemiş olabilir. İşlemi yapınca “Tamamlandı” deyin.</p>
+      <p className="hint">Lina’nın size bıraktığı talepler: şikayet, iade kararı, iptal, değişiklik, gecikme, günlük mesaj sınırını aşan müşteri. Lina müşteriye talebin iletildiğini söylemiş olabilir. İşlemi yapınca “Tamamlandı” deyin.</p>
       {forwarded === null && <p className="hint" role="status">Yükleniyor…</p>}
       {forwarded?.length === 0 && <p className="hint">Şu an ekibe iletilen talep yok.</p>}
       <div className="waiting-list">
@@ -156,7 +156,7 @@ export function WaitingPage({ store }: { store: Membership }) {
           <p className="waiting-question">{n.label}{n.orderNames.length > 0 && ` (${n.orderNames.join(", ")})`}</p>
           {n.issues.length > 0 && <ul>{n.issues.map((issue, i) => <li key={i}>{issue}</li>)}</ul>}
           <p className="waiting-text"><span className="waiting-label">Müşteri:</span> {n.question}</p>
-          <p className="waiting-text"><span className="waiting-label">Lina:</span> {n.answer}</p>
+          {n.answer && <p className="waiting-text"><span className="waiting-label">Lina:</span> {n.answer}</p>}
           <div className="waiting-actions"><span /><button className="btn btn-primary" onClick={() => void complete(n)}>Tamamlandı</button></div>
         </article>)}
       </div>

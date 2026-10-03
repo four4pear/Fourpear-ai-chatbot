@@ -180,13 +180,12 @@ Mağaza mesai saatlerini panelden girer.
 | Anahtar | Ne zaman | Varsayılan metin |
 |---|---|---|
 | `unsupported` | Ses, video, belge vb. | "Şu an yazılı mesajları ve fotoğrafları anlayabiliyorum. Sorunuzu yazarak iletebilir misiniz?" |
-| `dailyLimit` | Günlük limit ilk aşıldığında (bir kez) | "Bugün için mesaj sınırına ulaştınız. Yarın tekrar yazabilirsiniz; acil bir durum varsa ekibimiz size buradan dönecektir." |
 | `failure` | Teknik hata / cevap üretilemedi (+ otomatik devir) | "Üzgünüm, şu an sorunuza cevap veremiyorum. Hemen kontrol ediyorum, kısa süre içinde size buradan bilgi vereceğim." |
 
 ## 9. Diğer
 - Bot kapalıyken hiç cevap verilmez (mesajlar panelde görünür).
 - Emoji tepkisi (👍), sticker, WhatsApp sistem bildirimleri ve sohbeti ilk açma bildirimi cevaplanmaz; kaydedilir, günlük sınıra sayılmaz, Lina'nın geçmişine girmez.
-- Müşteri başına günlük limit: 200 (mağaza değiştirebilir).
+- **Günlük mesaj sınırı (fatura koruması):** bir müşteri aynı gün içinde (mağazanın saatine göre gece yarısından beri) 200'den fazla mesaj yazarsa Lina o gün o müşteriye cevap vermeyi durdurur; ertesi gün kendiliğinden devam eder. Sayılan yalnızca müşterinin mesajlarıdır (yazı, fotoğraf, ses vb.; tepki ve sticker sayılmaz), Lina'nın cevapları sayılmaz. **Müşteriye sınırdan söz edilmez, mesaj gönderilmez**; ekibe bir kez önemli bildirim düşer ("Günlük mesaj sınırı aşıldı", §12). Sınır mağaza ayarıdır (varsayılan 200); spam ve karşıdaki otomatik cevap botlarına karşı korur.
 - Devir kaydında ekip için: sebep + 1-3 cümlelik özet + toplanan bilgiler (sipariş no, ürün, talep).
 
 ## 10. Art arda mesajlar
@@ -275,6 +274,7 @@ Sipariş konularında (§3) konuşma devredilmez; ekip panelde bildirim görür.
   - şikayet
   - iade: ekip kararı gerekiyor (iade uzmanı iletti)
   - sipariş bilgisine ulaşılamadı
+  - günlük mesaj sınırı aşıldı (Lina o gün cevap vermeyi durdurdu, §9)
 - **Cevap gönderilemedi:** Lina'nın cevabı WhatsApp'a gönderilemediyse (müşteri cevapsız kaldı) bildirim her durumda önemlidir ve bu not düşülür.
 - **Kayıt** (sessiz): diğer sipariş soruları, kargodaki siparişin iptal isteği, iade isteği, iade durumu, doğrulanamayan sipariş sorusu.
 - **Takip numarası beklenmeyenler:** Mağazadan teslim alma ve dijital ürünlerde "takip numarası yok" bildirimi açılmaz.

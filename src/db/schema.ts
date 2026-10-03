@@ -14,7 +14,7 @@ import {
 } from "drizzle-orm/pg-core";
 
 /** Mağazanın panelden değiştirebildiği sabit metinlerin anahtarları. */
-export type FixedTextKey = "unsupported" | "dailyLimit" | "failure";
+export type FixedTextKey = "unsupported" | "failure";
 
 export type BusinessHours = {
   /** Açık günler, 0 = pazar ... 6 = cumartesi */
@@ -352,6 +352,7 @@ export const textArchive = pgTable(
 /**
  * lookup_failed: sipariş sistemine ulaşılamadı (ör. Shopify hatası); müşterinin isteği ekibe kalır.
  * return_review: iade uzmanı talebin ekip kararı gerektirdiğine karar verdi (kural dışı istek, iade sürecinde sorun).
+ * daily_limit: müşteri günlük mesaj sınırını aştı; Lina o gün cevap vermeyi durdurdu (müşteriye bir şey yazılmaz).
  */
 export const IMPORTANT_KINDS = [
   "complaint",
@@ -361,6 +362,7 @@ export const IMPORTANT_KINDS = [
   "lookup_failed",
   "delay",
   "no_tracking",
+  "daily_limit",
 ] as const;
 export const RECORD_KINDS = ["return_request", "return_status", "unverified", "order_question"] as const;
 /** Önem sırasıyla: bir cevapta birden fazla konu varsa bildirimin türü ilk sıradaki olur. */
