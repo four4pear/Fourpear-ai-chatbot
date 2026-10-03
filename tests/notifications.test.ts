@@ -253,6 +253,18 @@ describe("panel: ekibe bildirimler", () => {
       expect(row!.details.issues).toEqual(["Daha önce bir cevap WhatsApp'a gönderilemedi; sonraki cevap gönderildi."]);
     });
 
+    it("ad soyadla doğrulanan siparişte ekip uyarılır: işlemden önce müşteriyi teyit etsin", async () => {
+      const findings = newFindings();
+      findings.topics.push("cancel");
+      findings.orders.set("#MO-9005", { unshipped: true, cancelled: false, byName: true });
+      await record(0, "MO-9005 iptal edin, adım Zeynep Kaya", "Talebinizi aldım.", findings);
+      const [row] = await mine();
+      expect(row).toMatchObject({ kind: "cancel_request", important: true });
+      expect(row!.details.issues).toEqual([
+        "#MO-9005: WhatsApp numarası siparişteki numara değil; sipariş, müşterinin yazdığı ad soyadla doğrulandı. İptal ya da değişiklik yapmadan önce müşteriyi teyit edin.",
+      ]);
+    });
+
     it("güncellenen bildirim listede üste çıkar; ekip eski hâline bakıp 'Tamamlandı' derse kapanmaz", async () => {
       await record(0, "MO-9010 hasarlı geldi", "İlgileniyorum.", findingsFor("complaint", ["#MO-9010"]));
       await database.db.update(notifications).set({ createdAt: new Date(Date.now() - 6 * 24 * 60 * 60 * 1000) }).where(eq(notifications.conversationId, conversationId));

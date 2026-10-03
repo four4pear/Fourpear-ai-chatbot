@@ -298,6 +298,16 @@ describe("sahiplik ve sipariş numarası", () => {
     expect(nameMatches(withNames("Zeynep Kaya", "Ayşe Yılmaz"), "adım ayşe yılmaz")).toBe(true);
   });
 
+  it("ad soyad: uzun bir isim listesi yazıp tutturmak mümkün değil; siparişteki adda olmayan en fazla bir kelime", () => {
+    const withNames = (...names: string[]) => ({ names }) as OrderFacts;
+    const stuffed = "Ayşe Fatma Zeynep Elif Merve Yılmaz Kaya Demir Şahin Çelik";
+    expect(nameMatches(withNames("Zeynep Kaya"), stuffed)).toBe(false);
+    expect(nameMatches(withNames("Zeynep Kaya"), "Zeynep Hanım Kaya")).toBe(true);
+    expect(nameMatches(withNames("Zeynep Kaya"), "Ayşe Zeynep Yılmaz Kaya")).toBe(false);
+    // İkinci adı siparişte olan müşteri hepsini yazabilir.
+    expect(nameMatches(withNames("Ayşe Nur Yılmaz"), "adım Ayşe Nur Yılmaz")).toBe(true);
+  });
+
   it("sipariş yalnızca aynı telefona aittir", () => {
     expect(belongsTo(order(), CUSTOMER)).toBe(true);
     expect(belongsTo(order(), "905551112233")).toBe(false);
@@ -605,6 +615,13 @@ describe("sipariş uzmanı", () => {
     const right = await ask("zeynep KAYA");
     expect(right.sent).toContain("Top Takım");
     expect([...right.findings.orders.keys()]).toEqual(["#MO-9005"]);
+    // Uzman ve ekip, siparişin numarayla değil ad soyadla doğrulandığını görür.
+    expect(right.sent).toContain("doğrulandı: müşterinin yazdığı ad soyad siparişle eşleşiyor");
+    expect(right.findings.orders.get("#MO-9005")).toMatchObject({ byName: true });
+    // Uzun isim listesi doğrulamaz.
+    const stuffed = await ask("Ayşe Fatma Zeynep Elif Merve Yılmaz Kaya Demir Şahin Çelik");
+    expect(stuffed.sent).toContain("DOĞRULANAMADI");
+    expect(stuffed.findings.orders.size).toBe(0);
     const wrong = await ask("Ayşe Yılmaz");
     expect(wrong.sent).toContain("DOĞRULANAMADI");
     expect(wrong.sent).not.toContain("Top Takım");
@@ -625,6 +642,7 @@ describe("sipariş uzmanı", () => {
     const found = await ask({ name: "Zeynep Kaya", orderPhone: "0555 999 99 99" });
     expect(found.sent).toContain("Top Takım");
     expect([...found.findings.orders.keys()]).toEqual(["#MO-9005"]);
+    expect(found.findings.orders.get("#MO-9005")).toMatchObject({ byName: true });
     const wrongName = await ask({ name: "Ayşe Yılmaz", orderPhone: "0555 999 99 99" });
     expect(wrongName.sent).toContain("DOĞRULANAMADI");
     expect(wrongName.findings.orders.size).toBe(0);

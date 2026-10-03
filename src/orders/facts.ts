@@ -231,12 +231,16 @@ function sourceNote(archived: ProductTextAt | null, item: OrderItem, timeZone: s
   return "ürün açıklaması bulunamadı";
 }
 
-/** Siparişin bilgi kartı; `texts` ürün kimliğine göre sipariş tarihindeki arşiv kaydıdır. */
+/**
+ * Siparişin bilgi kartı; `texts` ürün kimliğine göre sipariş tarihindeki arşiv kaydıdır.
+ * `verifiedBy`: siparişin müşteriye ait olduğu neyle doğrulandı (WhatsApp numarası ya da yazdığı ad soyad).
+ */
 export function buildOrderSheet(
   order: OrderFacts,
   texts: Map<string, ProductTextAt | null>,
   now: Date,
   timeZone: string,
+  verifiedBy: "whatsapp" | "name" = "whatsapp",
 ): OrderSheet {
   const fmt = (d: Date) => longDate(localDate(d, timeZone));
   const today = localDate(now, timeZone);
@@ -247,7 +251,9 @@ export function buildOrderSheet(
   const issues: OrderIssue[] = [];
 
   const lines = [
-    `SİPARİŞ ${order.name} (doğrulandı: müşterinin WhatsApp numarasıyla eşleşiyor)`,
+    verifiedBy === "name"
+      ? `SİPARİŞ ${order.name} (doğrulandı: müşterinin yazdığı ad soyad siparişle eşleşiyor; yazdığı WhatsApp numarası siparişteki numara değil)`
+      : `SİPARİŞ ${order.name} (doğrulandı: müşterinin WhatsApp numarasıyla eşleşiyor)`,
     `Sipariş tarihi: ${longDate(orderDay)} · Bugün: ${longDate(today)}`,
     `Durum: ${statusLabel(order, active, waiting, timeZone)}`,
     "",

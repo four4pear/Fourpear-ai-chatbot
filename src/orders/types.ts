@@ -73,16 +73,21 @@ function nameWords(text: string): string[] {
     .filter(Boolean);
 }
 
+/** Yazılan ad soyadda, siparişteki adda olmayan en fazla bu kadar kelime olabilir ("adım", "hanım" gibi). */
+const MAX_EXTRA_NAME_WORDS = 1;
+
 /**
  * Müşterinin yazdığı ad soyad siparişteki bir adla eşleşiyor mu? Siparişteki adın ilk ve son kelimesi
  * (ad ve soyad) yazılanda bulunmalı; ikinci ad yazılmasa da olur. Yalnızca ad ya da yalnızca soyad yetmez.
+ * Uzun bir isim listesi yazıp tutturmak mümkün olmasın diye siparişteki adda olmayan kelime sayısı sınırlıdır.
  */
 export function nameMatches(order: OrderFacts, typed: string): boolean {
   const words = new Set(nameWords(typed));
   if (words.size < 2) return false;
   return order.names.some((name) => {
     const parts = nameWords(name);
-    return parts.length >= 2 && words.has(parts[0]!) && words.has(parts.at(-1)!);
+    if (parts.length < 2 || !words.has(parts[0]!) || !words.has(parts.at(-1)!)) return false;
+    return [...words].filter((w) => !parts.includes(w)).length <= MAX_EXTRA_NAME_WORDS;
   });
 }
 

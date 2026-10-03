@@ -15,7 +15,8 @@ export type OrderTopic = (typeof ORDER_TOPICS)[number];
 export type OrderFindings = {
   topics: OrderTopic[];
   /** Doğrulanmış (müşteriye ait) ve bakılan siparişler. */
-  orders: Map<string, { unshipped: boolean; cancelled: boolean }>;
+  /** byName: WhatsApp numarasıyla değil, müşterinin yazdığı ad soyadla doğrulandı (ekip işlemden önce teyit eder). */
+  orders: Map<string, { unshipped: boolean; cancelled: boolean; byName?: boolean }>;
   issues: OrderIssue[];
   /** Müşterinin sorduğu sipariş doğrulanamadı ya da numarasına ait sipariş yok. */
   unverified: boolean;
@@ -105,15 +106,15 @@ export function orderLookup(
     }
   };
 
-  const sheetFor = async (order: OrderFacts): Promise<string> => {
+  const sheetFor = async (order: OrderFacts, verifiedBy: "whatsapp" | "name" = "whatsapp"): Promise<string> => {
     const texts = new Map<string, ProductTextAt | null>();
     for (const item of order.items) {
       if (item.productId && !texts.has(item.productId)) {
         texts.set(item.productId, await textAt(ctx.db, tenant.id, "product", item.productId, order.createdAt));
       }
     }
-    const sheet = buildOrderSheet(order, texts, deps.now, deps.timeZone);
-    findings.orders.set(order.name, { unshipped: sheet.unshipped, cancelled: sheet.cancelled });
+    const sheet = buildOrderSheet(order, texts, deps.now, deps.timeZone, verifiedBy);
+    findings.orders.set(order.name, { unshipped: sheet.unshipped, cancelled: sheet.cancelled, ...(verifiedBy === "name" ? { byName: true } : {}) });
     for (const issue of sheet.issues) addIssue(findings, issue);
     return opts.withReturns && deps.returns ? `${sheet.text}\n\n${await returnInfo(order.name)}` : sheet.text;
   };
@@ -130,7 +131,7 @@ export function orderLookup(
     if (order && belongsTo(order, deps.waId)) return sheetFor(order);
     if (order) warnIfNoNames(order);
     // Numara tutmuyor: sipariş numarası + siparişteki ad soyad birlikte tutmalı.
-    if (order && typedName && nameMatches(order, typedName)) return sheetFor(order);
+    if (order && typedName && nameMatches(order, typedName)) return sheetFor(order, "name");
     findings.unverified = true;
     return typedName ? UNVERIFIED : NEEDS_NAME;
   };
@@ -150,7 +151,7 @@ export function orderLookup(
       findings.unverified = true;
       return typedPhone && typedName ? UNVERIFIED : NEEDS_IDENTITY;
     }
-    if (mine.length === 1) return sheetFor(mine[0]!);
+    if (mine.length === 1) return sheetFor(mine[0]!, byWhatsApp.length ? "whatsapp" : "name");
     return [
       byWhatsApp.length
         ? "Müşterinin WhatsApp numarasıyla eşleşen siparişler (yeniden eskiye):"

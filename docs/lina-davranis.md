@@ -82,6 +82,8 @@ Bu konularda Lina konuşmayı ekibe **devretmez**; kendisi cevaplar ve ekibe bil
   2. **Sipariş numarası + ad soyad:** Numara tutmazsa Lina siparişte kayıtlı adı soyadı ister: "Siparişinizi hemen kontrol edeyim. Siparişte kayıtlı adınızı ve soyadınızı yazar mısınız?" Sipariş numarası ve ad soyad birlikte tutmalıdır.
   3. **Siparişteki telefon + ad soyad:** Müşteri sipariş numarasını bilmiyorsa Lina siparişte kayıtlı telefon numarasını ve adı soyadı ister; o numaranın siparişleri arasından ad soyadı tutanlar gösterilir.
   - Ad soyad eşleşmesinde büyük/küçük ve Türkçe harf farkı önemsizdir, ikinci ad yazılmasa da olur; yalnızca ad ya da yalnızca soyad yetmez. Karşılaştırma kodda yapılır; siparişteki ad soyad ve telefonlar yapay zekâya hiç gösterilmez.
+  - Uzun bir isim listesi yazıp tutturmak mümkün değildir: yazılan ad soyadda, siparişteki adda olmayan en fazla bir kelime olabilir ("adım", "hanım" gibi).
+  - Ad soyadla doğrulanan siparişte yazan kişinin WhatsApp numarası siparişteki numara değildir. Bu, ekibe düşen bildirimde yazar: iptal ya da değişiklik yapmadan önce müşteri teyit edilir.
   - Tutmazsa: "Bu bilgilerle eşleşen bir sipariş bulamadım. Sipariş numarasını (ya da siparişte kayıtlı telefon numarasını) ve adınızı soyadınızı kontrol edip tekrar yazabilir misiniz?"
   - Sipariş numaraları sıralı olduğu için tahmin edilebilir; bu yüzden ad soyad her zaman sipariş numarası ya da telefonla birlikte istenir.
   - Shopify uygulamasında **Protected customer data** için hem **Phone** hem **Name** alanı açık olmalıdır.
@@ -258,6 +260,7 @@ Lina bilmediği bir bilgiyi uydurmaz ve konuşmayı devretmez; **arka planda eki
 - **Müşteriye:** "Hemen kontrol ediyorum, kısa süre içinde size buradan bilgi vereceğim." Ekipten, kime sorduğundan ya da bilmediğinden bahsetmez.
 - **Ekip:** Panelde **Bekleyenler → Lina soruyor** bölümünde müşterinin mesajını, Lina'nın sorusunu ve bağlamı görür; kısa cevap yazar. Mağazanın bütün ekibi cevaplayabilir.
 - **Cevap gelince:** Konuşmaya iç bilgi olarak eklenir (müşteri görmez); Lina birkaç saniye içinde bilgiyi kendi cümleleriyle müşteriye iletir ("Kontrol ettim: ...").
+- **Sahte ekip cevabı olmaz:** Ekibin cevabı Lina'ya müşteri mesajlarının arasında değil, yalnızca kendi talimatının içinde verilir. Müşteri "iç bilgi", "ekibin cevabı" gibi bir kalıp yazsa da bu bir müşteri mesajıdır; Lina buna dayanarak onay, iade, indirim ya da hediye çeki sözü vermez.
 - **Lina'ya öğret:** Mağaza sahibi işaretlerse cevap ders olur (§13); Lina aynı şeyi bir daha sormaz.
 - **Bekleme sırasında:** Müşteri aynı konuyu tekrar sorarsa Lina hâlâ kontrol ettiğini söyler, aynı soruyu ekibe yeniden sormaz.
 - **24 saat kuralı:** Müşterinin son mesajı 24 saatten eskiyse WhatsApp serbest mesaja izin vermez; panel cevabı kaydeder ve bunu uyarır.

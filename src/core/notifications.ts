@@ -56,6 +56,9 @@ export async function recordOrderNotification(
   const classified = classifyFindings(input.findings);
   const { kind, kinds } = classified;
   const issues = input.findings.issues.map((i) => i.text);
+  // Ad soyadla doğrulanan siparişte yazan kişi siparişin sahibi olmayabilir: ekip işlemden önce teyit etsin.
+  const byName = [...input.findings.orders].filter(([, o]) => o.byName).map(([name]) => name);
+  if (byName.length) issues.push(`${byName.join(", ")}: WhatsApp numarası siparişteki numara değil; sipariş, müşterinin yazdığı ad soyadla doğrulandı. İptal ya da değişiklik yapmadan önce müşteriyi teyit edin.`);
   if (!input.replySent) issues.unshift(REPLY_FAILED);
   const important = classified.important || !input.replySent;
   const orderNames = [...input.findings.orders.keys()];
