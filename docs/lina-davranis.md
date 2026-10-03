@@ -144,7 +144,7 @@ Müşteri hizmetleri ekibinin ilk uzmanı. İade, değişim, hasarlı/hatalı/ya
 - Lina'nın ayrı ve kısıtlı bir anahtarı olur. Anahtar sohbete yazılmaz, veritabanında şifreli saklanır.
 
 ## 4. Devir (insana aktarma)
-Devredilen konuşmayı ekip panelde devralır ve müşteriyle yazışır. Devirde Lina müşteriye ne zaman dönüleceğini söyler (§6).
+Devredilen konuşmayı ekip panelde devralır ve müşteriyle yazışır. Lina ne zaman dönüleceğini yalnızca müşteri açıkça temsilci istediyse söyler (§6).
 
 ### 4.1 Cevabı bilmediğinde
 SSS'de/verilerde yoksa devretmez, **arka planda ekibe sorar** (§15) ve müşteriye kişiden bahsetmeden: "Hemen kontrol ediyorum, kısa süre içinde size buradan bilgi vereceğim."
@@ -160,7 +160,7 @@ Sipariş, kargo, iade, iptal, değişim ve şikayet (§3), ürün/stok/fiyat ve 
 | Durum | Ne zaman | Lina |
 |---|---|---|
 | **bot** | Varsayılan | Normal çalışır |
-| **bekliyor** | Lina devretti, ekip henüz devralmadı | **Basit sorulara cevap vermeye devam eder.** Devredilen konu tekrar sorulursa: "Talebiniz ekibimizde, en kısa sürede dönecekler." Aynı konuyu tekrar devretmez; yeni bir konu devir gerektirirse devir kaydına eklenir. |
+| **bekliyor** | Lina devretti, ekip henüz devralmadı | **Basit sorulara cevap vermeye devam eder.** Devredilen konu tekrar sorulursa: müşteri temsilci istemişse ekibin ne zaman döneceğini söyler (§6); diğer durumlarda ekipten ve zamandan söz etmeden talebin işleme alındığını kendi cümleleriyle söyler. Aynı konuyu tekrar devretmez; yeni bir konu devir gerektirirse devir kaydına eklenir. |
 | **ekipte** | Ekipten biri panelde "Devral" dedi | **Tamamen susar.** |
 | → bot | Sadece ekip panelde **"Bota geri ver"** deyince | |
 

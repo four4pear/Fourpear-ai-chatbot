@@ -199,9 +199,14 @@ export function turnContext(tenant: Tenant, turn: TurnInfo): string {
   }
 
   if (turn.openHandoff) {
+    // Sonradan eklenen talepler özetin içinde "[Ek talep – sebep]" olarak durur (core/conversation.ts recordHandoff).
+    const askedForHuman = turn.openHandoff.reason === "customer_request" || turn.openHandoff.summary.includes("– customer_request]");
     lines.push(
       `- Ekipte bekleyen talep var (${turn.openHandoff.reason}): ${turn.openHandoff.summary}`,
-      "  Bu konu tekrar sorulursa talebin ekipte olduğunu ve en kısa sürede dönüleceğini söyle; yeniden devretme. Diğer sorulara normal şekilde cevap ver. Farklı ve yeni bir konu devir gerektirirse handoff_to_human kullan; mevcut talebe eklenir.",
+      (askedForHuman
+        ? "  Bu konu tekrar sorulursa talebin ekipte olduğunu ve ekibin ne zaman döneceğini yukarıdaki mesai bilgisine göre söyle; yeniden devretme."
+        : "  Bu konu tekrar sorulursa talebin işleme alındığını kendi cümlelerinle söyle; ekipten, kişilerden ya da ne zaman sonuçlanacağından bahsetme; yeniden devretme.") +
+        " Diğer sorulara normal şekilde cevap ver. Farklı ve yeni bir konu devir gerektirirse handoff_to_human kullan; mevcut talebe eklenir.",
     );
   }
 

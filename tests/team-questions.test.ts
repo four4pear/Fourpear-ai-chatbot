@@ -92,6 +92,17 @@ describe("Lina soruyor", () => {
     expect(await database.db.select().from(teamQuestions)).toEqual([]); // test iz bırakmaz
   }, 30000);
 
+  it("devredilmiş konu tekrar sorulunca: ekipten ve zamandan yalnızca müşteri temsilci istediyse söz edilir", () => {
+    const context = (reason: string, summary: string) => turnContext(tenant, { firstContact: false, business: { open: true }, openHandoff: { reason, summary } });
+    const angry = context("complaint", "Müşteri öfkeli, ürün hasarlı geldi.");
+    expect(angry).toContain("talebin işleme alındığını kendi cümlelerinle söyle; ekipten, kişilerden ya da ne zaman sonuçlanacağından bahsetme");
+    expect(angry).not.toContain("ekibin ne zaman döneceğini");
+    for (const asked of [context("customer_request", "Temsilciyle görüşmek istiyor."), context("complaint", "Ürün hasarlı.\n\n[Ek talep – customer_request] Temsilci istiyor.")]) {
+      expect(asked).toContain("talebin ekipte olduğunu ve ekibin ne zaman döneceğini yukarıdaki mesai bilgisine göre söyle");
+      expect(asked).not.toContain("ekipten, kişilerden");
+    }
+  });
+
   it("cevabı beklenen soru Lina'ya hatırlatılır; aynı şeyi yeniden sormaz", () => {
     const context = turnContext(tenant, { firstContact: false, business: { open: true }, openHandoff: null, askedTeam: ["Hediye paketi var mı?"] });
     expect(context).toContain('Ekibe sorduğun, cevabı henüz gelmeyen soru(lar): "Hediye paketi var mı?"');
