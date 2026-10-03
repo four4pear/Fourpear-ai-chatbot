@@ -143,7 +143,6 @@ async function send(message: Record<string, unknown>) {
     message: { from: String(customerNo), id: `sim.in.${++seq}`, timestamp: "0", ...message } as never,
   });
   if (result.outcome !== "queued") {
-    if (result.outcome === "daily_limit") scheduler.cancel(result.conversationId);
     console.log(c.dim(`  (cevap yok: ${result.outcome})`));
     return;
   }

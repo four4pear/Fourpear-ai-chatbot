@@ -1,7 +1,7 @@
 import type { AddressInfo } from "node:net";
 import type { Server } from "node:http";
 import { eq } from "drizzle-orm";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createApp } from "../src/app.js";
 import { newFindings } from "../src/agents/order-lookup.js";
 import { EventBus, type PanelEvent } from "../src/core/events.js";
@@ -23,8 +23,12 @@ let cookie: string;
 const events: PanelEvent[] = [];
 const ids: Record<string, string> = {};
 
-async function call(method: string, path: string) {
-  const res = await fetch(base + path, { method, headers: { "content-type": "application/json", origin: ORIGIN, cookie } });
+async function call(method: string, path: string, body?: unknown) {
+  const res = await fetch(base + path, {
+    method,
+    headers: { "content-type": "application/json", origin: ORIGIN, cookie },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
   return { status: res.status, body: (await res.json()) as Record<string, any> };
 }
 
@@ -166,52 +170,110 @@ describe("panel: ekibe bildirimler", () => {
     expect(after!.doneAt).toEqual(before!.doneAt);
   });
 
-  it("aynı vaka ekibe bir kez düşer: açık bildirim güncellenir; ekip tamamladıysa yenisi açılır", async () => {
-    const { db } = database;
-    const [conv] = await db.select().from(conversations).where(eq(conversations.id, ids["conv-a"]!));
-    // Müşteri başına tek konuşma vardır: ayrı bir müşteriyle yeni konuşma.
-    const [customer] = await db.insert(customers).values({ tenantId: tenantA, waId: "905329998877", name: "Elif" }).returning();
-    const [fresh] = await db
-      .insert(conversations)
-      .values({ tenantId: tenantA, customerId: customer!.id, whatsappAccountId: conv!.whatsappAccountId })
-      .returning();
+  describe("aynı vaka ekibe bir kez düşer", () => {
     const bus = new EventBus();
     const seen: PanelEvent[] = [];
-    bus.subscribe(tenantA, (e) => seen.push(e));
-    const complaint = (issue: string) => {
+    let conversationId: string;
+    const at = (minute: number) => new Date(Date.UTC(2026, 9, 3, 12, minute));
+    const findingsFor = (topic: "complaint" | "status", orders: string[], issue?: string) => {
       const findings = newFindings();
-      findings.topics.push("complaint");
-      findings.orders.set("#MO-9010", { unshipped: false, cancelled: false });
-      findings.issues.push({ kind: "return_review", text: issue });
+      findings.topics.push(topic);
+      for (const o of orders) findings.orders.set(o, { unshipped: false, cancelled: false });
+      if (issue) findings.issues.push({ kind: "return_review", text: issue });
       return findings;
     };
-    const record = (question: string, answer: string, issue: string) =>
-      recordOrderNotification({ db, events: bus }, { tenantId: tenantA, conversationId: fresh!.id, findings: complaint(issue), question, answer, replySent: true });
-    const mine = () => db.select().from(notifications).where(eq(notifications.conversationId, fresh!.id));
+    const record = (minute: number, question: string, answer: string, findings: ReturnType<typeof newFindings>, replySent = true) =>
+      recordOrderNotification({ db: database.db, events: bus, now: () => at(minute) }, { tenantId: tenantA, conversationId, findings, question, answer, replySent });
+    const mine = () => database.db.select().from(notifications).where(eq(notifications.conversationId, conversationId)).orderBy(notifications.createdAt);
 
-    await record("Ürün hasarlı geldi", "Çok üzgünüm, hemen ilgileniyorum.", "Hasarlı ürün: fotoğraf bekleniyor");
-    await record("Fotoğrafı gönderdim, ne olacak?", "İade birimine ilettim.", "Hasarlı ürün: fotoğraf geldi");
-    const [merged, ...others] = await mine();
-    expect(others).toEqual([]);
-    expect(merged).toMatchObject({
-      kind: "complaint",
-      important: true,
-      status: "open",
-      orderNames: ["#MO-9010"],
-      question: "Ürün hasarlı geldi\nFotoğrafı gönderdim, ne olacak?",
-      answer: "İade birimine ilettim.",
-      details: { kinds: ["complaint", "return_review"], issues: ["Hasarlı ürün: fotoğraf bekleniyor", "Hasarlı ürün: fotoğraf geldi"] },
+    beforeAll(() => { bus.subscribe(tenantA, (e) => seen.push(e)); });
+    beforeEach(async () => {
+      const { db } = database;
+      seen.length = 0;
+      // Müşteri başına tek konuşma vardır: her test ayrı bir müşteriyle.
+      await db.delete(customers).where(eq(customers.waId, "905329998877"));
+      const [conv] = await db.select().from(conversations).where(eq(conversations.id, ids["conv-a"]!));
+      const [customer] = await db.insert(customers).values({ tenantId: tenantA, waId: "905329998877", name: "Elif" }).returning();
+      const [fresh] = await db.insert(conversations).values({ tenantId: tenantA, customerId: customer!.id, whatsappAccountId: conv!.whatsappAccountId }).returning();
+      conversationId = fresh!.id;
     });
-    // İlki yeni bildirimdir (sesli uyarı); ikincisi yalnızca listeyi yeniler.
-    expect(seen).toEqual([
-      { type: "notification", conversationId: fresh!.id, important: true },
-      { type: "notification_update", conversationId: fresh!.id },
-    ]);
+    afterAll(async () => { await database.db.delete(customers).where(eq(customers.waId, "905329998877")); });
 
-    await db.update(notifications).set({ status: "done" }).where(eq(notifications.id, merged!.id));
-    await record("Hâlâ dönüş olmadı", "Tekrar ilettim.", "Hasarlı ürün: müşteri tekrar yazdı");
-    expect((await mine()).map((n) => n.status).sort()).toEqual(["done", "open"]);
-    await db.delete(notifications).where(eq(notifications.conversationId, fresh!.id));
+    it("aynı sipariş için açık önemli bildirim güncellenir; sesli uyarı tekrarlanmaz", async () => {
+      await record(0, "Ürün hasarlı geldi", "Çok üzgünüm, hemen ilgileniyorum.", findingsFor("complaint", ["#MO-9010"], "Hasarlı ürün: fotoğraf bekleniyor"));
+      await record(5, "Fotoğrafı gönderdim, ne olacak?", "İade birimine ilettim.", findingsFor("complaint", ["#MO-9010"], "Hasarlı ürün: fotoğraf geldi"));
+      const rows = await mine();
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({
+        kind: "complaint",
+        important: true,
+        status: "open",
+        orderNames: ["#MO-9010"],
+        question: "Ürün hasarlı geldi\nFotoğrafı gönderdim, ne olacak?",
+        answer: "İade birimine ilettim.",
+        details: {
+          kinds: ["complaint", "return_review"],
+          issues: ["Hasarlı ürün: fotoğraf bekleniyor", "Hasarlı ürün: fotoğraf geldi"],
+          updatedAt: at(5).toISOString(),
+          updates: 1,
+        },
+      });
+      expect(seen).toEqual([
+        { type: "notification", conversationId, important: true },
+        { type: "notification_update", conversationId },
+      ]);
+    });
+
+    it("başka bir sipariş için istek ayrı bildirimdir; ekip tamamladıktan sonraki yazışma da öyle", async () => {
+      await record(0, "MO-9010 hasarlı geldi", "İlgileniyorum.", findingsFor("complaint", ["#MO-9010"]));
+      await record(1, "MO-9011 de yırtık çıktı", "Onu da ilettim.", findingsFor("complaint", ["#MO-9011"]));
+      expect((await mine()).map((n) => n.orderNames)).toEqual([["#MO-9010"], ["#MO-9011"]]);
+
+      await database.db.update(notifications).set({ status: "done" }).where(eq(notifications.conversationId, conversationId));
+      await record(2, "MO-9010 için hâlâ dönüş olmadı", "Tekrar ilettim.", findingsFor("complaint", ["#MO-9010"]));
+      expect((await mine()).map((n) => n.status)).toEqual(["done", "done", "open"]);
+    });
+
+    it("sessiz kayıtlar birleştirilmez: her soru ayrı kayıt kalır", async () => {
+      await record(0, "Kargom nerede?", "Kargoda.", findingsFor("status", ["#MO-9002"]));
+      await record(1, "Ne zaman gelir?", "Yarın.", findingsFor("status", ["#MO-9002"]));
+      const rows = await mine();
+      expect(rows.map((n) => [n.kind, n.important, n.question])).toEqual([
+        ["order_question", false, "Kargom nerede?"],
+        ["order_question", false, "Ne zaman gelir?"],
+      ]);
+    });
+
+    it("önceki cevap gönderilememişse sonraki başarılı cevaptan sonra sebep kartta kalır", async () => {
+      await record(0, "Ürün hasarlı geldi", "İlgileniyorum.", findingsFor("complaint", ["#MO-9010"]), false);
+      await record(1, "Orada mısınız?", "Buradayım, ilettim.", findingsFor("complaint", ["#MO-9010"]));
+      const [row] = await mine();
+      expect(row!.important).toBe(true);
+      expect(row!.details.replyFailed).toBeUndefined();
+      expect(row!.details.issues).toEqual(["Daha önce bir cevap WhatsApp'a gönderilemedi; sonraki cevap gönderildi."]);
+    });
+
+    it("güncellenen bildirim listede üste çıkar; ekip eski hâline bakıp 'Tamamlandı' derse kapanmaz", async () => {
+      await record(0, "MO-9010 hasarlı geldi", "İlgileniyorum.", findingsFor("complaint", ["#MO-9010"]));
+      await database.db.update(notifications).set({ createdAt: new Date(Date.now() - 6 * 24 * 60 * 60 * 1000) }).where(eq(notifications.conversationId, conversationId));
+      const before = (await call("GET", `/api/tenants/${tenantA}/notifications?filter=important`)).body.notifications;
+      const stale = before.find((n: any) => n.conversationId === conversationId);
+      expect(stale.updatedAt).toBeNull();
+      expect(before.at(-1).id).toBe(stale.id); // 6 gün önce açıldı: en altta
+
+      await record(0, "Bir de fermuarı bozuk", "Onu da ekledim.", findingsFor("complaint", ["#MO-9010"]));
+      const after = (await call("GET", `/api/tenants/${tenantA}/notifications?filter=important`)).body.notifications;
+      expect(after[0]).toMatchObject({ id: stale.id, updatedAt: at(0).toISOString() });
+
+      // Ekranında eski hâli duran ekip üyesi: görülmemiş istek kapanmasın.
+      const refused = await call("POST", `/api/tenants/${tenantA}/notifications/${stale.id}/done`, { seenUpdatedAt: null });
+      expect(refused.status).toBe(409);
+      expect(refused.body.error).toContain("güncellendi");
+      expect((await mine())[0]!.status).toBe("open");
+      const ok = await call("POST", `/api/tenants/${tenantA}/notifications/${stale.id}/done`, { seenUpdatedAt: after[0].updatedAt });
+      expect(ok.status).toBe(200);
+      expect((await mine())[0]!.status).toBe("done");
+    });
   });
 
   it("konuşma ayrıntısında o konuşmanın bildirimleri de gelir", async () => {

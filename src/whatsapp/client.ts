@@ -3,7 +3,8 @@ export const WHATSAPP_MAX_TEXT = 4096;
 /** WhatsApp'a mesaj gönderme arayüzü; testlerde sahtesi kullanılır. */
 export interface WhatsAppSender {
   sendText(opts: { phoneNumberId: string; accessToken: string; to: string; text: string }): Promise<string[]>;
-  markReadAndTyping(opts: { phoneNumberId: string; accessToken: string; messageId: string }): Promise<void>;
+  /** typing: false ise mesaj yalnızca okundu işaretlenir, "yazıyor…" gösterilmez. */
+  markReadAndTyping(opts: { phoneNumberId: string; accessToken: string; messageId: string; typing?: boolean }): Promise<void>;
   downloadMedia(opts: { accessToken: string; mediaId: string }): Promise<{ data: Buffer; mimeType: string }>;
 }
 
@@ -45,12 +46,12 @@ export function createWhatsAppClient(graphApiVersion: string): WhatsAppSender {
       return ids;
     },
 
-    async markReadAndTyping({ phoneNumberId, accessToken, messageId }) {
+    async markReadAndTyping({ phoneNumberId, accessToken, messageId, typing = true }) {
       await post(phoneNumberId, accessToken, {
         messaging_product: "whatsapp",
         status: "read",
         message_id: messageId,
-        typing_indicator: { type: "text" },
+        ...(typing ? { typing_indicator: { type: "text" } } : {}),
       });
     },
 

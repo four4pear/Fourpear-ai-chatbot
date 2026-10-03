@@ -13,6 +13,7 @@ const question = {
 const forwarded = {
   id: "n1", customer: { name: "Elif", phone: "+90 532 999 88 77" }, label: "İade: ekip kararı gerekiyor", orderNames: ["#MO-9013"],
   question: "İadem 50 gündür yatmadı", answer: "İade birimine ilettim.", issues: ["Para iadesi 50 gündür yapılmadı."], createdAt: new Date().toISOString(),
+  updatedAt: "2026-10-03T12:05:00.000Z",
 };
 
 const handedOff = {
@@ -26,7 +27,7 @@ function server(role: "owner" | "agent") {
   vi.stubGlobal("fetch", vi.fn(async (url: string, init: RequestInit = {}) => {
     if (url.includes("/conversations")) return json({ conversations: [handedOff] });
     if (url.includes("/notifications")) {
-      if (init.method === "POST") { posted.push(url); return json({ ok: true }); }
+      if (init.method === "POST") { posted.push({ url, body: JSON.parse(String(init.body)) }); return json({ ok: true }); }
       return json({ notifications: [forwarded] });
     }
     if (init.method === "POST") { posted.push(JSON.parse(String(init.body))); return json({ ok: true, taught: true, windowClosed: false }); }
@@ -56,11 +57,13 @@ it("çalışan cevaplar ama 'Lina'ya öğret' seçeneğini görmez", async () =>
 it("ekibe iletilen talep listelenir; 'Tamamlandı' denince listeden düşer", async () => {
   const posted = server("agent");
   await screen.findByText("İade: ekip kararı gerekiyor (#MO-9013)");
+  expect(screen.getByText(/yeniden yazdı/)).toBeTruthy();
   expect(screen.getByText("Para iadesi 50 gündür yapılmadı.")).toBeTruthy();
   expect(screen.getByText("İade birimine ilettim.")).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "Tamamlandı" }));
   await screen.findByText("Elif: talep tamamlandı olarak işaretlendi.");
-  expect(posted).toEqual(["/api/tenants/t/notifications/n1/done"]);
+  // Ekranda görülen hâlin zamanı gider: müşteri bu arada yeniden yazdıysa sunucu kapatmaz.
+  expect(posted).toEqual([{ url: "/api/tenants/t/notifications/n1/done", body: { seenUpdatedAt: "2026-10-03T12:05:00.000Z" } }]);
   expect(screen.queryByText("İade: ekip kararı gerekiyor (#MO-9013)")).toBeNull();
   expect(screen.getByText("Şu an ekibe iletilen talep yok.")).toBeTruthy();
 });

@@ -53,7 +53,8 @@ listelenir; ekip işlemi yapınca "Tamamlandı" der. Sessiz kayıtların ekranı
 Lina'nın cevabı WhatsApp'a gönderilemediyse bildirim her durumda önemlidir ve `replyFailed` işaretlidir (müşteri cevap almadı).
 
 - Her bildirimde: müşteri (ad, telefon), sipariş numaraları, müşterinin yazdıkları, Lina'nın cevabı, ayrıntılar (ör. "Gecikme: Lavin Etek (Siyah), planlanan kargo 25 Eylül 2026") ve konuşmaya bağlantı.
-- **Aynı vaka bir kez düşer:** konuşmada aynı türde açık bildirim varsa yenisi açılmaz; o bildirim güncellenir (müşterinin yazdıkları birikir, Lina'nın son cevabı ve yeni ayrıntılar eklenir, sesli uyarı tekrarlanmaz). Ekip tamamladıktan sonra müşteri yine yazarsa yeni bildirim açılır.
+- **Aynı vaka bir kez düşer:** konuşmada aynı türde ve **aynı siparişler için** açık önemli bildirim varsa yenisi açılmaz; o bildirim güncellenir (müşterinin yazdıkları birikir, Lina'nın son cevabı ve yeni ayrıntılar eklenir, sesli uyarı tekrarlanmaz) ve listede üste çıkar. Başka bir sipariş için istek ya da ekip tamamladıktan sonraki yazışma yeni bildirimdir. Sessiz kayıtlar birleştirilmez.
+- **"Tamamlandı" görülmemiş isteği kapatmaz:** ekip kartı açtıktan sonra müşteri yeniden yazdıysa "Tamamlandı" reddedilir ("Bu talep siz bakarken güncellendi"), kart yenilenir; yeni hâline bakıp tekrar basılır.
 - Mağazanın bütün ekibi görür (çalışan dahil); herkes "Tamamlandı" diyebilir, kimin kapattığı görünür.
 - API: `GET /api/tenants/:id/notifications?filter=important&status=open|done`, `POST /api/tenants/:id/notifications/:nid/done`. Konuşma ayrıntısında o konuşmanın bildirimleri de gelir.
 - Canlı olaylar: `notification` (yeni; `important` alanıyla, sesli uyarı buna göre), `notification_update` (tamamlandı ya da açık bildirim güncellendi).

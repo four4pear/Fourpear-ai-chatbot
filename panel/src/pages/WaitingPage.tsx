@@ -27,6 +27,8 @@ type Forwarded = {
   answer: string;
   issues: string[];
   createdAt: string;
+  /** Müşteri aynı vakada yeniden yazdıysa: kartın son güncellendiği an. */
+  updatedAt: string | null;
 };
 
 /** Paneli açık tutan ekip yeni soruları kaçırmasın: liste bu sıklıkla yenilenir. */
@@ -103,7 +105,8 @@ export function WaitingPage({ store }: { store: Membership }) {
   async function complete(n: Forwarded) {
     setError(""); setNotice("");
     try {
-      await api(`${notifications}/${n.id}/done`, { method: "POST" });
+      // Ekranda görülen hâl gönderilir: bu arada müşteri yeni bir şey yazdıysa sunucu kapatmaz.
+      await api(`${notifications}/${n.id}/done`, { method: "POST", body: { seenUpdatedAt: n.updatedAt ?? null } });
       setForwarded((list) => list?.filter((x) => x.id !== n.id) ?? null);
       setNotice(`${n.customer.name}: talep tamamlandı olarak işaretlendi.`);
     } catch (e) {
@@ -157,7 +160,7 @@ export function WaitingPage({ store }: { store: Membership }) {
       {forwarded?.length === 0 && <p className="hint">Şu an ekibe iletilen talep yok.</p>}
       <div className="waiting-list">
         {forwarded?.map((n) => <article key={n.id} className="panel-card waiting-card" aria-label={`${n.customer.name} için talep`}>
-          <header><strong>{n.customer.name}</strong> <span className="hint">{n.customer.phone} · {timeAgo(n.createdAt)}</span></header>
+          <header><strong>{n.customer.name}</strong> <span className="hint">{n.customer.phone} · {timeAgo(n.createdAt)}{n.updatedAt && ` · müşteri ${timeAgo(n.updatedAt)} yeniden yazdı`}</span></header>
           <p className="waiting-question">{n.label}{n.orderNames.length > 0 && ` (${n.orderNames.join(", ")})`}</p>
           {n.issues.length > 0 && <ul>{n.issues.map((issue, i) => <li key={i}>{issue}</li>)}</ul>}
           <p className="waiting-text"><span className="waiting-label">Müşteri:</span> {n.question}</p>

@@ -184,8 +184,9 @@ Mağaza mesai saatlerini panelden girer.
 
 ## 9. Diğer
 - Bot kapalıyken hiç cevap verilmez (mesajlar panelde görünür).
+- Lina cevap vermeyecekse (bot kapalı, konuşma ekipte ya da günlük sınır aşıldı) müşteriye "yazıyor…" gösterilmez; mesaj yalnızca okundu işaretlenir.
 - Emoji tepkisi (👍), sticker, WhatsApp sistem bildirimleri ve sohbeti ilk açma bildirimi cevaplanmaz; kaydedilir, günlük sınıra sayılmaz, Lina'nın geçmişine girmez.
-- **Günlük mesaj sınırı (fatura koruması):** bir müşteri aynı gün içinde (mağazanın saatine göre gece yarısından beri) 200'den fazla mesaj yazarsa Lina o gün o müşteriye cevap vermeyi durdurur; ertesi gün kendiliğinden devam eder. Sayılan yalnızca müşterinin mesajlarıdır (yazı, fotoğraf, ses vb.; tepki ve sticker sayılmaz), Lina'nın cevapları sayılmaz. **Müşteriye sınırdan söz edilmez, mesaj gönderilmez**; ekibe bir kez önemli bildirim düşer ("Günlük mesaj sınırı aşıldı", §12). Sınır mağaza ayarıdır (varsayılan 200); spam ve karşıdaki otomatik cevap botlarına karşı korur.
+- **Günlük mesaj sınırı (fatura koruması):** bir müşteri aynı gün içinde (mağazanın saatine göre gece yarısından beri) 200'den fazla mesaj yazarsa Lina o gün o müşteriye cevap vermeyi durdurur; ertesi gün kendiliğinden devam eder. Sayılan yalnızca müşterinin mesajlarıdır (yazı, fotoğraf, ses vb.; tepki ve sticker sayılmaz), Lina'nın cevapları sayılmaz. **Müşteriye sınırdan söz edilmez, mesaj gönderilmez**; ekibe günde bir kez önemli bildirim düşer ("Günlük mesaj sınırı aşıldı", §12). Sınırın içinde kalan önceki mesajlar için hazırlanmakta olan cevap iptal edilmez. Sınır mağaza ayarıdır (varsayılan 200); spam ve karşıdaki otomatik cevap botlarına karşı korur.
 - Devir kaydında ekip için: sebep + 1-3 cümlelik özet + toplanan bilgiler (sipariş no, ürün, talep).
 
 ## 10. Art arda mesajlar
@@ -278,7 +279,7 @@ Sipariş konularında (§3) konuşma devredilmez; ekip panelde bildirim görür.
 - **Cevap gönderilemedi:** Lina'nın cevabı WhatsApp'a gönderilemediyse (müşteri cevapsız kaldı) bildirim her durumda önemlidir ve bu not düşülür.
 - **Kayıt** (sessiz): diğer sipariş soruları, kargodaki siparişin iptal isteği, iade isteği, iade durumu, doğrulanamayan sipariş sorusu.
 - **Takip numarası beklenmeyenler:** Mağazadan teslim alma ve dijital ürünlerde "takip numarası yok" bildirimi açılmaz.
-- **Aynı vaka bir kez:** müşteri aynı konuyu yazdıkça yeni bildirim açılmaz; konuşmadaki aynı türde açık bildirim güncellenir. Ekip tamamladıktan sonraki yazışma yeni bildirimdir.
+- **Aynı vaka bir kez:** müşteri aynı konuyu yazdıkça yeni bildirim açılmaz; konuşmadaki aynı türde ve aynı siparişlere ait açık önemli bildirim güncellenir. Başka bir sipariş için istek ya da ekip tamamladıktan sonraki yazışma yeni bildirimdir. Sessiz kayıtlar birleştirilmez: her soru ayrı kayıttır.
 - **Panel:** önemli bildirimler **Bekleyenler → Ekibe iletilenler** bölümünde görünür; ekip işlemi yapınca "Tamamlandı" der.
 
 ## MAIUS ayarları

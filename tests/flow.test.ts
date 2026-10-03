@@ -79,12 +79,16 @@ const toolUse = (name: string, input: unknown) =>
   message([{ type: "tool_use", id: `toolu_${name}`, name, input } as Anthropic.ToolUseBlock], "tool_use");
 
 const sent: { to: string; text: string; token: string }[] = [];
+/** Her gelen mesaj için "yazıyor…" gösterildi mi (okundu her durumda gider). */
+const typing: boolean[] = [];
 const fakeWa: WhatsAppSender = {
   async sendText({ to, text, accessToken }) {
     sent.push({ to, text, token: accessToken });
     return [`wamid.out.${sent.length}`];
   },
-  async markReadAndTyping() {},
+  async markReadAndTyping(opts) {
+    typing.push(opts.typing !== false);
+  },
   async downloadMedia({ mediaId }) {
     if (mediaId === "broken") throw new Error("indirilemedi");
     return { data: Buffer.from(`jpeg-bytes-${mediaId}`), mimeType: "image/jpeg" };
@@ -163,6 +167,7 @@ async function setSettings(patch: Partial<TenantSettings>) {
 
 beforeEach(async () => {
   sent.length = 0;
+  typing.length = 0;
   linaCalls.length = 0;
   llmMode = "normal";
   now = new Date("2026-09-25T09:00:00Z");
@@ -312,6 +317,8 @@ describe("devir", () => {
     await database.db.update(conversations).set({ status: "human" });
     await post(text("orada mısınız?"));
     expect(sent).toHaveLength(1);
+    // Lina cevap vermeyecekse "yazıyor…" gösterilmez; müşteri boşa beklemesin.
+    expect(typing).toEqual([true, false]);
     const stored = await database.db.select().from(messages).where(eq(messages.sender, "customer"));
     expect(stored).toHaveLength(2);
   });
@@ -398,11 +405,37 @@ describe("sabit metinler ve ayarlar", () => {
     await post(text("iki"));
     await post(text("üç"));
     expect(sent.map((s) => s.text)).toEqual(["Merhaba, nasıl yardımcı olabilirim?"]);
+    expect(typing).toEqual([true, false, false]);
     const notified = await database.db.select().from(notifications);
     expect(notified).toMatchObject([{ kind: "daily_limit", important: true, status: "open", question: "iki", answer: "" }]);
     expect(notified[0]!.details.issues).toEqual([
-      "Müşteri bugün 1 mesajı aştı. Lina bugün bu müşteriye cevap vermeyi durdurdu; müşteriye bilgi verilmedi. Yarın kendiliğinden devam eder.",
+      "Müşteri bugün 1 mesajı aştı. Lina bugün bu müşteriye yeni cevap hazırlamıyor; müşteriye bilgi verilmedi. Yarın kendiliğinden devam eder.",
     ]);
+  });
+
+  it("günlük sınır konuşma ekipteyken aşıldıysa bildirim, Lina'ya geri verildikten sonraki ilk mesajda düşer", async () => {
+    await setSettings({ dailyMessageLimit: 1 });
+    await post(text("bir"));
+    await database.db.update(conversations).set({ status: "human" });
+    await post(text("iki"));
+    await post(text("üç"));
+    expect(await database.db.select().from(notifications)).toEqual([]);
+    await database.db.update(conversations).set({ status: "bot" });
+    await post(text("dört"));
+    expect(await database.db.select().from(notifications)).toMatchObject([{ kind: "daily_limit", question: "dört" }]);
+  });
+
+  it("dünkü sınır bildirimi hâlâ açıksa bugün için yenisi açılır; aynı gün ikincisi açılmaz", async () => {
+    await setSettings({ dailyMessageLimit: 1 });
+    await post(text("bir"));
+    await post(text("iki"));
+    const [first] = await database.db.select().from(notifications);
+    // Bildirim dün açılmış gibi: bugün sınır yine aşılınca ekip yeniden haberdar olmalı.
+    await database.db.update(notifications).set({ createdAt: new Date(now.getTime() - 24 * 60 * 60 * 1000) }).where(eq(notifications.id, first!.id));
+    await post(text("üç"));
+    await post(text("dört"));
+    const rows = await database.db.select().from(notifications);
+    expect(rows.map((n) => n.question).sort()).toEqual(["iki", "üç"]);
   });
 
   it("bot kapalıysa cevap vermez", async () => {

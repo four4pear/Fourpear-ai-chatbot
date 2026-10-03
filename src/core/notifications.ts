@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, gte } from "drizzle-orm";
 import type { OrderFindings } from "../agents/orders.js";
 import type { DB } from "../db/client.js";
 import { IMPORTANT_KINDS, NOTIFICATION_KINDS, notifications, type NotificationKind } from "../db/schema.js";
@@ -6,7 +6,9 @@ import type { EventBus } from "./events.js";
 
 const MAX_TEXT = 4000;
 const REPLY_FAILED = "Lina'nın cevabı WhatsApp'a gönderilemedi; müşteri cevap almadı.";
+const REPLY_FAILED_EARLIER = "Daha önce bir cevap WhatsApp'a gönderilemedi; sonraki cevap gönderildi.";
 const union = <T>(a: readonly T[], b: readonly T[]) => [...new Set([...a, ...b])];
+const sameSet = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every((x) => b.includes(x));
 
 /**
  * Sipariş uzmanının bulduklarından bildirimin türü (docs/lina-davranis.md "Ekibe bildirimler").
@@ -41,11 +43,14 @@ export function classifyFindings(f: OrderFindings): { kind: NotificationKind; ki
 /**
  * Cevap hazırlandıktan sonra: sipariş konusundaki bildirimi kaydeder ve panele haber verir.
  * Cevap WhatsApp'a gönderilemediyse müşteri cevapsız kalmıştır: bildirim her durumda önemlidir.
- * Aynı vaka ekibe bir kez düşer: konuşmada aynı türde açık bildirim varsa yenisi açılmaz, o güncellenir
- * (müşteri aynı konuyu yazdıkça ekibin listesi dolmasın). Ekip tamamladıysa yeni yazışma yeni bildirimdir.
+ *
+ * Aynı vaka ekibe bir kez düşer: konuşmada aynı türde ve AYNI SİPARİŞLER için açık önemli bildirim varsa
+ * yenisi açılmaz, o güncellenir (müşteri aynı konuyu yazdıkça ekibin listesi dolmasın). Başka bir sipariş,
+ * başka bir tür ya da ekibin tamamladığı bir bildirimden sonraki yazışma yeni bildirimdir. Sessiz kayıtlar
+ * birleştirilmez: ekip onları kapatmadığı için birikip durmasın, her soru ayrı kayıt kalır.
  */
 export async function recordOrderNotification(
-  deps: { db: DB; events?: EventBus },
+  deps: { db: DB; events?: EventBus; now?: () => Date },
   input: { tenantId: string; conversationId: string; findings: OrderFindings; question: string; answer: string; replySent: boolean },
 ) {
   const classified = classifyFindings(input.findings);
@@ -56,37 +61,46 @@ export async function recordOrderNotification(
   const orderNames = [...input.findings.orders.keys()];
   const answer = input.answer.slice(0, MAX_TEXT);
 
-  const [open] = await deps.db
-    .select()
-    .from(notifications)
-    .where(and(eq(notifications.conversationId, input.conversationId), eq(notifications.kind, kind), eq(notifications.status, "open")))
-    .orderBy(desc(notifications.createdAt))
-    .limit(1);
-  if (open) {
-    const allKinds = new Set(union(open.details.kinds ?? [open.kind], kinds));
-    await deps.db
-      .update(notifications)
-      .set({
-        // Önem geri alınmaz: ekip bakana kadar önemli kalır.
-        important: open.important || important,
-        orderNames: union(open.orderNames, orderNames),
-        // Müşterinin bu vakada yazdıkları birikir (en yenisi kalacak şekilde kırpılır); cevap sonuncusudur.
-        question: `${open.question}\n${input.question}`.slice(-MAX_TEXT),
-        answer,
-        details: {
-          kinds: NOTIFICATION_KINDS.filter((k) => allKinds.has(k)),
-          issues: union((open.details.issues ?? []).filter((i) => i !== REPLY_FAILED), issues),
-          ...(input.replySent ? {} : { replyFailed: true }),
-        },
-      })
-      .where(eq(notifications.id, open.id));
-    deps.events?.publish(
-      input.tenantId,
-      !open.important && important
-        ? { type: "notification", conversationId: input.conversationId, important }
-        : { type: "notification_update", conversationId: input.conversationId },
-    );
-    return;
+  if (important) {
+    const candidates = await deps.db
+      .select()
+      .from(notifications)
+      .where(
+        and(
+          eq(notifications.conversationId, input.conversationId),
+          eq(notifications.kind, kind),
+          eq(notifications.status, "open"),
+          eq(notifications.important, true),
+        ),
+      )
+      .orderBy(desc(notifications.createdAt));
+    const open = candidates.find((n) => sameSet(n.orderNames, orderNames));
+    if (open) {
+      const allKinds = new Set(union(open.details.kinds ?? [open.kind], kinds));
+      // Önceki cevap gönderilememiş, bu gönderilmişse sebep kartta kalsın (bildirim önemli kalıyor).
+      const earlier = (open.details.issues ?? []).map((i) => (i === REPLY_FAILED && input.replySent ? REPLY_FAILED_EARLIER : i));
+      // Ekip tam bu sırada tamamladıysa kapalı bildirime yazılmaz; aşağıda yenisi açılır.
+      const updated = await deps.db
+        .update(notifications)
+        .set({
+          // Müşterinin bu vakada yazdıkları birikir (en yenisi kalacak şekilde kırpılır); cevap sonuncusudur.
+          question: `${open.question}\n${input.question}`.slice(-MAX_TEXT),
+          answer,
+          details: {
+            kinds: NOTIFICATION_KINDS.filter((k) => allKinds.has(k)),
+            issues: union(earlier, issues),
+            ...(input.replySent ? {} : { replyFailed: true }),
+            updatedAt: (deps.now?.() ?? new Date()).toISOString(),
+            updates: (open.details.updates ?? 0) + 1,
+          },
+        })
+        .where(and(eq(notifications.id, open.id), eq(notifications.status, "open")))
+        .returning({ id: notifications.id });
+      if (updated.length) {
+        deps.events?.publish(input.tenantId, { type: "notification_update", conversationId: input.conversationId });
+        return;
+      }
+    }
   }
 
   await deps.db.insert(notifications).values({
@@ -103,17 +117,25 @@ export async function recordOrderNotification(
 }
 
 /**
- * Müşteri günlük mesaj sınırını aştı (docs/lina-davranis.md §9): Lina o gün cevap vermeyi durdurur ve
- * müşteriye bir şey yazılmaz; ekip konuşmayı "Ekibe iletilenler"de görür. Açık bildirim varsa yenisi açılmaz.
+ * Müşteri günlük mesaj sınırını aştı (docs/lina-davranis.md §9): Lina o gün yeni cevap hazırlamaz ve
+ * müşteriye bir şey yazılmaz; ekip konuşmayı "Ekibe iletilenler"de görür. Günde bir bildirim: bugün açılmış
+ * açık bildirim varsa yenisi açılmaz (dünkü hâlâ açıksa bugün için ayrıca açılır).
  */
 export async function recordLimitNotification(
   deps: { db: DB; events?: EventBus },
-  input: { tenantId: string; conversationId: string; limit: number; lastMessage: string },
+  input: { tenantId: string; conversationId: string; limit: number; lastMessage: string; now: Date; since: Date },
 ) {
   const [open] = await deps.db
     .select({ id: notifications.id })
     .from(notifications)
-    .where(and(eq(notifications.conversationId, input.conversationId), eq(notifications.kind, "daily_limit"), eq(notifications.status, "open")))
+    .where(
+      and(
+        eq(notifications.conversationId, input.conversationId),
+        eq(notifications.kind, "daily_limit"),
+        eq(notifications.status, "open"),
+        gte(notifications.createdAt, input.since),
+      ),
+    )
     .limit(1);
   if (open) return;
   await deps.db.insert(notifications).values({
@@ -125,8 +147,9 @@ export async function recordLimitNotification(
     answer: "",
     details: {
       kinds: ["daily_limit"],
-      issues: [`Müşteri bugün ${input.limit} mesajı aştı. Lina bugün bu müşteriye cevap vermeyi durdurdu; müşteriye bilgi verilmedi. Yarın kendiliğinden devam eder.`],
+      issues: [`Müşteri bugün ${input.limit} mesajı aştı. Lina bugün bu müşteriye yeni cevap hazırlamıyor; müşteriye bilgi verilmedi. Yarın kendiliğinden devam eder.`],
     },
+    createdAt: input.now,
   });
   deps.events?.publish(input.tenantId, { type: "notification", conversationId: input.conversationId, important: true });
 }

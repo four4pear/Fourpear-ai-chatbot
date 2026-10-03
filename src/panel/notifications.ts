@@ -1,5 +1,5 @@
 import type { NextFunction, Request, Response, Router } from "express";
-import { and, count, desc, eq } from "drizzle-orm";
+import { and, count, desc, eq, sql } from "drizzle-orm";
 import type { DB } from "../db/client.js";
 import { conversations, customers, notifications, users, type MemberRole, type Notification } from "../db/schema.js";
 import type { EventBus } from "../core/events.js";
@@ -39,6 +39,8 @@ export function toNotificationView(n: Notification, doneByName: string | null = 
     kinds: (n.details.kinds ?? [n.kind]).map((k) => ({ kind: k, label: NOTIFICATION_LABELS[k] })),
     status: n.status,
     createdAt: n.createdAt,
+    /** Aynı vaka için güncellendiyse son güncelleme; "Tamamlandı" bununla gönderilir (bkz. done). */
+    updatedAt: n.details.updatedAt ?? null,
     doneAt: n.doneAt,
     doneBy: doneByName ? { name: doneByName } : null,
   };
@@ -74,7 +76,8 @@ export function registerNotificationRoutes(
           onlyImportant ? eq(notifications.important, true) : undefined,
         ),
       )
-      .orderBy(desc(notifications.createdAt))
+      // Son hareketi olan üstte: güncellenen eski bildirim altta kalmasın.
+      .orderBy(desc(sql`coalesce((${notifications.details}->>'updatedAt')::timestamptz, ${notifications.createdAt})`))
       .limit(100);
 
     const [[open], [important]] = await Promise.all([
@@ -103,6 +106,14 @@ export function registerNotificationRoutes(
     const user = (res.locals as Locals).user!;
 
     const mine = and(eq(notifications.id, notificationId), eq(notifications.tenantId, tenantId));
+    // Ekip kartı okuduktan sonra müşteri yeni bir şey yazdıysa görülmeyen istek kapanmasın:
+    // panel, gördüğü hâlin güncelleme zamanını gönderir; değiştiyse önce yeni hâline bakılır.
+    if (req.body && "seenUpdatedAt" in req.body) {
+      const [current] = await db.select({ details: notifications.details, status: notifications.status }).from(notifications).where(mine);
+      if (current?.status === "open" && (current.details.updatedAt ?? null) !== (req.body.seenUpdatedAt ?? null)) {
+        return res.status(409).json({ error: "Bu talep siz bakarken güncellendi: müşteri yeni bir şey yazdı. Yeni hâline bakıp tekrar deneyin." });
+      }
+    }
     // Yalnızca açık olan kapatılır: zaten tamamlanmışsa kimin kapattığı değişmez.
     const [updated] = await db
       .update(notifications)

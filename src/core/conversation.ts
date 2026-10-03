@@ -157,7 +157,14 @@ export async function ingestInbound(deps: Deps, event: InboundEvent): Promise<In
 
   const accessToken = decryptSecret(account.accessTokenEnc, deps.masterKey);
   const wa: WaTarget = { phoneNumberId: account.phoneNumberId, accessToken, to: message.from };
-  deps.wa.markReadAndTyping({ ...wa, messageId: message.id }).catch((err) => deps.log.warn("Okundu bilgisi gönderilemedi", err));
+  // Lina cevap vermeyecekse (kapalı, ekipte ya da günlük sınır aşıldı) "yazıyor…" gösterilmez:
+  // müşteri cevap bekleyip boşa kalmasın. Mesaj yine okundu işaretlenir.
+  const limit = settings.dailyMessageLimit;
+  const overLimit = (await countCustomerMessagesToday(db, conversationId, deps.timeZone, now)) > limit;
+  const silent = !settings.botEnabled || conversation.status === "human" || overLimit;
+  deps.wa
+    .markReadAndTyping({ ...wa, messageId: message.id, typing: !silent })
+    .catch((err) => deps.log.warn("Okundu bilgisi gönderilemedi", err));
 
   // Fotoğraf, bot kapalı ya da ekipte olsa da saklanır: ekip panelde görür.
   if (message.type === "image" && message.image?.id) {
@@ -170,16 +177,18 @@ export async function ingestInbound(deps: Deps, event: InboundEvent): Promise<In
   // Ekipten biri devraldıysa Lina susar. Devir kuyruğunda ("waiting") cevap vermeye devam eder.
   if (conversation.status === "human") return { outcome: "human_mode", conversationId };
 
-  const todayCount = await countCustomerMessagesToday(db, conversationId, deps.timeZone, now);
-  const limit = settings.dailyMessageLimit;
-  if (todayCount > limit) {
-    // Spam ve bot döngüsüne karşı fatura koruması: Lina sessizce durur, müşteriye sınırdan söz edilmez.
-    // Sınır ilk aşıldığında ekibe bir kez önemli bildirim düşer.
-    if (todayCount === limit + 1) {
-      await recordLimitNotification(deps, { tenantId: tenant.id, conversationId, limit, lastMessage: messageText(message) ?? "" }).catch(
-        (err: unknown) => deps.log.error(`Sınır bildirimi kaydedilemedi (tenant=${tenant.slug})`, err),
-      );
-    }
+  if (overLimit) {
+    // Spam ve bot döngüsüne karşı fatura koruması: Lina yeni cevap hazırlamaz, müşteriye sınırdan söz edilmez.
+    // Ekibe günde bir kez önemli bildirim düşer. Her sınır üstü mesajda bakılır: sınır konuşma ekipteyken
+    // aşılmış ya da ilk kayıt başarısız olmuş olabilir.
+    await recordLimitNotification(deps, {
+      tenantId: tenant.id,
+      conversationId,
+      limit,
+      lastMessage: messageText(message) ?? "",
+      now,
+      since: startOfToday(deps.timeZone, now),
+    }).catch((err: unknown) => deps.log.error(`Sınır bildirimi kaydedilemedi (tenant=${tenant.slug})`, err));
     return { outcome: "daily_limit", conversationId };
   }
 
@@ -264,7 +273,11 @@ export async function respond(deps: Deps, conversationId: string, ctl: RespondCo
   };
   const ctx = { db, llm: deps.llm, model: deps.model, tenantId: tenant.id, conversationId, signal: ctl.signal, log: deps.log };
   const orders = orderSource ? { source: orderSource, waId, timeZone: deps.timeZone, now, returns } : null;
-  const lastText = batch.map((m) => m.text ?? `[${MEDIA_LABELS[m.type] ?? m.type}]`).join(" / ");
+  // Ekibin Lina'ya cevabı iç bilgidir; müşterinin yazdığı diye bildirime ya da soruya geçmez.
+  const lastText = batch
+    .filter((m) => m.type !== TEAM_ANSWER_TYPE)
+    .map((m) => m.text ?? `[${MEDIA_LABELS[m.type] ?? m.type}]`)
+    .join(" / ");
 
   let reply: string;
   let handoff: HandoffRequest | null;

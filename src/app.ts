@@ -77,9 +77,9 @@ export function createApp(
             maxWaitMs: result.maxWaitMs,
             typing: result.typing,
           });
-        } else if (result.outcome === "daily_limit") {
-          scheduler.cancel(result.conversationId);
         }
+        // Günlük sınır aşıldıysa yeni cevap kurulmaz; sınırın içindeki önceki mesajlar için
+        // hazırlanan cevap iptal edilmez (müşteri cevapsız kalmasın).
       });
     }
   });

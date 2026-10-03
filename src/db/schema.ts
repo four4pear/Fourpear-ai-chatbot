@@ -376,6 +376,9 @@ export type NotificationDetails = {
   issues?: string[];
   /** Lina'nın cevabı WhatsApp'a gönderilemedi: müşteri cevapsız kaldı. */
   replyFailed?: boolean;
+  /** Açık bildirim aynı vaka için güncellendiyse: son güncelleme zamanı (ISO) ve kaç kez güncellendiği. */
+  updatedAt?: string;
+  updates?: number;
 };
 
 export const notifications = pgTable(
