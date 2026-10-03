@@ -1,5 +1,5 @@
 import type Anthropic from "@anthropic-ai/sdk";
-import { and, desc, eq, gt, lt, notInArray } from "drizzle-orm";
+import { and, desc, eq, gt, lt, notInArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import { memoryWriterSystemPrompt } from "../agents/prompts.js";
 import type { Llm } from "../agents/runner.js";
@@ -127,4 +127,63 @@ export async function memoryRow(db: DB, customerId: string) {
     .from(customerMemories)
     .where(eq(customerMemories.customerId, customerId));
   return row ?? null;
+}
+
+/** Müşteri bu kadar süre yazmayınca kart güncellenir (her cevaptan sonra değil; tasarruf). */
+export const MEMORY_IDLE_MS = 10 * 60 * 1000;
+
+type MemoryJob = () => Promise<void>;
+
+/**
+ * Kart güncellemesini müşteri susana kadar erteler: her yeni cevapta bekleme baştan başlar, süre
+ * dolunca tek güncelleme sıraya girer (son güncellemeden sonraki bütün mesajları okur).
+ */
+export class IdleMemoryScheduler {
+  private pending = new Map<string, { timer: NodeJS.Timeout; job: MemoryJob }>();
+
+  constructor(
+    private readonly run: (customerId: string, job: MemoryJob) => void,
+    private readonly idleMs = MEMORY_IDLE_MS,
+  ) {}
+
+  schedule(customerId: string, job: MemoryJob) {
+    clearTimeout(this.pending.get(customerId)?.timer);
+    const timer = setTimeout(() => {
+      this.pending.delete(customerId);
+      this.run(customerId, job);
+    }, this.idleMs);
+    timer.unref?.();
+    this.pending.set(customerId, { timer, job });
+  }
+
+  /** Kapanışta: bekleyen güncellemeler hemen sıraya girer. */
+  flush() {
+    for (const [customerId, { timer, job }] of this.pending) {
+      clearTimeout(timer);
+      this.run(customerId, job);
+    }
+    this.pending.clear();
+  }
+
+  get size() {
+    return this.pending.size;
+  }
+}
+
+/**
+ * Açılışta: kartı son mesajlarından geride kalan müşteriler (sunucu bekleme sırasında kapandıysa).
+ * `since` sonrasında mesajı olan ve kartı yoksa ya da kartı son mesajdan eskiyse döner.
+ */
+export async function findStaleMemories(db: DB, since: Date) {
+  const rows = await db.execute<{ tenant_id: string; customer_id: string; conversation_id: string }>(sql`
+    select c.tenant_id, c.customer_id, c.id as conversation_id
+    from conversations c
+    join lateral (
+      select max(m.created_at) as last_at from messages m
+      where m.conversation_id = c.id and m.type not in ('reaction', 'sticker', 'system', 'request_welcome', 'note')
+    ) last on true
+    left join customer_memories cm on cm.customer_id = c.customer_id
+    where last.last_at >= ${since} and (cm.id is null or cm.updated_at < last.last_at)
+  `);
+  return rows.rows.map((r) => ({ tenantId: r.tenant_id, customerId: r.customer_id, conversationId: r.conversation_id }));
 }

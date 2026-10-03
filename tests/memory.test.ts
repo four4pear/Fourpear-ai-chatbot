@@ -4,7 +4,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import { turnContext } from "../src/agents/prompts.js";
 import type { Llm } from "../src/agents/runner.js";
 import type { Deps } from "../src/core/conversation.js";
-import { loadMemory, purgeExpiredMemories, updateMemory } from "../src/core/memory.js";
+import { findStaleMemories, IdleMemoryScheduler, loadMemory, purgeExpiredMemories, updateMemory } from "../src/core/memory.js";
 import { openDatabase, type Database } from "../src/db/client.js";
 import { agentRuns, conversations, customerMemories, customers, messages, tenants, whatsappAccounts, type Tenant } from "../src/db/schema.js";
 import { simulate } from "../src/panel/simulator.js";
@@ -161,4 +161,40 @@ describe("müşteri kartı", () => {
     expect(context).toContain("kendini yeniden tanıtma"); // kartı olan müşteri ilk kez yazmıyor
     expect(await database.db.select().from(customerMemories)).toEqual(before);
   }, 30000);
+
+  it("kart müşteri susunca bir kez güncellenir; her cevap beklemeyi baştan başlatır; kapanışta hemen", () => {
+    vi.useFakeTimers();
+    try {
+      const ran: string[] = [];
+      const scheduler = new IdleMemoryScheduler((customerId, job) => { ran.push(customerId); void job(); }, 1000);
+      const job = vi.fn(async () => {});
+      scheduler.schedule("ayse", job);
+      vi.advanceTimersByTime(800);
+      scheduler.schedule("ayse", job); // yeni cevap: bekleme baştan
+      vi.advanceTimersByTime(800);
+      expect(ran).toEqual([]);
+      vi.advanceTimersByTime(300);
+      expect(ran).toEqual(["ayse"]);
+      expect(job).toHaveBeenCalledTimes(1);
+
+      scheduler.schedule("zeynep", job);
+      expect(scheduler.size).toBe(1);
+      scheduler.flush();
+      expect(ran).toEqual(["ayse", "zeynep"]);
+      expect(scheduler.size).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("açılışta kartı son mesajından geride kalan müşteriler bulunur", async () => {
+    const behind = await conversationWith("905004445566", [["customer", "merhaba"]]);
+    const upToDate = await conversationWith("905005556677", [["customer", "merhaba"]]);
+    await database.db.insert(customerMemories).values({ tenantId: tenant.id, customerId: upToDate.customerId, text: "güncel", updatedAt: new Date(Date.now() + 60_000) });
+    const stale = await findStaleMemories(database.db, new Date(Date.now() - 60 * 60 * 1000));
+    const ids = stale.map((m) => m.customerId);
+    expect(ids).toContain(behind.customerId);
+    expect(ids).not.toContain(upToDate.customerId);
+    expect(stale.find((m) => m.customerId === behind.customerId)).toMatchObject({ tenantId: tenant.id, conversationId: behind.conversationId });
+  });
 });

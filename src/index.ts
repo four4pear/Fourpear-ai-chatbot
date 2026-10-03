@@ -1,6 +1,6 @@
 import "dotenv/config";
 import Anthropic from "@anthropic-ai/sdk";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { createApp } from "./app.js";
 import { loadConfig, whatsappConfigured } from "./config.js";
 import { exitIfLocked, openDatabase } from "./db/client.js";
@@ -15,7 +15,7 @@ import { createShopifyApi } from "./shopify/client.js";
 import { createWhatsAppClient } from "./whatsapp/client.js";
 import { EventBus } from "./core/events.js";
 import { findUnansweredConversations, type Deps } from "./core/conversation.js";
-import { purgeExpiredMemories } from "./core/memory.js";
+import { findStaleMemories, IdleMemoryScheduler, purgeExpiredMemories, updateMemory } from "./core/memory.js";
 import { KeyedQueue } from "./core/queue.js";
 
 /** Düzenli işler üst üste binmesin: önceki çalışma bitmeden yenisi başlamaz. */
@@ -47,6 +47,8 @@ const { db, close } = await openDatabase({ databaseUrl: config.DATABASE_URL, pgl
 const events = new EventBus();
 // Müşteri kartı güncellemeleri müşteri başına sırayla (aynı kart üst üste yazılmasın).
 const memoryQueue = new KeyedQueue((err, key) => console.error(`Müşteri kartı güncellenemedi (${key})`, err));
+// Kart her cevaptan sonra değil, müşteri 10 dakika yazmayınca bir kez güncellenir (tasarruf).
+const memoryIdle = new IdleMemoryScheduler((customerId, job) => void memoryQueue.push(customerId, job));
 
 const deps: Deps = {
   db,
@@ -60,7 +62,7 @@ const deps: Deps = {
   log: console,
   // İade sistemi bağlı mağazada Lina iade talebinin durumunu okur (yalnızca okuma).
   returnsFor: (tenantId) => returnsProviderFor(db, config.MASTER_KEY, tenantId),
-  memory: { model: config.CLAUDE_MEMORY_MODEL, schedule: (customerId, task) => void memoryQueue.push(customerId, task) },
+  memory: { model: config.CLAUDE_MEMORY_MODEL, schedule: (customerId, task) => memoryIdle.schedule(customerId, task) },
 };
 
 let shopifyRoutes;
@@ -120,6 +122,27 @@ const purgeMemories = exclusive(() =>
 void purgeMemories();
 const memoryTimer = setInterval(purgeMemories, 24 * 60 * 60 * 1000);
 
+// Sunucu bekleme sırasında kapandıysa: kartı son mesajlarından geride kalanlar yeniden sıraya girer.
+const staleMemories = await findStaleMemories(db, new Date(Date.now() - 24 * 60 * 60 * 1000)).catch((err: unknown) => {
+  console.error("Geride kalan müşteri kartları bulunamadı", err);
+  return [];
+});
+if (staleMemories.length) {
+  const tenantRows = await db.select().from(tenants).where(inArray(tenants.id, [...new Set(staleMemories.map((m) => m.tenantId))]));
+  const byId = new Map(tenantRows.map((t) => [t.id, t]));
+  for (const m of staleMemories) {
+    const tenant = byId.get(m.tenantId);
+    if (!tenant) continue;
+    memoryIdle.schedule(m.customerId, async () => {
+      await updateMemory(
+        { db, llm: deps.llm, model: config.CLAUDE_MEMORY_MODEL },
+        { tenant, customerId: m.customerId, conversationId: m.conversationId, now: new Date(), timeZone: config.TZ },
+      );
+    });
+  }
+  console.log(`Kartı geride kalan ${staleMemories.length} müşteri güncelleme sırasına alındı.`);
+}
+
 const localUrl = `http://localhost:${config.PORT}`;
 const publicUrl = (config.APP_URL ?? localUrl).replace(/\/$/, "");
 const panel = {
@@ -165,6 +188,8 @@ async function shutdown() {
   scheduler.stop();
   server.close();
   await queue.idle();
+  // Bekleyen kart güncellemeleri kapanmadan yapılır.
+  memoryIdle.flush();
   await memoryQueue.idle();
   await close();
   process.exit(0);

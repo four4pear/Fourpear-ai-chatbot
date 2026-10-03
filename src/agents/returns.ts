@@ -80,8 +80,9 @@ export async function askReturnsAgent(
     system: returnsAgentSystemPrompt(tenant, deps.knowledge, { orders: Boolean(deps.orders), returns: Boolean(deps.orders?.returns) }),
     messages: [{ role: "user", content: `Konu: ${TOPIC_LABELS[request.topic]}\nMüşterinin mesajı: ${request.question}\n\n${context}` }],
     tools,
-    // Kural önceliği (el kitabı, kampanya, politika) ve ekibe iletme kararı biraz düşünmeyi gerektirir.
-    effort: "medium",
+    // Tasarruf (2 Ekim 2026 ölçümü): iade uzmanı harcamanın yarısıydı, çoğu düşünme tokenı. Düşük
+    // düşünmede aynı 5 senaryoyla cevaplar karşılaştırıldı (docs/lina-davranis.md §3.5).
+    effort: "low",
     inputLabel: `[${TOPIC_LABELS[request.topic]}] ${request.question}${request.orderNumber ? ` (${request.orderNumber})` : ""}`,
   });
   if (result.stopReason === "refusal" || !result.text) return "İade uzmanı bu soruya cevap veremedi.";
