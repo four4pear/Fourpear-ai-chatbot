@@ -353,6 +353,7 @@ export const textArchive = pgTable(
  * lookup_failed: sipariş sistemine ulaşılamadı (ör. Shopify hatası); müşterinin isteği ekibe kalır.
  * return_review: iade uzmanı talebin ekip kararı gerektirdiğine karar verdi (kural dışı istek, iade sürecinde sorun).
  * daily_limit: müşteri günlük mesaj sınırını aştı; Lina o gün cevap vermeyi durdurdu (müşteriye bir şey yazılmaz).
+ * verify_locked: aynı numaradan çok sayıda yanlış ad soyad denemesi; ad soyadla doğrulama 24 saat kapalı.
  */
 export const IMPORTANT_KINDS = [
   "complaint",
@@ -363,6 +364,7 @@ export const IMPORTANT_KINDS = [
   "delay",
   "no_tracking",
   "daily_limit",
+  "verify_locked",
 ] as const;
 export const RECORD_KINDS = ["return_request", "return_status", "unverified", "order_question"] as const;
 /** Önem sırasıyla: bir cevapta birden fazla konu varsa bildirimin türü ilk sıradaki olur. */
@@ -376,6 +378,8 @@ export type NotificationDetails = {
   issues?: string[];
   /** Lina'nın cevabı WhatsApp'a gönderilemedi: müşteri cevapsız kaldı. */
   replyFailed?: boolean;
+  /** Bu cevap(lar)da müşterinin yazdığı ad soyad siparişle eşleşmedi: kaç kez (deneme sınırı için sayılır). */
+  failedIdentity?: number;
   /** Açık bildirim aynı vaka için güncellendiyse: son güncelleme zamanı (ISO) ve kaç kez güncellendiği. */
   updatedAt?: string;
   updates?: number;

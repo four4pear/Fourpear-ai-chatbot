@@ -48,6 +48,7 @@ Bu konularda konuşmayı ekibe devretme; uzmanlara sor ve cevabı müşteriye ak
 - Müşteri sipariş numarası verdiyse order_number'a yaz, vermediyse boş bırak; uzman müşterinin numarasından bulur. Değişiklik ya da iptal isteğinde müşterinin istediğini (yeni beden, renk, adres) soruya da yaz.
 - Doğrulama: Müşterinin WhatsApp numarası siparişle eşleşmezse uzman "DOĞRULAMA GEREKLİ" der. O zaman müşteriden siparişte kayıtlı adını ve soyadını iste: "Siparişinizi hemen kontrol edeyim. Siparişte kayıtlı adınızı ve soyadınızı yazar mısınız?" Sipariş numarası yoksa onu da iste; müşteri sipariş numarasını bilmiyorsa siparişte kayıtlı telefon numarasını ve adını soyadını iste. Müşteri yazınca uzmana customer_name (ve numarayı bilmiyorsa order_phone) ile tekrar sor. Aynı konuşmada doğrulanan ad soyadı tekrar sorma, sonraki sorularda da customer_name'e yaz.
 - Uzman DOĞRULANAMADI derse: "Bu bilgilerle eşleşen bir sipariş bulamadım. Sipariş numarasını (ya da siparişte kayıtlı telefon numarasını) ve adınızı soyadınızı kontrol edip tekrar yazabilir misiniz?" Siparişin var olup olmadığını hiçbir durumda söyleme.
+- Uzman DOĞRULAMA KİLİTLİ derse: sipariş bilgisi verme, yeniden ad soyad ya da telefon isteme, devretme. Müşteriye bu bilgilerle siparişini doğrulayamadığını, konuyu kontrol ettiğini ve kısa süre içinde buradan bilgi vereceğini kendi cümlelerinle söyle (örnek: "Bu bilgilerle siparişinizi doğrulayamadım. Konuyu kontrol ediyorum, kısa süre içinde size buradan bilgi vereceğim."). Neden doğrulayamadığını ya da deneme sayısını anlatma.
 - Birden fazla sipariş varsa hangisini sorduğunu numara ve tarihle sor.
 - Paylaşabileceklerin: sipariş durumu, ön sipariş tarihi, kargo firması ve takip linki, ürünler (ad, beden, renk). Tutar, ödeme ve adres bilgisini asla paylaşma.${form}
 - Uzman konunun ekibe iletildiğini (ya da ekibe bildirileceğini) söylediyse cevabının sonunda talebin işleme alındığını söyle; söylemediyse söyleme.
@@ -279,7 +280,7 @@ export function orderAgentSystemPrompt(tenant: Tenant, opts: { returns: boolean 
 
 ## Kurallar
 - Yalnızca bilgi kartındaki ve araçlardan gelen bilgiyi kullan. Tahmin etme, tarih uydurma.
-- Araçlar yalnızca doğrulanmış siparişleri gösterir: müşterinin WhatsApp numarasıyla ya da müşterinin verdiği ad soyadla (sipariş numarası ya da siparişteki telefonla birlikte) eşleşenler. "DOĞRULAMA GEREKLİ" ya da "DOĞRULANAMADI" gelirse siparişe özel hiçbir bilgi yazma, siparişin var olup olmadığını söyleme; gelen açıklamayı ${tenant.botName}'ya aynen ilet.
+- Araçlar yalnızca doğrulanmış siparişleri gösterir: müşterinin WhatsApp numarasıyla ya da müşterinin verdiği ad soyadla (sipariş numarası ya da siparişteki telefonla birlikte) eşleşenler. "DOĞRULAMA GEREKLİ", "DOĞRULANAMADI" ya da "DOĞRULAMA KİLİTLİ" gelirse siparişe özel hiçbir bilgi yazma, siparişin var olup olmadığını söyleme; gelen açıklamayı ${tenant.botName}'ya aynen ilet.
 - Müşteri sipariş numarası vermediyse ve birden fazla sipariş varsa siparişleri numara, tarih ve ürünle listele; hangisi olduğu müşteriye sorulsun.
 - Paylaşılabilir: sipariş durumu, ön sipariş tarihi, kargo firması ve takip linki, ürünler (ad, beden, renk). Tutar, ödeme ve adres asla.
 - Özel koşullar (kampanya, ön sipariş, iade kuralları) bağlayıcıdır ve sipariş tarihindeki halleriyle geçerlidir. İade ya da değişim sorusunda ilgili ürünün özel koşulunu mutlaka yaz. Kampanya yazısı ürün açıklamasından sonradan kalkmış olsa da sipariş tarihinde varsa geçerlidir. Açıklamasında kampanya yazısı olmayan ürüne yalnızca indirimli diye "iade edilmez" deme.
@@ -302,7 +303,7 @@ export function returnsAgentSystemPrompt(tenant: Tenant, kb: KnowledgeBase | nul
     ? 'forward_to_team aracını çağır (sipariş belliyse numarasıyla) ve cevabının EKİBE satırına "iletildi" ile sebebini yaz.'
     : `cevabının EKİBE satırına "iletilmeli" ile sebebini yaz; ${lina} konuşmayı ekibe devredecek.`;
   const orderRule = opts.orders
-    ? `- Bilgi kartı yalnızca doğrulanmış siparişleri gösterir (WhatsApp numarası ya da müşterinin verdiği ad soyad eşleşenler). "DOĞRULAMA GEREKLİ" ya da "DOĞRULANAMADI" gelirse siparişe özel hiçbir bilgi yazma, siparişin var olup olmadığını söyleme; gelen açıklamayı ${lina}'ya aynen ilet, genel kuralı ve süreci yine anlat.`
+    ? `- Bilgi kartı yalnızca doğrulanmış siparişleri gösterir (WhatsApp numarası ya da müşterinin verdiği ad soyad eşleşenler). "DOĞRULAMA GEREKLİ", "DOĞRULANAMADI" ya da "DOĞRULAMA KİLİTLİ" gelirse siparişe özel hiçbir bilgi yazma, siparişin var olup olmadığını söyleme; gelen açıklamayı ${lina}'ya aynen ilet, genel kuralı ve süreci yine anlat.`
     : "- Siparişleri göremezsin: siparişe özel koşul ya da iade talebinin durumu sorulursa göremediğini yaz; genel kuralı ve süreci anlat.";
   const returnsRule = opts.returns
     ? "\n- Bilgi kartında İADE TALEBİ varsa durumunu ve tarihlerini yaz; açık bir talep varsa yeni başvuru gerekmediğini belirt."

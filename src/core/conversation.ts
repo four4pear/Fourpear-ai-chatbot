@@ -29,7 +29,7 @@ import { loadMemory, updateMemory } from "./memory.js";
 import { openTeamQuestions, recordTeamQuestions, TEAM_ANSWER_TYPE, type AskedQuestion } from "./team-questions.js";
 import { businessStatus } from "./business-hours.js";
 import type { EventBus } from "./events.js";
-import { recordLimitNotification, recordOrderNotification } from "./notifications.js";
+import { identityLocked, recordLimitNotification, recordOrderNotification } from "./notifications.js";
 import { fixedText } from "./texts.js";
 
 export type Deps = {
@@ -257,7 +257,7 @@ export async function respond(deps: Deps, conversationId: string, ctl: RespondCo
       deps.log.error(`${what} alınamadı (tenant=${tenant.slug})`, err);
       return null;
     });
-  const [history, firstContact, openHandoff, storeKnowledge, lessons, memory, askedTeam, teamAnswers, orderSource, returns] = await Promise.all([
+  const [history, firstContact, openHandoff, storeKnowledge, lessons, memory, askedTeam, teamAnswers, locked, orderSource, returns] = await Promise.all([
     loadHistory(db, conversationId, deps.historyLimit),
     isFirstContact(db, conversationId),
     findOpenHandoff(db, conversationId),
@@ -266,6 +266,7 @@ export async function respond(deps: Deps, conversationId: string, ctl: RespondCo
     loadMemory(db, conversation.customerId),
     openTeamQuestions(db, conversationId),
     recentTeamAnswers(db, conversationId),
+    identityLocked(db, conversationId, now),
     optional(deps.orderSourceFor?.(tenant.id), "Sipariş kaynağı"),
     optional(deps.returnsFor?.(tenant.id), "İade sistemi bağlantısı"),
   ]);
@@ -285,7 +286,7 @@ export async function respond(deps: Deps, conversationId: string, ctl: RespondCo
   // Yalnızca ekibin cevabı geldiyse müşteri yeni bir şey yazmamıştır; Claude'a giden geçmiş müşteriyle bitmeli.
   if (history.at(-1)?.role !== "user") history.push({ role: "user", content: [{ type: "text", text: NO_NEW_MESSAGE }] });
   const ctx = { db, llm: deps.llm, model: deps.model, tenantId: tenant.id, conversationId, signal: ctl.signal, log: deps.log };
-  const orders = orderSource ? { source: orderSource, waId, timeZone: deps.timeZone, now, returns } : null;
+  const orders = orderSource ? { source: orderSource, waId, timeZone: deps.timeZone, now, returns, identityLocked: locked } : null;
   // Ekibin Lina'ya cevabı iç bilgidir; müşterinin yazdığı diye bildirime ya da soruya geçmez.
   const lastText = batch
     .filter((m) => m.type !== TEAM_ANSWER_TYPE)

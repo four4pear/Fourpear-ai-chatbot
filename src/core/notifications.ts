@@ -1,10 +1,12 @@
-import { and, desc, eq, gte } from "drizzle-orm";
+import { and, desc, eq, gte, sql } from "drizzle-orm";
 import type { OrderFindings } from "../agents/orders.js";
 import type { DB } from "../db/client.js";
 import { IMPORTANT_KINDS, NOTIFICATION_KINDS, notifications, type NotificationKind } from "../db/schema.js";
 import type { EventBus } from "./events.js";
 
 const MAX_TEXT = 4000;
+/** Bu kadar yanlış ad soyad denemesinden sonra ad soyadla doğrulama 24 saat kapanır. */
+export const MAX_FAILED_IDENTITY = 3;
 const REPLY_FAILED = "Lina'nın cevabı WhatsApp'a gönderilemedi; müşteri cevap almadı.";
 const REPLY_FAILED_EARLIER = "Daha önce bir cevap WhatsApp'a gönderilemedi; sonraki cevap gönderildi.";
 const union = <T>(a: readonly T[], b: readonly T[]) => [...new Set([...a, ...b])];
@@ -33,6 +35,7 @@ export function classifyFindings(f: OrderFindings): { kind: NotificationKind; ki
   // Sipariş sistemine ulaşılamadı: iptal/değişiklik gibi istekler doğrulanamadı diye sessiz kalmasın.
   if (f.lookupFailed && !verified) kinds.add("lookup_failed");
   if (f.unverified) kinds.add("unverified");
+  if (f.identityLocked) kinds.add("verify_locked");
   // Sipariş listesi gösterilip "hangisi?" diye soruldu: sessiz kayıt; asıl bildirim müşteri seçince gelir.
   if (!kinds.size) kinds.add("order_question");
   const sorted = NOTIFICATION_KINDS.filter((k) => kinds.has(k));
@@ -59,9 +62,15 @@ export async function recordOrderNotification(
   // Ad soyadla doğrulanan siparişte yazan kişi siparişin sahibi olmayabilir: ekip işlemden önce teyit etsin.
   const byName = [...input.findings.orders].filter(([, o]) => o.byName).map(([name]) => name);
   if (byName.length) issues.push(`${byName.join(", ")}: WhatsApp numarası siparişteki numara değil; sipariş, müşterinin yazdığı ad soyadla doğrulandı. İptal ya da değişiklik yapmadan önce müşteriyi teyit edin.`);
+  if (input.findings.identityLocked) {
+    issues.push(
+      `Bu numaradan son 24 saatte ${MAX_FAILED_IDENTITY} kez siparişle eşleşmeyen ad soyad yazıldı; ad soyadla doğrulama 24 saat kapatıldı. Müşteriye sipariş bilgisi verilmedi. Gerçek bir müşteri olabilir: konuşmaya bakın.`,
+    );
+  }
   if (!input.replySent) issues.unshift(REPLY_FAILED);
   const important = classified.important || !input.replySent;
   const orderNames = [...input.findings.orders.keys()];
+  const failedIdentity = input.findings.failedIdentity ? 1 : 0;
   const answer = input.answer.slice(0, MAX_TEXT);
 
   if (important) {
@@ -95,6 +104,7 @@ export async function recordOrderNotification(
             ...(input.replySent ? {} : { replyFailed: true }),
             updatedAt: (deps.now?.() ?? new Date()).toISOString(),
             updates: (open.details.updates ?? 0) + 1,
+            ...((open.details.failedIdentity ?? 0) + failedIdentity ? { failedIdentity: (open.details.failedIdentity ?? 0) + failedIdentity } : {}),
           },
         })
         .where(and(eq(notifications.id, open.id), eq(notifications.status, "open")))
@@ -114,9 +124,22 @@ export async function recordOrderNotification(
     orderNames,
     question: input.question.slice(0, MAX_TEXT),
     answer,
-    details: { kinds, issues, ...(input.replySent ? {} : { replyFailed: true }) },
+    details: { kinds, issues, ...(input.replySent ? {} : { replyFailed: true }), ...(failedIdentity ? { failedIdentity } : {}) },
   });
   deps.events?.publish(input.tenantId, { type: "notification", conversationId: input.conversationId, important });
+}
+
+/**
+ * Son 24 saatte bu konuşmada kaç kez siparişle eşleşmeyen ad soyad yazıldı? Sınıra ulaşınca ad soyadla
+ * doğrulama kapanır: sipariş numaraları sıralı olduğu için, numaraları farklı isimlerle denemek mümkün olmasın.
+ */
+export async function identityLocked(db: DB, conversationId: string, now: Date): Promise<boolean> {
+  const since = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  const [row] = await db
+    .select({ n: sql<number>`coalesce(sum((${notifications.details}->>'failedIdentity')::int), 0)`.mapWith(Number) })
+    .from(notifications)
+    .where(and(eq(notifications.conversationId, conversationId), gte(notifications.createdAt, since)));
+  return (row?.n ?? 0) >= MAX_FAILED_IDENTITY;
 }
 
 /**

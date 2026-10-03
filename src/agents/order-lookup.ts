@@ -22,6 +22,10 @@ export type OrderFindings = {
   unverified: boolean;
   /** Sipariş sistemine ulaşılamadı (Shopify ya da uzman hatası): istek ekibe önemli bildirimle kalır. */
   lookupFailed: boolean;
+  /** Müşteri ad soyad yazdı ama siparişle eşleşmedi (deneme sınırı için sayılır). */
+  failedIdentity?: boolean;
+  /** Deneme sınırı aşıldığı için ad soyadla doğrulama yapılmadı; ekibe önemli bildirim düşer. */
+  identityLocked?: boolean;
 };
 
 export const newFindings = (): OrderFindings => ({ topics: [], orders: new Map(), issues: [], unverified: false, lookupFailed: false });
@@ -33,6 +37,11 @@ export type OrderAgentDeps = {
   timeZone: string;
   now: Date;
   returns: ReturnsProvider | null;
+  /**
+   * Bu numaradan son 24 saatte çok sayıda yanlış ad soyad denemesi yapıldı: ad soyadla doğrulama kapalı
+   * (sipariş numaralarını sırayla denemek mümkün olmasın). WhatsApp numarası eşleşen siparişler yine görünür.
+   */
+  identityLocked?: boolean;
 };
 
 /**
@@ -48,6 +57,10 @@ export const NEEDS_NAME =
 /** Sipariş numarası yok ve WhatsApp numarasıyla eşleşen sipariş yok. */
 export const NEEDS_IDENTITY =
   "DOĞRULAMA GEREKLİ: Müşterinin WhatsApp numarasıyla eşleşen sipariş bulunamadı (son 60 gün). Müşteriden sipariş numarasını ve siparişte kayıtlı adını soyadını iste; sipariş numarasını bilmiyorsa siparişte kayıtlı telefon numarasını ve adını soyadını iste.";
+
+/** Deneme sınırı aşıldı: yeniden bilgi istenmez, ekip bakar. */
+export const LOCKED =
+  "DOĞRULAMA KİLİTLİ: Bu numaradan çok sayıda yanlış doğrulama denemesi yapıldı; ad soyadla doğrulama şu an kapalı. Sipariş bilgisi paylaşılamaz, siparişin var olup olmadığı söylenmez ve müşteriden yeniden ad soyad ya da telefon istenmez. Konu ekibe bildirildi; müşteriye bu bilgilerle siparişin doğrulanamadığı ve kontrol edildiği söylenir.";
 
 export const UNVERIFIED =
   "DOĞRULANAMADI: Müşterinin verdiği bilgilerle (sipariş numarası ya da siparişteki telefon ve ad soyad) eşleşen sipariş bulunamadı. Sipariş bilgisi paylaşılamaz ve siparişin var olup olmadığı söylenmez; müşteriden bilgileri kontrol edip tekrar yazması istenir.";
@@ -129,11 +142,19 @@ export function orderLookup(
       );
     }
     if (order && belongsTo(order, deps.waId)) return sheetFor(order);
+    if (deps.identityLocked) return locked();
     if (order) warnIfNoNames(order);
     // Numara tutmuyor: sipariş numarası + siparişteki ad soyad birlikte tutmalı.
     if (order && typedName && nameMatches(order, typedName)) return sheetFor(order, "name");
     findings.unverified = true;
+    if (typedName) findings.failedIdentity = true;
     return typedName ? UNVERIFIED : NEEDS_NAME;
+  };
+
+  const locked = (): string => {
+    findings.unverified = true;
+    findings.identityLocked = true;
+    return LOCKED;
   };
 
   /** Sipariş numarası bilinmiyorsa: siparişteki telefon + ad soyad birlikte tutmalı. */
@@ -146,9 +167,11 @@ export function orderLookup(
 
   const findMine = async (): Promise<string> => {
     const byWhatsApp = (await deps.source.byPhone(deps.waId)).filter((o) => belongsTo(o, deps.waId));
-    const mine = (byWhatsApp.length ? byWhatsApp : await findByTypedPhone()).slice(0, 5);
+    const mine = (byWhatsApp.length ? byWhatsApp : deps.identityLocked ? [] : await findByTypedPhone()).slice(0, 5);
     if (!mine.length) {
+      if (deps.identityLocked) return locked();
       findings.unverified = true;
+      if (typedPhone && typedName) findings.failedIdentity = true;
       return typedPhone && typedName ? UNVERIFIED : NEEDS_IDENTITY;
     }
     if (mine.length === 1) return sheetFor(mine[0]!, byWhatsApp.length ? "whatsapp" : "name");

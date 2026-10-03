@@ -83,6 +83,7 @@ Bu konularda Lina konuşmayı ekibe **devretmez**; kendisi cevaplar ve ekibe bil
   3. **Siparişteki telefon + ad soyad:** Müşteri sipariş numarasını bilmiyorsa Lina siparişte kayıtlı telefon numarasını ve adı soyadı ister; o numaranın siparişleri arasından ad soyadı tutanlar gösterilir.
   - Ad soyad eşleşmesinde büyük/küçük ve Türkçe harf farkı önemsizdir, ikinci ad yazılmasa da olur; yalnızca ad ya da yalnızca soyad yetmez. Karşılaştırma kodda yapılır; siparişteki ad soyad ve telefonlar yapay zekâya hiç gösterilmez.
   - Uzun bir isim listesi yazıp tutturmak mümkün değildir: yazılan ad soyadda, siparişteki adda olmayan en fazla bir kelime olabilir ("adım", "hanım" gibi).
+  - **Deneme sınırı:** aynı numaradan 24 saat içinde 3 kez siparişle eşleşmeyen ad soyad yazılırsa ad soyadla doğrulama 24 saat kapanır (sipariş numaraları farklı isimlerle sırayla denenemesin). Lina yeniden bilgi istemez, kendi cümleleriyle "Bu bilgilerle siparişinizi doğrulayamadım. Konuyu kontrol ediyorum, kısa süre içinde size buradan bilgi vereceğim." der; ekibe önemli bildirim düşer ("Çok sayıda yanlış doğrulama denemesi"). Müşterinin kendi WhatsApp numarasına kayıtlı siparişler bundan etkilenmez.
   - Ad soyadla doğrulanan siparişte yazan kişinin WhatsApp numarası siparişteki numara değildir. Bu, ekibe düşen bildirimde yazar: iptal ya da değişiklik yapmadan önce müşteri teyit edilir.
   - Tutmazsa: "Bu bilgilerle eşleşen bir sipariş bulamadım. Sipariş numarasını (ya da siparişte kayıtlı telefon numarasını) ve adınızı soyadınızı kontrol edip tekrar yazabilir misiniz?"
   - Sipariş numaraları sıralı olduğu için tahmin edilebilir; bu yüzden ad soyad her zaman sipariş numarası ya da telefonla birlikte istenir.
@@ -278,6 +279,7 @@ Sipariş konularında (§3) konuşma devredilmez; ekip panelde bildirim görür.
   - şikayet
   - iade: ekip kararı gerekiyor (iade uzmanı iletti)
   - sipariş bilgisine ulaşılamadı
+  - çok sayıda yanlış doğrulama denemesi (ad soyadla doğrulama 24 saat kapandı, §3.1)
   - günlük mesaj sınırı aşıldı (Lina o gün cevap vermeyi durdurdu, §9)
 - **Cevap gönderilemedi:** Lina'nın cevabı WhatsApp'a gönderilemediyse (müşteri cevapsız kaldı) bildirim her durumda önemlidir ve bu not düşülür.
 - **Kayıt** (sessiz): diğer sipariş soruları, kargodaki siparişin iptal isteği, iade isteği, iade durumu, doğrulanamayan sipariş sorusu.

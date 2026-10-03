@@ -629,6 +629,30 @@ describe("sipariş uzmanı", () => {
     expect((await ask("Zeynep")).sent).toContain("DOĞRULANAMADI");
   });
 
+  it("deneme sınırı aşıldıysa ad soyadla doğrulama kapalıdır; WhatsApp numarası eşleşen sipariş yine görünür", async () => {
+    const ask = async (orderNumber: string | null, identity: { name: string; orderPhone: string }, locked: boolean) => {
+      calls.order.length = 0;
+      const findings = newFindings();
+      await askOrderAgent(ctx(), tenant, { ...deps(), identityLocked: locked }, { topic: "status", question: "?", orderNumber, identity }, findings);
+      return { sent: textOf(calls.order[0]!.messages[0]!.content), findings };
+    };
+    // Yanlış ad soyad denemesi sayılır; yalnızca numara yazıp ad soyad istenmesi sayılmaz.
+    expect((await ask("MO-9005", { name: "Ayşe Yılmaz", orderPhone: "" }, false)).findings.failedIdentity).toBe(true);
+    expect((await ask("MO-9005", { name: "", orderPhone: "" }, false)).findings.failedIdentity).toBeUndefined();
+
+    // Kilitliyken doğru ad soyad da açmaz; yeniden bilgi istenmez.
+    const locked = await ask("MO-9005", { name: "Zeynep Kaya", orderPhone: "" }, true);
+    expect(locked.sent).toContain("DOĞRULAMA KİLİTLİ");
+    expect(locked.sent).not.toContain("Top Takım");
+    expect(locked.findings).toMatchObject({ unverified: true, identityLocked: true });
+    expect(locked.findings.orders.size).toBe(0);
+    const byPhone = await ask(null, { name: "Zeynep Kaya", orderPhone: "0555 999 99 99" }, true);
+    expect(byPhone.sent).not.toContain("Top Takım");
+    // Müşterinin kendi numarasına kayıtlı sipariş kilitten etkilenmez.
+    const own = await ask("MO-9001", { name: "", orderPhone: "" }, true);
+    expect(own.sent).toContain("SİPARİŞ #MO-9001 (doğrulandı: müşterinin WhatsApp numarasıyla eşleşiyor)");
+  });
+
   it("sipariş numarasını bilmeyen: siparişte kayıtlı telefon + ad soyadla bulunur", async () => {
     const stranger = { ...deps(), waId: "905000000000" };
     const ask = async (identity?: { name: string; orderPhone: string }) => {

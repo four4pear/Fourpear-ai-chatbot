@@ -5,7 +5,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createApp } from "../src/app.js";
 import { newFindings } from "../src/agents/order-lookup.js";
 import { EventBus, type PanelEvent } from "../src/core/events.js";
-import { recordOrderNotification } from "../src/core/notifications.js";
+import { identityLocked, recordOrderNotification } from "../src/core/notifications.js";
 import type { Deps } from "../src/core/conversation.js";
 import { openDatabase, type Database } from "../src/db/client.js";
 import { conversations, customers, memberships, notifications, tenants, users, whatsappAccounts } from "../src/db/schema.js";
@@ -263,6 +263,30 @@ describe("panel: ekibe bildirimler", () => {
       expect(row!.details.issues).toEqual([
         "#MO-9005: WhatsApp numarası siparişteki numara değil; sipariş, müşterinin yazdığı ad soyadla doğrulandı. İptal ya da değişiklik yapmadan önce müşteriyi teyit edin.",
       ]);
+    });
+
+    it("üç yanlış ad soyad denemesinden sonra ad soyadla doğrulama 24 saat kilitlenir; ekibe önemli bildirim düşer", async () => {
+      const failed = () => Object.assign(newFindings(), { topics: ["status" as const], unverified: true, failedIdentity: true });
+      const now = new Date();
+      await record(0, "MO-9005, adım Ayşe Yılmaz", "Bulamadım.", failed());
+      await record(1, "MO-9006, adım Fatma Kaya", "Bulamadım.", failed());
+      expect(await identityLocked(database.db, conversationId, now)).toBe(false);
+      // Yalnızca sipariş numarası yazıp ad soyad istenmesi deneme sayılmaz.
+      await record(2, "MO-9007", "Adınızı yazar mısınız?", Object.assign(newFindings(), { topics: ["status" as const], unverified: true }));
+      expect(await identityLocked(database.db, conversationId, now)).toBe(false);
+      await record(3, "MO-9007, adım Elif Demir", "Bulamadım.", failed());
+      expect(await identityLocked(database.db, conversationId, now)).toBe(true);
+      // 24 saat sonra kilit kendiliğinden kalkar.
+      expect(await identityLocked(database.db, conversationId, new Date(now.getTime() + 25 * 60 * 60 * 1000))).toBe(false);
+
+      // Kilitliyken gelen sorular tek bir önemli bildirimde toplanır.
+      const lockedTurn = () => Object.assign(newFindings(), { topics: ["status" as const], unverified: true, identityLocked: true });
+      await record(4, "MO-9008, adım Merve Şahin", "Doğrulayamadım, kontrol ediyorum.", lockedTurn());
+      await record(5, "MO-9009, adım Zehra Çelik", "Doğrulayamadım, kontrol ediyorum.", lockedTurn());
+      const important = (await mine()).filter((n) => n.important);
+      expect(important).toHaveLength(1);
+      expect(important[0]).toMatchObject({ kind: "verify_locked", question: "MO-9008, adım Merve Şahin\nMO-9009, adım Zehra Çelik" });
+      expect(important[0]!.details.issues![0]).toContain("son 24 saatte 3 kez siparişle eşleşmeyen ad soyad yazıldı");
     });
 
     it("güncellenen bildirim listede üste çıkar; ekip eski hâline bakıp 'Tamamlandı' derse kapanmaz", async () => {
