@@ -492,6 +492,8 @@ textarea {
 .waiting-card.answered { opacity: .85; }
 .waiting-label { font-weight: 600; color: var(--muted); }
 .waiting-question { font-size: 15px; }
+.waiting-card ul { margin: 0; padding-left: 18px; }
+.waiting-text { white-space: pre-wrap; }
 .waiting-actions { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
 
 /* İstatistik: kullanım ve maliyet */

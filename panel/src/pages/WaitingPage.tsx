@@ -15,6 +15,18 @@ type Question = {
   createdAt: string;
 };
 
+/** Ekibe iletilen talep: Lina'nın çözemeyip ekibe bıraktığı önemli bildirim (şikayet, iade kararı, iptal, gecikme…). */
+type Forwarded = {
+  id: string;
+  customer: { name: string; phone: string };
+  label: string;
+  orderNames: string[];
+  question: string;
+  answer: string;
+  issues: string[];
+  createdAt: string;
+};
+
 /** Paneli açık tutan ekip yeni soruları kaçırmasın: liste bu sıklıkla yenilenir. */
 const REFRESH_MS = 20_000;
 
@@ -27,8 +39,10 @@ const timeAgo = (iso: string) => {
 };
 
 /**
- * Bekleyenler: ekibin yapması gerekenler. İlk bölüm "Lina soruyor": Lina'nın bilmediği ve arka planda
- * ekibe sorduğu sorular. Ekip kısa bir cevap yazar; Lina müşteriye kendi cümleleriyle iletir.
+ * Bekleyenler: ekibin yapması gerekenler.
+ * - "Lina soruyor": Lina'nın bilmediği ve arka planda ekibe sorduğu sorular. Ekip kısa bir cevap yazar;
+ *   Lina müşteriye kendi cümleleriyle iletir.
+ * - "Ekibe iletilenler": Lina'nın ekibe bıraktığı talepler (önemli bildirimler). Ekip işlemi yapıp tamamlar.
  */
 export function WaitingPage({ store }: { store: Membership }) {
   const [open, setOpen] = useState<Question[] | null>(null);
@@ -37,17 +51,20 @@ export function WaitingPage({ store }: { store: Membership }) {
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [teach, setTeach] = useState<Record<string, boolean>>({});
   const [sending, setSending] = useState<string | null>(null);
+  const [forwarded, setForwarded] = useState<Forwarded[] | null>(null);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const base = `/tenants/${store.tenantId}/team-questions`;
+  const notifications = `/tenants/${store.tenantId}/notifications`;
   const isOwner = store.role === "owner";
 
   async function load() {
     try {
       setOpen((await api<{ questions: Question[] }>(base)).questions);
       if (showAnswered) setAnswered((await api<{ questions: Question[] }>(`${base}?status=answered`)).questions);
+      setForwarded((await api<{ notifications: Forwarded[] }>(`${notifications}?filter=important`)).notifications);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Sorular yüklenemedi");
+      setError(e instanceof Error ? e.message : "Bekleyenler yüklenemedi");
     }
   }
   useEffect(() => {
@@ -75,6 +92,18 @@ export function WaitingPage({ store }: { store: Membership }) {
       void load();
     } finally {
       setSending(null);
+    }
+  }
+
+  async function complete(n: Forwarded) {
+    setError(""); setNotice("");
+    try {
+      await api(`${notifications}/${n.id}/done`, { method: "POST" });
+      setForwarded((list) => list?.filter((x) => x.id !== n.id) ?? null);
+      setNotice(`${n.customer.name}: talep tamamlandı olarak işaretlendi.`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Tamamlanamadı");
+      void load();
     }
   }
 
@@ -114,6 +143,23 @@ export function WaitingPage({ store }: { store: Membership }) {
           <p><span className="waiting-label">Cevap:</span> {q.answer}</p>
         </article>)}
       </div>}
+    </section>
+
+    <section aria-labelledby="forwarded">
+      <h2 id="forwarded">Ekibe iletilenler{forwarded?.length ? ` (${forwarded.length})` : ""}</h2>
+      <p className="hint">Lina’nın size bıraktığı talepler: şikayet, iade kararı, iptal, değişiklik, gecikme. Lina müşteriye talebin iletildiğini söylemiş olabilir. İşlemi yapınca “Tamamlandı” deyin.</p>
+      {forwarded === null && <p className="hint" role="status">Yükleniyor…</p>}
+      {forwarded?.length === 0 && <p className="hint">Şu an ekibe iletilen talep yok.</p>}
+      <div className="waiting-list">
+        {forwarded?.map((n) => <article key={n.id} className="panel-card waiting-card" aria-label={`${n.customer.name} için talep`}>
+          <header><strong>{n.customer.name}</strong> <span className="hint">{n.customer.phone} · {timeAgo(n.createdAt)}</span></header>
+          <p className="waiting-question">{n.label}{n.orderNames.length > 0 && ` (${n.orderNames.join(", ")})`}</p>
+          {n.issues.length > 0 && <ul>{n.issues.map((issue, i) => <li key={i}>{issue}</li>)}</ul>}
+          <p className="waiting-text"><span className="waiting-label">Müşteri:</span> {n.question}</p>
+          <p className="waiting-text"><span className="waiting-label">Lina:</span> {n.answer}</p>
+          <div className="waiting-actions"><span /><button className="btn btn-primary" onClick={() => void complete(n)}>Tamamlandı</button></div>
+        </article>)}
+      </div>
     </section>
   </main>;
 }

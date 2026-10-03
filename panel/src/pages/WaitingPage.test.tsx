@@ -10,9 +10,18 @@ const question = {
   status: "open", answer: null, answeredBy: null, answeredAt: null, createdAt: new Date().toISOString(),
 };
 
+const forwarded = {
+  id: "n1", customer: { name: "Elif", phone: "+90 532 999 88 77" }, label: "İade: ekip kararı gerekiyor", orderNames: ["#MO-9013"],
+  question: "İadem 50 gündür yatmadı", answer: "İade birimine ilettim.", issues: ["Para iadesi 50 gündür yapılmadı."], createdAt: new Date().toISOString(),
+};
+
 function server(role: "owner" | "agent") {
   const posted: unknown[] = [];
   vi.stubGlobal("fetch", vi.fn(async (url: string, init: RequestInit = {}) => {
+    if (url.includes("/notifications")) {
+      if (init.method === "POST") { posted.push(url); return json({ ok: true }); }
+      return json({ notifications: [forwarded] });
+    }
     if (init.method === "POST") { posted.push(JSON.parse(String(init.body))); return json({ ok: true, taught: true, windowClosed: false }); }
     return json({ questions: url.includes("answered") ? [] : [question] });
   }));
@@ -35,4 +44,16 @@ it("çalışan cevaplar ama 'Lina'ya öğret' seçeneğini görmez", async () =>
   server("agent");
   await screen.findByText("Hediye paketi yapıyor musunuz?");
   expect(screen.queryByLabelText(/Lina’ya öğret/)).toBeNull();
+});
+
+it("ekibe iletilen talep listelenir; 'Tamamlandı' denince listeden düşer", async () => {
+  const posted = server("agent");
+  await screen.findByText("İade: ekip kararı gerekiyor (#MO-9013)");
+  expect(screen.getByText("Para iadesi 50 gündür yapılmadı.")).toBeTruthy();
+  expect(screen.getByText("İade birimine ilettim.")).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Tamamlandı" }));
+  await screen.findByText("Elif: talep tamamlandı olarak işaretlendi.");
+  expect(posted).toEqual(["/api/tenants/t/notifications/n1/done"]);
+  expect(screen.queryByText("İade: ekip kararı gerekiyor (#MO-9013)")).toBeNull();
+  expect(screen.getByText("Şu an ekibe iletilen talep yok.")).toBeTruthy();
 });

@@ -3,7 +3,9 @@ import type { Server } from "node:http";
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createApp } from "../src/app.js";
+import { newFindings } from "../src/agents/order-lookup.js";
 import { EventBus, type PanelEvent } from "../src/core/events.js";
+import { recordOrderNotification } from "../src/core/notifications.js";
 import type { Deps } from "../src/core/conversation.js";
 import { openDatabase, type Database } from "../src/db/client.js";
 import { conversations, customers, memberships, notifications, tenants, users, whatsappAccounts } from "../src/db/schema.js";
@@ -162,6 +164,54 @@ describe("panel: ekibe bildirimler", () => {
     expect((await call("POST", `/api/tenants/${tenantA}/notifications/${ids.delay}/done`)).status).toBe(200);
     const [after] = await database.db.select().from(notifications).where(eq(notifications.id, ids.delay!));
     expect(after!.doneAt).toEqual(before!.doneAt);
+  });
+
+  it("aynı vaka ekibe bir kez düşer: açık bildirim güncellenir; ekip tamamladıysa yenisi açılır", async () => {
+    const { db } = database;
+    const [conv] = await db.select().from(conversations).where(eq(conversations.id, ids["conv-a"]!));
+    // Müşteri başına tek konuşma vardır: ayrı bir müşteriyle yeni konuşma.
+    const [customer] = await db.insert(customers).values({ tenantId: tenantA, waId: "905329998877", name: "Elif" }).returning();
+    const [fresh] = await db
+      .insert(conversations)
+      .values({ tenantId: tenantA, customerId: customer!.id, whatsappAccountId: conv!.whatsappAccountId })
+      .returning();
+    const bus = new EventBus();
+    const seen: PanelEvent[] = [];
+    bus.subscribe(tenantA, (e) => seen.push(e));
+    const complaint = (issue: string) => {
+      const findings = newFindings();
+      findings.topics.push("complaint");
+      findings.orders.set("#MO-9010", { unshipped: false, cancelled: false });
+      findings.issues.push({ kind: "return_review", text: issue });
+      return findings;
+    };
+    const record = (question: string, answer: string, issue: string) =>
+      recordOrderNotification({ db, events: bus }, { tenantId: tenantA, conversationId: fresh!.id, findings: complaint(issue), question, answer, replySent: true });
+    const mine = () => db.select().from(notifications).where(eq(notifications.conversationId, fresh!.id));
+
+    await record("Ürün hasarlı geldi", "Çok üzgünüm, hemen ilgileniyorum.", "Hasarlı ürün: fotoğraf bekleniyor");
+    await record("Fotoğrafı gönderdim, ne olacak?", "İade birimine ilettim.", "Hasarlı ürün: fotoğraf geldi");
+    const [merged, ...others] = await mine();
+    expect(others).toEqual([]);
+    expect(merged).toMatchObject({
+      kind: "complaint",
+      important: true,
+      status: "open",
+      orderNames: ["#MO-9010"],
+      question: "Ürün hasarlı geldi\nFotoğrafı gönderdim, ne olacak?",
+      answer: "İade birimine ilettim.",
+      details: { kinds: ["complaint", "return_review"], issues: ["Hasarlı ürün: fotoğraf bekleniyor", "Hasarlı ürün: fotoğraf geldi"] },
+    });
+    // İlki yeni bildirimdir (sesli uyarı); ikincisi yalnızca listeyi yeniler.
+    expect(seen).toEqual([
+      { type: "notification", conversationId: fresh!.id, important: true },
+      { type: "notification_update", conversationId: fresh!.id },
+    ]);
+
+    await db.update(notifications).set({ status: "done" }).where(eq(notifications.id, merged!.id));
+    await record("Hâlâ dönüş olmadı", "Tekrar ilettim.", "Hasarlı ürün: müşteri tekrar yazdı");
+    expect((await mine()).map((n) => n.status).sort()).toEqual(["done", "open"]);
+    await db.delete(notifications).where(eq(notifications.conversationId, fresh!.id));
   });
 
   it("konuşma ayrıntısında o konuşmanın bildirimleri de gelir", async () => {

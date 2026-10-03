@@ -36,16 +36,18 @@ Bir kişi birden fazla mağazada farklı rollerle olabilir (ör. ajans).
 
 ## Sipariş bildirimleri (Lina'nın ekibe bildirimleri)
 Sipariş, iade, iptal ve şikayet konularında Lina konuşmayı devretmez; her soru ekibe bildirim olarak düşer
-([lina-davranis.md §12](lina-davranis.md)). Arka uç hazır, ekranı ana sayfa yeniden tasarlanırken yapılacak.
+([lina-davranis.md §12](lina-davranis.md)). Önemli olanlar panelde **Bekleyenler → Ekibe iletilenler** bölümünde
+listelenir; ekip işlemi yapınca "Tamamlandı" der. Sessiz kayıtların ekranı sohbet ekranıyla birlikte yapılacak.
 
 | Tür | Önem |
 |---|---|
-| Şikayet, İptal isteği (kargoya verilmemiş), Değişiklik isteği, Sipariş bilgisine ulaşılamadı, Gecikme, Takip numarası yok | ⚠️ Önemli: sesli uyarı + tarayıcı bildirimi |
+| Şikayet, İade: ekip kararı gerekiyor, İptal isteği (kargoya verilmemiş), Değişiklik isteği, Sipariş bilgisine ulaşılamadı, Gecikme, Takip numarası yok | ⚠️ Önemli: sesli uyarı + tarayıcı bildirimi |
 | İade/değişim isteği, İade durumu sorusu, Doğrulanamayan sipariş sorusu, Sipariş sorusu | Kayıt (sessiz) |
 
 Lina'nın cevabı WhatsApp'a gönderilemediyse bildirim her durumda önemlidir ve `replyFailed` işaretlidir (müşteri cevap almadı).
 
 - Her bildirimde: müşteri (ad, telefon), sipariş numaraları, müşterinin yazdıkları, Lina'nın cevabı, ayrıntılar (ör. "Gecikme: Lavin Etek (Siyah), planlanan kargo 25 Eylül 2026") ve konuşmaya bağlantı.
+- **Aynı vaka bir kez düşer:** konuşmada aynı türde açık bildirim varsa yenisi açılmaz; o bildirim güncellenir (müşterinin yazdıkları birikir, Lina'nın son cevabı ve yeni ayrıntılar eklenir, sesli uyarı tekrarlanmaz). Ekip tamamladıktan sonra müşteri yine yazarsa yeni bildirim açılır.
 - Mağazanın bütün ekibi görür (çalışan dahil); herkes "Tamamlandı" diyebilir, kimin kapattığı görünür.
 - API: `GET /api/tenants/:id/notifications?filter=important&status=open|done`, `POST /api/tenants/:id/notifications/:nid/done`. Konuşma ayrıntısında o konuşmanın bildirimleri de gelir.
-- Canlı olaylar: `notification` (yeni; `important` alanıyla, sesli uyarı buna göre), `notification_update` (tamamlandı).
+- Canlı olaylar: `notification` (yeni; `important` alanıyla, sesli uyarı buna göre), `notification_update` (tamamlandı ya da açık bildirim güncellendi).

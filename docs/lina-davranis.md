@@ -278,7 +278,8 @@ Sipariş konularında (§3) konuşma devredilmez; ekip panelde bildirim görür.
 - **Cevap gönderilemedi:** Lina'nın cevabı WhatsApp'a gönderilemediyse (müşteri cevapsız kaldı) bildirim her durumda önemlidir ve bu not düşülür.
 - **Kayıt** (sessiz): diğer sipariş soruları, kargodaki siparişin iptal isteği, iade isteği, iade durumu, doğrulanamayan sipariş sorusu.
 - **Takip numarası beklenmeyenler:** Mağazadan teslim alma ve dijital ürünlerde "takip numarası yok" bildirimi açılmaz.
-- Panel ana sayfası bildirimlere göre yeniden tasarlanacak (ayrıca konuşulacak).
+- **Aynı vaka bir kez:** müşteri aynı konuyu yazdıkça yeni bildirim açılmaz; konuşmadaki aynı türde açık bildirim güncellenir. Ekip tamamladıktan sonraki yazışma yeni bildirimdir.
+- **Panel:** önemli bildirimler **Bekleyenler → Ekibe iletilenler** bölümünde görünür; ekip işlemi yapınca "Tamamlandı" der.
 
 ## MAIUS ayarları
 - Mesai: **Pazartesi–Cumartesi 10:00–17:00** (pazar kapalı)
