@@ -101,12 +101,17 @@ export function WaitingPage({ store }: { store: Membership }) {
     if (!answer) return;
     setSending(q.id); setError(""); setNotice(""); setJustDone(null);
     try {
-      const res = await api<{ taught: boolean; windowClosed: boolean }>(`${base}/${q.id}/answer`, { method: "POST", body: { answer, teach: Boolean(teach[q.id]) } });
+      const res = await api<{ taught: boolean; windowClosed: boolean; relay: "lina" | "in_team" | "bot_off" }>(`${base}/${q.id}/answer`, { method: "POST", body: { answer, teach: Boolean(teach[q.id]) } });
       setOpen((list) => list?.filter((x) => x.id !== q.id) ?? null);
+      const taught = res.taught ? " Bu bilgi Lina'ya da öğretildi." : "";
       setNotice(
-        res.windowClosed
-          ? `${q.customer.name}: cevap kaydedildi, ama müşterinin son mesajı 24 saatten eski; WhatsApp kuralları gereği Lina mesaj gönderemeyebilir.`
-          : `${q.customer.name}: Lina cevabınızı müşteriye iletiyor.${res.taught ? " Bu bilgi Lina'ya da öğretildi." : ""}`,
+        res.relay === "in_team"
+          ? `${q.customer.name}: cevap kaydedildi ama konuşma ekipte, Lina müşteriye iletmeyecek. Müşteriye konuşmadan siz yazın ya da konuşmayı Lina'ya geri verin; geri verince Lina iletir.${taught}`
+          : res.relay === "bot_off"
+            ? `${q.customer.name}: cevap kaydedildi ama Lina şu an kapalı, müşteriye iletilmedi.${taught}`
+            : res.windowClosed
+              ? `${q.customer.name}: cevap kaydedildi, ama müşterinin son mesajı 24 saatten eski; WhatsApp kuralları gereği mesaj gönderilemeyebilir.${taught}`
+              : `${q.customer.name}: Lina cevabınızı müşteriye iletiyor.${taught}`,
       );
     } catch (e) {
       setError(e instanceof Error ? e.message : "Cevap gönderilemedi");

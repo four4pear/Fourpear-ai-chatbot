@@ -3,7 +3,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { answerTeamQuestion } from "../core/team-questions.js";
 import type { EventBus } from "../core/events.js";
 import type { DB } from "../db/client.js";
-import { conversations, customers, teamQuestions, users, type MemberRole } from "../db/schema.js";
+import { conversations, customers, resolveSettings, teamQuestions, tenants, users, type MemberRole } from "../db/schema.js";
 import { formatPhone } from "../lib/phone.js";
 import { isUuid, param, type Locals } from "./api.js";
 
@@ -63,6 +63,13 @@ export function registerTeamQuestionRoutes(
     if (!result) return res.status(409).json({ error: "Bu soru zaten cevaplanmış." });
     deps.triggerReply?.(result.conversationId);
     deps.events?.publish(tenantId, { type: "team_question", conversationId: result.conversationId });
-    res.json({ ok: true, taught: teach, windowClosed: result.windowClosed });
+    // Lina cevabı müşteriye iletebilir mi? Konuşma ekipteyse ya da Lina kapalıysa iletmez; ekran gerçeği söylesin.
+    const [row] = await db
+      .select({ status: conversations.status, settings: tenants.settings })
+      .from(conversations)
+      .innerJoin(tenants, eq(tenants.id, conversations.tenantId))
+      .where(eq(conversations.id, result.conversationId));
+    const relay = !row ? "lina" : !resolveSettings(row.settings).botEnabled ? "bot_off" : row.status === "human" ? "in_team" : "lina";
+    res.json({ ok: true, taught: teach, windowClosed: result.windowClosed, relay });
   });
 }

@@ -58,6 +58,21 @@ it("Lina'nın sorusu listelenir; cevap gönderilince listeden düşer ve Lina'n�
   await vi.waitFor(() => expect(screen.queryByText("Hediye paketi yapıyor musunuz?")).toBeNull());
 });
 
+it("konuşma ekipteyse cevap kaydedilir ama ekran Lina'nın iletmeyeceğini söyler", async () => {
+  vi.stubGlobal("fetch", vi.fn(async (url: string, init: RequestInit = {}) => {
+    if (init.method === "POST") return json({ ok: true, taught: false, windowClosed: false, relay: "in_team" });
+    if (url.includes("/conversations")) return json({ conversations: [] });
+    if (url.includes("/notifications")) return json({ notifications: [] });
+    return json({ questions: [question] });
+  }));
+  render(<WaitingPage store={{ tenantId: "t", slug: "s", name: "Betül Saday", role: "agent" }} />);
+  await screen.findByText("Hediye paketi yapıyor musunuz?");
+  fireEvent.change(screen.getByLabelText("Cevabınız"), { target: { value: "Evet." } });
+  fireEvent.click(screen.getByRole("button", { name: "Cevabı gönder" }));
+  await screen.findByText(/konuşma ekipte, Lina müşteriye iletmeyecek/);
+  expect(screen.queryByText(/Lina cevabınızı müşteriye iletiyor/)).toBeNull();
+});
+
 it("çalışan cevaplar ama 'Lina'ya öğret' seçeneğini görmez", async () => {
   server("agent");
   await screen.findByText("Hediye paketi yapıyor musunuz?");

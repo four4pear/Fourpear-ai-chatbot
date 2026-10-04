@@ -33,7 +33,7 @@ const PHONE_NUMBER_ID = "111222333";
 const CUSTOMER = "905321234567";
 
 // Sahte Claude: sistem istemine ve son mesaja göre senaryo oynatır.
-let llmMode: "normal" | "throw" | "refusal" = "normal";
+let llmMode: "normal" | "throw" | "refusal" | "inject" = "normal";
 /** Lina'ya yapılan çağrılar (sistem bağlamını ve geçmişi incelemek için). */
 const linaCalls: Anthropic.MessageCreateParamsNonStreaming[] = [];
 const systemContextOf = (p: Anthropic.MessageCreateParamsNonStreaming) =>
@@ -46,6 +46,12 @@ const fakeLlm: Llm = {
     if (system.includes("bilgi uzmanısın")) return reply("Kargo 2-3 iş gününde teslim edilir.");
     linaCalls.push(structuredClone(params));
     if (llmMode === "refusal") return reply("", "refusal");
+    if (llmMode === "inject") {
+      // Lina cevabı hazırlarken müşteri bir mesaj daha yazdı (cevap hazırlanırken gelen mesaj).
+      llmMode = "normal";
+      const [conv] = await database.db.select().from(conversations);
+      await database.db.insert(messages).values({ tenantId: conv!.tenantId, conversationId: conv!.id, sender: "customer", text: "iki" });
+    }
 
     const last = params.messages.at(-1)!;
     const blocks = last.content as Anthropic.ContentBlockParam[];
@@ -104,6 +110,7 @@ let baseUrl: string;
 let queue: ReturnType<typeof createApp>["queue"];
 let scheduler: ReturnType<typeof createApp>["scheduler"];
 let tenantId: string;
+let appDeps: Deps;
 let msgSeq = 0;
 
 beforeAll(async () => {
@@ -121,6 +128,7 @@ beforeAll(async () => {
     // Bu testler tek tek mesajları dener: beklemeden cevap (art arda mesajlar ayrı testte).
     replyDelayOverrideMs: 0,
   };
+  appDeps = deps;
   const created = createApp({ WHATSAPP_APP_SECRET: APP_SECRET, WHATSAPP_VERIFY_TOKEN: VERIFY_TOKEN }, deps);
   queue = created.queue;
   scheduler = created.scheduler;
@@ -436,6 +444,22 @@ describe("sabit metinler ve ayarlar", () => {
     await post(text("dört"));
     const rows = await database.db.select().from(notifications);
     expect(rows.map((n) => n.question).sort()).toEqual(["iki", "üç"]);
+  });
+
+  it("cevap hazırlanırken gelen mesaj, cevap kaydedildikten sonra bile cevapsız sayılır ve bir sonraki cevaba girer", async () => {
+    llmMode = "inject";
+    await post(text("bir"));
+    expect(sent.map((s) => s.text)).toEqual(["Merhaba, nasıl yardımcı olabilirim?"]);
+    // "iki" ilk cevaptan önce kaydedildi ama o cevap onu görmedi: sonraki cevap ikisini birlikte karşılar.
+    await post(text("üç"));
+    const lastUser = linaCalls.at(-1)!.messages.at(-1)!.content as Anthropic.ContentBlockParam[];
+    expect(lastUser).toEqual([{ type: "text", text: "iki\nüç" }]);
+    expect(sent).toHaveLength(2);
+    // Cevaplanan mesajlar bir daha cevap beklemez.
+    const { respond } = await import("../src/core/conversation.js");
+    const [conv] = await database.db.select().from(conversations);
+    const again = await respond(appDeps, conv!.id, { signal: new AbortController().signal, isCurrent: () => true });
+    expect(again).toBe("nothing");
   });
 
   it("bot kapalıysa cevap vermez", async () => {

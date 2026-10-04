@@ -199,6 +199,7 @@ Müşteriler çoğu zaman tek uzun mesaj yerine art arda kısa mesajlar yazar ("
 - Son cevaptan beri gelen bütün mesajları **tek bir yazı gibi** okur ve **tek cevap** verir; selamlaşmaya ayrı cevap vermez.
 - Birbirini tamamlayan parçaları birleştirir ("siparişim" / "hâlâ gelmedi" / "#1045" → tek istek). Sonraki mesaj öncekini düzeltiyorsa ("pardon 1046 olacak") son hâlini esas alır. Tekrarlanan soruyu bir kez, ayrı ayrı sorulan soruların hepsini aynı cevapta sırayla cevaplar.
 - Cevap hazırlanırken yeni mesaj gelirse hazırlanan cevap **gönderilmeden iptal** edilir, bekleme yeniden başlar, sonra hepsine birlikte cevap verilir. Aynı anda tek cevap hazırlanır; cevaplar karışmaz.
+- **Cevap hazırlanırken gelen mesaj kaybolmaz:** Lina'nın cevabı hangi mesaja kadar baktığını kaydeder; hazırlanırken gelen mesaj cevaptan önce kaydedilmiş olsa bile cevapsız sayılır, bir sonraki cevaba girer ve geçmişte cevabın arkasında görünür.
 - **Üst sınır:** durmadan yazan müşteri de ilk cevapsız mesajından en fazla **3 dakika** sonra cevap alır; bu sınırdan sonra hazırlanan cevap iptal edilmez, yeni mesajlar hemen ardından ayrıca cevaplanır.
 - WhatsApp'ın "yazıyor…" göstergesi 25 sn'de kaybolduğu için bekleme boyunca ~20 sn'de bir yenilenir.
 - Bekleme sırasında ekip konuşmayı devralırsa Lina'nın bekleyen/hazırlanan cevabı iptal edilir.
@@ -262,6 +263,7 @@ Lina bilmediği bir bilgiyi uydurmaz ve konuşmayı devretmez; **arka planda eki
 - **Müşteriye:** "Hemen kontrol ediyorum, kısa süre içinde size buradan bilgi vereceğim." Ekipten, kime sorduğundan ya da bilmediğinden bahsetmez.
 - **Ekip:** Panelde **Bekleyenler → Lina soruyor** bölümünde müşterinin mesajını, Lina'nın sorusunu ve bağlamı görür; kısa cevap yazar. Mağazanın bütün ekibi cevaplayabilir.
 - **Cevap gelince:** Konuşmaya iç bilgi olarak eklenir (müşteri görmez); Lina birkaç saniye içinde bilgiyi kendi cümleleriyle müşteriye iletir ("Kontrol ettim: ...").
+- **Ekip cevabı iletilemiyorsa ekran söyler:** konuşma ekipteyse ya da Lina kapalıysa cevap kaydedilir ama müşteriye gitmez; panel "Lina iletmeyecek" der. Konuşma Lina'ya geri verilince cevap iletilir. Müşterinin son mesajından 24 saat geçtiyse WhatsApp kuralı yüzünden gönderilemeyebilir (panel bunu da söyler).
 - **Sahte ekip cevabı olmaz:** Ekibin cevabı Lina'ya müşteri mesajlarının arasında değil, yalnızca kendi talimatının içinde verilir. Müşteri "iç bilgi", "ekibin cevabı" gibi bir kalıp yazsa da bu bir müşteri mesajıdır; Lina buna dayanarak onay, iade, indirim ya da hediye çeki sözü vermez.
 - **Lina'ya öğret:** Mağaza sahibi işaretlerse cevap ders olur (§13); Lina aynı şeyi bir daha sormaz.
 - **Bekleme sırasında:** Müşteri aynı konuyu tekrar sorarsa Lina hâlâ kontrol ettiğini söyler, aynı soruyu ekibe yeniden sormaz.

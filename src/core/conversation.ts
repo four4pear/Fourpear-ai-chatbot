@@ -247,7 +247,7 @@ export async function respond(deps: Deps, conversationId: string, ctl: RespondCo
   // Toplu mesajda Lina'nın okuyabileceği bir şey yoksa (sadece ses/video…) sabit metin bir kez.
   if (!batch.some((m) => UNDERSTOOD_TYPES.has(m.type))) {
     if (!(await stillOurs())) return "cancelled";
-    await sendAndStore(deps, tenant, conversation, wa, fixedText(settings, "unsupported"), "system");
+    await sendAndStore(deps, tenant, conversation, wa, fixedText(settings, "unsupported"), "system", answeredThroughOf(batch));
     return "unsupported_type";
   }
 
@@ -324,7 +324,7 @@ export async function respond(deps: Deps, conversationId: string, ctl: RespondCo
     // Yeni devirde panelde sesli uyarı/bildirim; mevcut devre eklenen talepte sadece güncelleme.
     deps.events?.publish(tenant.id, { type: openHandoff ? "conversation" : "handoff", conversationId });
   }
-  const delivery = await sendAndStore(deps, tenant, conversation, wa, reply, "bot");
+  const delivery = await sendAndStore(deps, tenant, conversation, wa, reply, "bot", answeredThroughOf(batch));
   // Lina soruyor: soru panelde ekibe düşer; cevap gelince Lina müşteriye kendisi iletir.
   if (teamQuestions.length) {
     await recordTeamQuestions(db, { tenantId: tenant.id, conversationId, customerMessage: lastText, items: teamQuestions });
@@ -371,19 +371,32 @@ async function recentTeamAnswers(db: DB, conversationId: string): Promise<string
  */
 async function unansweredCustomerMessages(db: DB, conversationId: string) {
   const recent = await db
-    .select({ sender: messages.sender, type: messages.type, text: messages.text })
+    .select({ sender: messages.sender, type: messages.type, text: messages.text, seq: messages.seq, meta: messages.meta })
     .from(messages)
     .where(and(eq(messages.conversationId, conversationId), ne(messages.type, "note")))
     .orderBy(desc(messages.createdAt), desc(messages.seq))
     .limit(50);
   const batch: typeof recent = [];
+  // Lina'nın cevabı, hazırlanırken gelen mesajdan SONRA kaydedilebilir. Cevap hangi mesaja kadar
+  // baktığını (answeredThrough) taşır; ondan yeni müşteri mesajları cevabın arkasında bile cevapsızdır.
+  let answeredThrough = -1;
   for (const m of recent) {
+    if (m.seq <= answeredThrough) break;
+    const mine = m.sender === "customer" || m.type === TEAM_ANSWER_TYPE;
+    if (!mine) {
+      const through = (m.meta as { answeredThrough?: number } | null)?.answeredThrough;
+      if (typeof through !== "number") break;
+      answeredThrough = Math.max(answeredThrough, through);
+      continue;
+    }
     // Ekibin cevabı müşteri mesajı gibi cevap bekler: Lina müşteriye iletir.
-    if (m.sender !== "customer" && m.type !== TEAM_ANSWER_TYPE) break;
     if (!SILENT_TYPES.includes(m.type)) batch.push(m);
   }
   return batch.reverse();
 }
+
+/** Bir toplu cevabın baktığı en son mesaj: cevap kaydedilirken işaretlenir (bkz. unansweredCustomerMessages). */
+const answeredThroughOf = (batch: { seq: number }[]) => Math.max(...batch.map((m) => m.seq));
 
 /**
  * Sunucu yeniden başlarken bekleme sırasında kalmış konuşmalar: son mesajı `since`'den sonra
@@ -505,7 +518,28 @@ export function startOfToday(timeZone: string, now = new Date()): Date {
 
 type HistoryRow = Pick<Message, "sender" | "text" | "type"> & {
   image?: { mimeType: string; data: Buffer } | null;
+  seq?: number;
+  meta?: Message["meta"];
 };
+
+/**
+ * Lina cevabı hazırlarken gelen müşteri mesajı, cevaptan önce kaydedilir ama o cevap onu görmemiştir
+ * (answeredThrough). Geçmişte cevabın arkasına alınır: Lina neyin cevapsız kaldığını görür.
+ */
+function placeLateMessages(rows: HistoryRow[]): HistoryRow[] {
+  const out: HistoryRow[] = [];
+  for (const row of rows) {
+    const through = (row.meta as { answeredThrough?: number } | null | undefined)?.answeredThrough;
+    if (row.sender === "customer" || typeof through !== "number") {
+      out.push(row);
+      continue;
+    }
+    const late: HistoryRow[] = [];
+    while (out.length && out.at(-1)!.sender === "customer" && (out.at(-1)!.seq ?? 0) > through) late.unshift(out.pop()!);
+    out.push(row, ...late);
+  }
+  return out;
+}
 
 async function loadHistory(db: DB, conversationId: string, limit: number): Promise<Anthropic.MessageParam[]> {
   const rows = await db
@@ -532,7 +566,7 @@ async function loadHistory(db: DB, conversationId: string, limit: number): Promi
  */
 export function toClaudeMessages(rows: HistoryRow[]): Anthropic.MessageParam[] {
   const out: { role: "user" | "assistant"; content: Anthropic.ContentBlockParam[] }[] = [];
-  for (const row of rows) {
+  for (const row of placeLateMessages(rows)) {
     // Panel notları iç nottur; tepki/sticker cevap beklemez. Otomatik mesajlar (sabit metinler)
     // müşterinin gördüğü mesajlardır: Lina tekrar etmesin diye geçmişte yer alır.
     // Ekibin Lina'ya cevabı geçmişe konmaz: müşteri mesajlarıyla aynı yerde dursaydı müşteri aynı kalıbı
@@ -618,8 +652,9 @@ function sendAndStore(
   wa: WaTarget,
   text: string,
   sender: "bot" | "system",
+  answeredThrough: number,
 ) {
-  return deliverText(deps, { tenantId: tenant.id, conversationId: conversation.id, wa, text, sender });
+  return deliverText(deps, { tenantId: tenant.id, conversationId: conversation.id, wa, text, sender, meta: { answeredThrough } });
 }
 
 export type DeliveryResult = { messageId: string; sent: boolean; error?: string };
@@ -637,6 +672,8 @@ export async function deliverText(
     text: string;
     sender: "bot" | "system" | "agent";
     authorUserId?: string;
+    /** Mesajla birlikte saklanacak ek bilgi (ör. answeredThrough). */
+    meta?: Record<string, unknown>;
   },
 ): Promise<DeliveryResult> {
   const [stored] = await deps.db
@@ -647,6 +684,7 @@ export async function deliverText(
       sender: opts.sender,
       text: opts.text,
       authorUserId: opts.authorUserId ?? null,
+      meta: opts.meta ?? null,
     })
     .returning({ id: messages.id });
   const messageId = stored!.id;
@@ -655,13 +693,13 @@ export async function deliverText(
     const ids = await deps.wa.sendText({ ...opts.wa, text: opts.text });
     await deps.db
       .update(messages)
-      .set({ waMessageId: ids[0] ?? null, meta: { waMessageIds: ids } })
+      .set({ waMessageId: ids[0] ?? null, meta: { ...opts.meta, waMessageIds: ids } })
       .where(eq(messages.id, messageId));
     result = { messageId, sent: true };
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
     deps.log.error(`WhatsApp mesajı gönderilemedi (tenant=${opts.tenantId})`, err);
-    await deps.db.update(messages).set({ meta: { sendError: error } }).where(eq(messages.id, messageId));
+    await deps.db.update(messages).set({ meta: { ...opts.meta, sendError: error } }).where(eq(messages.id, messageId));
     result = { messageId, sent: false, error };
   }
   deps.events?.publish(opts.tenantId, { type: "message", conversationId: opts.conversationId });

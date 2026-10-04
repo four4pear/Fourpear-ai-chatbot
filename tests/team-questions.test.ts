@@ -148,6 +148,7 @@ describe("Bekleyenler: ekip cevaplar, Lina müşteriye iletir", () => {
   let ownerCookie: string;
   let agentCookie: string;
   let conversationId: string;
+  let appDeps: Deps;
 
   async function login(email: string, role: "owner" | "agent") {
     const [user] = await database.db.insert(users).values({ email, name: email.split("@")[0]!, passwordHash: await hashPassword(PASSWORD) }).returning();
@@ -178,6 +179,7 @@ describe("Bekleyenler: ekip cevaplar, Lina müşteriye iletir", () => {
       log: { info() {}, warn() {}, error() {} },
       events: bus,
     };
+    appDeps = deps;
     created = createApp({ WHATSAPP_APP_SECRET: "x", WHATSAPP_VERIFY_TOKEN: "y" }, deps, undefined, {
       db: database.db,
       publicUrl: ORIGIN,
@@ -222,7 +224,7 @@ describe("Bekleyenler: ekip cevaplar, Lina müşteriye iletir", () => {
 
     // Çalışan cevaplayabilir ama öğretemez (ders bütün konuşmaları etkiler).
     const res = await call("POST", `/api/tenants/${tenant.id}/team-questions/${id}/answer`, agentCookie, { answer: "Evet, ücretsiz.", teach: true });
-    expect(res.body).toMatchObject({ ok: true, taught: false, windowClosed: false });
+    expect(res.body).toMatchObject({ ok: true, taught: false, windowClosed: false, relay: "lina" });
     await created.scheduler.idle();
     expect(sent.at(-1)).toBe("Kontrol ettim: Evet, ücretsiz.");
     const internal = await database.db.select().from(messages).where(eq(messages.type, "team_answer"));
@@ -234,6 +236,28 @@ describe("Bekleyenler: ekip cevaplar, Lina müşteriye iletir", () => {
     expect((await call("POST", `/api/tenants/${tenant.id}/team-questions/${id}/answer`, ownerCookie, { answer: "x" })).status).toBe(409);
     const answered = await call("GET", `/api/tenants/${tenant.id}/team-questions?status=answered`, ownerCookie);
     expect(answered.body.questions[0]).toMatchObject({ answer: "Evet, ücretsiz.", answeredBy: { name: "calisan" } });
+  });
+
+  it("konuşma ekipteyse ya da Lina kapalıysa cevap kaydedilir, ekran 'iletilmeyecek' der; Lina'ya geri verilince iletilir", async () => {
+    const answer = (id: string) => call("POST", `/api/tenants/${tenant.id}/team-questions/${id}/answer`, ownerCookie, { answer: "Evet, ücretsiz." });
+    const before = sent.length;
+
+    await database.db.update(conversations).set({ status: "human" }).where(eq(conversations.id, conversationId));
+    expect((await answer(await ask("Ekipteyken soru"))).body).toMatchObject({ ok: true, relay: "in_team" });
+    await created.scheduler.idle();
+    expect(sent).toHaveLength(before); // Lina susar
+
+    // Geri verildiğinde cevapsız kalan ekip cevabı iletilir (geri verme cevabı tetikler).
+    await database.db.update(conversations).set({ status: "bot" }).where(eq(conversations.id, conversationId));
+    const { respond } = await import("../src/core/conversation.js");
+    const outcome = await respond(appDeps, conversationId, { signal: new AbortController().signal, isCurrent: () => true });
+    expect(outcome).toBe("replied");
+    expect(sent.at(-1)).toBe("Kontrol ettim: Evet, ücretsiz.");
+
+    const [row] = await database.db.select().from(tenants).where(eq(tenants.id, tenant.id));
+    await database.db.update(tenants).set({ settings: { ...(row!.settings as object), botEnabled: false } as never }).where(eq(tenants.id, tenant.id));
+    expect((await answer(await ask("Lina kapalıyken soru"))).body).toMatchObject({ ok: true, relay: "bot_off" });
+    await database.db.update(tenants).set({ settings: row!.settings }).where(eq(tenants.id, tenant.id));
   });
 
   it("mağaza sahibi 'Lina'ya öğret' derse cevap ders olur", async () => {
