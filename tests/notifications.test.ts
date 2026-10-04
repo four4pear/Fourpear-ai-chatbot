@@ -289,17 +289,24 @@ describe("panel: ekibe bildirimler", () => {
       expect(important[0]!.details.issues![0]).toContain("son 24 saatte 3 kez siparişle eşleşmeyen ad soyad yazıldı");
     });
 
-    it("güncellenen bildirim listede üste çıkar; ekip eski hâline bakıp 'Tamamlandı' derse kapanmaz", async () => {
+    it("en uzun bekleyen üsttedir; ekip eski hâline bakıp 'Tamamlandı' derse kapanmaz; yanlış kapatılan geri açılır", async () => {
       await record(0, "MO-9010 hasarlı geldi", "İlgileniyorum.", findingsFor("complaint", ["#MO-9010"]));
       await database.db.update(notifications).set({ createdAt: new Date(Date.now() - 6 * 24 * 60 * 60 * 1000) }).where(eq(notifications.conversationId, conversationId));
+      // Aynı konuşmada daha yeni, başka siparişe ait bir talep: listede altta kalır.
+      await record(1, "MO-9011 de yırtık", "İlettim.", findingsFor("complaint", ["#MO-9011"]));
       const before = (await call("GET", `/api/tenants/${tenantA}/notifications?filter=important`)).body.notifications;
-      const stale = before.find((n: any) => n.conversationId === conversationId);
+      const mineBefore = before.filter((n: any) => n.conversationId === conversationId);
+      expect(mineBefore.map((n: any) => n.orderNames[0])).toEqual(["#MO-9010", "#MO-9011"]);
+      const stale = mineBefore[0];
       expect(stale.updatedAt).toBeNull();
-      expect(before.at(-1).id).toBe(stale.id); // 6 gün önce açıldı: en altta
+      expect(before[0].id).toBe(stale.id); // 6 gün önce açıldı: en uzun bekleyen, en üstte
 
       await record(0, "Bir de fermuarı bozuk", "Onu da ekledim.", findingsFor("complaint", ["#MO-9010"]));
       const after = (await call("GET", `/api/tenants/${tenantA}/notifications?filter=important`)).body.notifications;
       expect(after[0]).toMatchObject({ id: stale.id, updatedAt: at(0).toISOString() });
+      // Menüdeki rozet: açık önemli talepler sayılır.
+      const counted = (await call("GET", `/api/tenants/${tenantA}/waiting-count`)).body;
+      expect(counted).toMatchObject({ forwarded: after.length, questions: 0, handoffs: 0, total: after.length });
 
       // Ekranında eski hâli duran ekip üyesi: görülmemiş istek kapanmasın.
       const refused = await call("POST", `/api/tenants/${tenantA}/notifications/${stale.id}/done`, { seenUpdatedAt: null });
@@ -309,6 +316,13 @@ describe("panel: ekibe bildirimler", () => {
       const ok = await call("POST", `/api/tenants/${tenantA}/notifications/${stale.id}/done`, { seenUpdatedAt: after[0].updatedAt });
       expect(ok.status).toBe(200);
       expect((await mine())[0]!.status).toBe("done");
+      const done = (await call("GET", `/api/tenants/${tenantA}/notifications?filter=important&status=done`)).body.notifications;
+      expect(done[0]).toMatchObject({ id: stale.id, doneBy: { name: "Zeynep" } }); // en son tamamlanan üstte
+
+      // Yanlışlıkla kapatıldıysa geri açılır; başka mağazanınki açılamaz.
+      expect((await call("POST", `/api/tenants/${tenantA}/notifications/${stale.id}/reopen`)).status).toBe(200);
+      expect((await mine())[0]).toMatchObject({ status: "open", doneAt: null, doneBy: null });
+      expect((await call("POST", `/api/tenants/${tenantA}/notifications/${ids.otherTenant}/reopen`)).status).toBe(404);
     });
   });
 

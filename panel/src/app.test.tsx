@@ -25,6 +25,9 @@ const TOKENS: Record<string, TokenInfo> = {
 /** Sahte sunucu: oturum durumu ve gelen istekleri tutar. */
 let session: Me | null;
 let requests: { method: string; path: string; body?: unknown }[];
+/** Bekleyen iş sayısı (menü rozeti) ve oturumun sunucuda düşmüş olması. */
+let waiting: number;
+let expired: boolean;
 
 const json = (status: number, body: unknown) =>
   Promise.resolve(new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } }));
@@ -53,6 +56,10 @@ function fakeServer(url: string, init?: RequestInit) {
     session = OWNER;
     return json(200, session);
   }
+  if (path.startsWith("/tenants/")) {
+    if (expired) return json(401, { error: "Oturum açın" });
+    if (path.endsWith("/waiting-count")) return json(200, { questions: waiting, forwarded: 0, handoffs: 0, total: waiting });
+  }
   return json(404, { error: "Bulunamadı" });
 }
 
@@ -64,6 +71,8 @@ function open(path: string) {
 beforeEach(() => {
   session = null;
   requests = [];
+  waiting = 0;
+  expired = false;
   localStorage.clear();
   vi.stubGlobal("fetch", vi.fn(fakeServer));
 });
@@ -149,6 +158,37 @@ describe("ana düzen ve roller", () => {
     fireEvent.click(screen.getByRole("button", { name: "Çıkış yap" }));
     await screen.findByRole("heading", { name: "Giriş yapın" });
     expect(requests.some((r) => r.path === "/auth/logout" && r.method === "POST")).toBe(true);
+  });
+});
+
+describe("menü ve oturum", () => {
+  it("bekleyen iş varsa menüde sayısı görünür (hangi sayfada olunursa olsun)", async () => {
+    session = OWNER;
+    waiting = 3;
+    open("/m/maius/istatistik");
+    await screen.findByRole("heading", { name: "İstatistik" });
+    const menu = screen.getByRole("navigation", { name: "Ana menü" });
+    const link = await within(menu).findByRole("link", { name: "Bekleyenler (3 iş bekliyor)" });
+    expect(link.textContent).toBe("3");
+    expect(requests.some((r) => r.path === "/tenants/t1/waiting-count")).toBe(true);
+  });
+
+  it("çalışırken oturum düşerse sayfa hata yazısıyla kalmaz, girişe döner", async () => {
+    session = OWNER;
+    open("/m/maius/bekleyenler");
+    await screen.findByRole("heading", { name: "Bekleyenler" });
+    expired = true;
+    session = null;
+    fireEvent(window, new Event("focus")); // sayfalar pencereye dönülünce yenilenir
+    await screen.findByRole("heading", { name: "Giriş yapın" });
+  });
+
+  it("mağazası olmayan kullanıcı çıkış yapıp başka hesapla girebilir", async () => {
+    session = { user: OWNER.user, memberships: [] };
+    open("/");
+    await screen.findByRole("heading", { name: "Henüz bir mağazaya eklenmediniz" });
+    fireEvent.click(screen.getByRole("button", { name: "Çıkış yap" }));
+    await screen.findByRole("heading", { name: "Giriş yapın" });
   });
 });
 

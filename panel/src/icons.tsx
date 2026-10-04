@@ -24,6 +24,15 @@ export const ChatIcon = () => (
   </svg>
 );
 
+/** Deney şişesi: "Lina'yı test et". */
+export const FlaskIcon = () => (
+  <svg {...base}>
+    <path d="M9 3h6" />
+    <path d="M10 3v6L4.5 18.5A1.7 1.7 0 0 0 6 21h12a1.7 1.7 0 0 0 1.5-2.5L14 9V3" />
+    <path d="M7.5 15h9" />
+  </svg>
+);
+
 export const ChartIcon = () => (
   <svg {...base}>
     <path d="M3 3v18h18" />

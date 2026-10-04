@@ -1,7 +1,7 @@
 import type { NextFunction, Request, Response, Router } from "express";
-import { and, count, desc, eq, sql } from "drizzle-orm";
+import { and, asc, count, countDistinct, desc, eq, isNull } from "drizzle-orm";
 import type { DB } from "../db/client.js";
-import { conversations, customers, notifications, users, type MemberRole, type Notification } from "../db/schema.js";
+import { conversations, customers, handoffs, notifications, teamQuestions, users, type MemberRole, type Notification } from "../db/schema.js";
 import type { EventBus } from "../core/events.js";
 import { formatPhone } from "../lib/phone.js";
 import { isUuid, param, type Locals } from "./api.js";
@@ -77,8 +77,9 @@ export function registerNotificationRoutes(
           onlyImportant ? eq(notifications.important, true) : undefined,
         ),
       )
-      // Son hareketi olan üstte: güncellenen eski bildirim altta kalmasın.
-      .orderBy(desc(sql`coalesce((${notifications.details}->>'updatedAt')::timestamptz, ${notifications.createdAt})`))
+      // Açıklar: en uzun bekleyen üstte (diğer bekleyen listeleri gibi; güncellenen eski bildirim de yerinde kalır).
+      // Tamamlananlar: en son tamamlanan üstte.
+      .orderBy(status === "open" ? asc(notifications.createdAt) : desc(notifications.doneAt))
       .limit(100);
 
     const [[open], [important]] = await Promise.all([
@@ -127,5 +128,42 @@ export function registerNotificationRoutes(
     }
     deps.events.publish(tenantId, { type: "notification_update", conversationId: updated.conversationId });
     res.json({ ok: true });
+  });
+
+  /** Yanlışlıkla "Tamamlandı" denen talep geri açılır. */
+  api.post("/tenants/:tenantId/notifications/:notificationId/reopen", ...member, async (req, res) => {
+    const tenantId = param(req, "tenantId");
+    const notificationId = param(req, "notificationId");
+    if (!isUuid(notificationId)) return res.status(404).json({ error: "Bildirim bulunamadı" });
+    const [updated] = await db
+      .update(notifications)
+      .set({ status: "open", doneAt: null, doneBy: null })
+      .where(and(eq(notifications.id, notificationId), eq(notifications.tenantId, tenantId)))
+      .returning({ conversationId: notifications.conversationId });
+    if (!updated) return res.status(404).json({ error: "Bildirim bulunamadı" });
+    deps.events.publish(tenantId, { type: "notification_update", conversationId: updated.conversationId });
+    res.json({ ok: true });
+  });
+
+  /**
+   * Ekibi bekleyen iş sayıları (menüdeki rozet için): Lina'nın soruları, ekibe iletilen önemli talepler
+   * ve kimsenin devralmadığı devredilmiş konuşmalar.
+   */
+  api.get("/tenants/:tenantId/waiting-count", ...member, async (req, res) => {
+    const tenantId = param(req, "tenantId");
+    const [[questions], [forwarded], [handedOff]] = await Promise.all([
+      db.select({ n: count() }).from(teamQuestions).where(and(eq(teamQuestions.tenantId, tenantId), eq(teamQuestions.status, "open"))),
+      db
+        .select({ n: count() })
+        .from(notifications)
+        .where(and(eq(notifications.tenantId, tenantId), eq(notifications.status, "open"), eq(notifications.important, true))),
+      db
+        .select({ n: countDistinct(handoffs.conversationId) })
+        .from(handoffs)
+        .innerJoin(conversations, eq(conversations.id, handoffs.conversationId))
+        .where(and(eq(handoffs.tenantId, tenantId), eq(handoffs.status, "open"), isNull(conversations.assignedUserId))),
+    ]);
+    const counts = { questions: questions?.n ?? 0, forwarded: forwarded?.n ?? 0, handoffs: handedOff?.n ?? 0 };
+    res.json({ ...counts, total: counts.questions + counts.forwarded + counts.handoffs });
   });
 }

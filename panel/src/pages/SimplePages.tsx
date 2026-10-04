@@ -1,5 +1,6 @@
 import type { Me } from "../api";
-import { Link } from "../router";
+import { Link, navigate } from "../router";
+import { useSession } from "../session";
 import type { SectionKey } from "../Shell";
 
 const COMING: Record<SectionKey, { title: string; text: string }> = {
@@ -80,6 +81,7 @@ export function NotFound() {
 }
 
 export function NoStore({ me }: { me: Me }) {
+  const { logout } = useSession();
   return (
     <main className="auth-page">
       <div className="auth-card">
@@ -87,6 +89,17 @@ export function NoStore({ me }: { me: Me }) {
         <p>
           {me.user.email} hesabı bir mağazaya bağlı değil. Mağaza sahibinizden size bir davet linki göndermesini isteyin.
         </p>
+        {/* Yanlış hesapla girildiyse başka hesaba geçilebilsin. */}
+        <button
+          type="button"
+          className="btn btn-secondary"
+          onClick={async () => {
+            await logout();
+            navigate("/giris", { replace: true });
+          }}
+        >
+          Çıkış yap
+        </button>
       </div>
     </main>
   );

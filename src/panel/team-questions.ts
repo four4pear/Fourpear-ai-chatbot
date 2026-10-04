@@ -37,7 +37,7 @@ export function registerTeamQuestionRoutes(
       questions: rows.map(({ q, customer, answeredBy }) => ({
         id: q.id,
         conversationId: q.conversationId,
-        customer: { name: customer.name ?? formatPhone(customer.waId), phone: formatPhone(customer.waId) },
+        customer: { name: customer.name?.trim() || formatPhone(customer.waId), phone: formatPhone(customer.waId) },
         question: q.question,
         context: q.context,
         customerMessage: q.customerMessage,

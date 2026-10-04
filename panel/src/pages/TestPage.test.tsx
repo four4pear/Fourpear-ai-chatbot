@@ -200,3 +200,31 @@ it("ders yerinde düzenlenir", async () => {
   await screen.findByText("Yeni metin.");
   expect(patched).toEqual([{ text: "Yeni metin." }]);
 });
+
+it("'GERİ BİLDİRİM:' büyük harfle de tanınır; ekibin iç cevabı eğitmene gönderilmez", async () => {
+  let n = 0;
+  const feedbacks: any[] = [];
+  const s = server(() => ++n === 1
+    ? json({ replies: ["Hemen kontrol ediyorum."], runs: [], handoffs: [], demoHelp: [], teamQuestions: [{ question: "Hediye paketi var mı?", context: "" }] })
+    : reply("Evet, hediye paketi ücretsiz."), {
+    "POST /test/feedback": (init) => { feedbacks.push(JSON.parse(String(init.body))); return json({ summary: "Anladım.", lessons: [], replaces: [] }); },
+  });
+  render(<TestPage store={store} replyDelayMs={0} />);
+  write("Hediye paketi yapıyor musunuz?");
+  await screen.findByText("Hediye paketi var mı?");
+  fireEvent.change(screen.getByLabelText("Ekibin cevabı"), { target: { value: "Evet, ücretsiz." } });
+  fireEvent.click(screen.getByRole("button", { name: "Ekip olarak cevapla" }));
+  await screen.findByText("Evet, hediye paketi ücretsiz.");
+
+  write("GERİ BİLDİRİM: daha kısa yaz");
+  await screen.findByText("Anladım.");
+  expect(s.testCalls).toHaveLength(2); // geri bildirim Lina'ya müşteri mesajı olarak gitmedi
+  expect(feedbacks).toEqual([{
+    feedback: "daha kısa yaz",
+    history: [
+      { role: "user", text: "Hediye paketi yapıyor musunuz?" },
+      { role: "assistant", text: "Hemen kontrol ediyorum." },
+      { role: "assistant", text: "Evet, hediye paketi ücretsiz." },
+    ],
+  }]);
+});

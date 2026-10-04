@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
-import { api, ApiError, type Me } from "./api";
+import { api, ApiError, setUnauthorizedHandler, type Me } from "./api";
 
 type Session = {
   me: Me | null;
@@ -25,6 +25,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  // Çalışırken oturum düşerse (süresi doldu, başka yerden çıkış yapıldı) sayfalar hata yazısıyla kalmasın.
+  useEffect(() => {
+    setUnauthorizedHandler(() => setMe(null));
+    return () => setUnauthorizedHandler(null);
   }, []);
 
   const logout = useCallback(async () => {

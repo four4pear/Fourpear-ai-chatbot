@@ -7,7 +7,7 @@ import { createApp } from "../src/app.js";
 import { EventBus, type PanelEvent } from "../src/core/events.js";
 import type { Deps } from "../src/core/conversation.js";
 import { openDatabase, type Database } from "../src/db/client.js";
-import { conversations, customers, handoffs, memberships, messages, tenants, users, whatsappAccounts } from "../src/db/schema.js";
+import { agentRuns, conversations, customers, handoffs, memberships, messages, teamQuestions, tenants, users, whatsappAccounts } from "../src/db/schema.js";
 import { hashPassword } from "../src/auth/password.js";
 import { encryptSecret } from "../src/lib/crypto.js";
 
@@ -202,6 +202,41 @@ describe("panel: konuşmayı devralma, yazma, Lina'ya geri verme", () => {
     await call("zeynep", "POST", conv("/takeover"));
     expect((await call("sahip", "POST", conv("/release"))).status).toBe(200);
     expect(await row()).toMatchObject({ status: "bot", assignedUserId: null });
+  });
+
+  it("liste: ad ya da telefonla aranır, 'Bende' yalnızca benim devraldıklarımı gösterir", async () => {
+    const { db } = database;
+    const [other] = await db.insert(customers).values({ tenantId: tenantA, waId: "905339876543", name: "Zehra Demir" }).returning();
+    await db.insert(conversations).values({ tenantId: tenantA, customerId: other!.id, whatsappAccountId: ids.account! });
+    const list = async (who: "zeynep" | "ali", query: string) =>
+      (await call(who, "GET", `/api/tenants/${tenantA}/conversations?${query}`)).body.conversations.map((c: any) => c.customer.name);
+    expect((await list("zeynep", "view=all")).sort()).toEqual(["Ayşe", "Zehra Demir"]);
+    expect(await list("zeynep", "view=all&q=zehra")).toEqual(["Zehra Demir"]);
+    expect(await list("zeynep", "view=all&q=AYŞ")).toEqual(["Ayşe"]);
+    expect(await list("zeynep", `view=all&q=${encodeURIComponent("0533 987")}`)).toEqual(["Zehra Demir"]);
+    expect(await list("zeynep", "view=all&q=yok")).toEqual([]);
+    // Joker karakterler arama metni olarak kalır.
+    expect(await list("zeynep", `view=all&q=${encodeURIComponent("%")}`)).toEqual([]);
+
+    await call("zeynep", "POST", conv("/takeover"));
+    expect(await list("zeynep", "view=mine")).toEqual(["Ayşe"]);
+    expect(await list("ali", "view=mine")).toEqual([]);
+  });
+
+  it("konuşma ayrıntısı: Lina'nın açık sorusu görünür; müşteri kartı çalışması uzman çağrısı sayılmaz", async () => {
+    const { db } = database;
+    await db.insert(teamQuestions).values([
+      { tenantId: tenantA, conversationId: ids.conv!, question: "Hediye paketi var mı?" },
+      { tenantId: tenantA, conversationId: ids.conv!, question: "Eski soru", status: "answered", answer: "Evet" },
+    ]);
+    await db.insert(agentRuns).values([
+      { tenantId: tenantA, conversationId: ids.conv!, agent: "lina", model: "m" },
+      { tenantId: tenantA, conversationId: ids.conv!, agent: "memory", model: "m" },
+      { tenantId: tenantA, conversationId: ids.conv!, agent: "returns", model: "m", input: "İade?", output: "14 gün." },
+    ]);
+    const { body } = await call("zeynep", "GET", conv());
+    expect(body.teamQuestions).toMatchObject([{ question: "Hediye paketi var mı?" }]);
+    expect(body.expertCalls).toMatchObject([{ agent: "returns", question: "İade?", answer: "14 gün." }]);
   });
 
   it("başka mağazanın konuşması devralınamaz, yazılamaz, geri verilemez", async () => {

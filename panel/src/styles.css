@@ -504,7 +504,19 @@ textarea {
 .conversation-status.waiting { background: var(--danger-soft); color: var(--danger); border-color: transparent; }
 .conversation-status.human { background: var(--accent-soft); color: var(--accent-hover); border-color: transparent; }
 .conversation-messages { padding: 24px; display: flex; flex-direction: column; gap: 12px; max-height: 62vh; overflow-y: auto; }
-.conversation-actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0; }
+.conversation-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; justify-content: flex-end; }
+.conversation-heading { align-items: flex-start; flex-wrap: wrap; }
+.conversation-state { margin: 8px 0 16px; }
+.conversation-forwarded { margin-bottom: 12px; }
+.conversation-forwarded .btn { padding: 6px 12px; font-size: 13px; }
+.conversation-filters { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin: 12px 0; }
+.conversation-filters [role="group"] { display: flex; gap: 8px; flex-wrap: wrap; }
+.conversation-filters input { flex: 1; min-width: 180px; max-width: 320px; border: 1px solid var(--border-strong); border-radius: 8px; padding: 9px 12px; background: var(--surface); font: inherit; }
+.waiting-actions-left { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+.link-button { background: none; border: 0; padding: 0; font: inherit; font-weight: 600; color: var(--accent); text-decoration: underline; cursor: pointer; }
+.rail-link, .bottom-nav a { position: relative; }
+.nav-badge { position: absolute; top: 2px; right: 2px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: var(--danger); color: #fff; font-size: 11px; font-weight: 700; line-height: 18px; text-align: center; }
+.bottom-nav .nav-badge { top: 4px; right: calc(50% - 22px); }
 .conversation-closed { margin: 0; padding: 12px 16px; border-top: 1px solid var(--border); font-size: 13px; color: var(--muted); }
 .chat-bubble { max-width: 88%; padding: 10px 14px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 12px; align-self: flex-start; }
 .chat-bubble.ours { align-self: flex-end; background: var(--accent-soft); border-color: transparent; }

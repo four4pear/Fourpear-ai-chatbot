@@ -1,5 +1,5 @@
 import type { NextFunction, Request, Response, Router } from "express";
-import { and, asc, count, countDistinct, desc, eq, inArray, isNull, lt, ne, sql } from "drizzle-orm";
+import { and, asc, count, countDistinct, desc, eq, ilike, inArray, isNull, like, lt, ne, notInArray, or, sql } from "drizzle-orm";
 import type { DB } from "../db/client.js";
 import {
   agentRuns,
@@ -9,6 +9,7 @@ import {
   media,
   messages,
   notifications,
+  teamQuestions,
   tenants,
   users,
   type Customer,
@@ -97,6 +98,14 @@ export function registerConversationRoutes(
       rows = rows.filter((r, i) => rows.findIndex((x) => x.c.id === r.c.id) === i);
     } else {
       const before = typeof req.query.before === "string" ? new Date(req.query.before) : null;
+      // Arama: müşteri adı ya da telefonun bir parçası (yalnızca rakamlar karşılaştırılır).
+      const q = typeof req.query.q === "string" ? req.query.q.trim().slice(0, 100) : "";
+      const digits = q.replace(/\D/g, "");
+      // Veritabanının büyük/küçük harf eşlemesi Türkçe harfleri (ş, ı, İ) kapsamayabilir: üç yazımla aranır.
+      const patterns = [...new Set([q, q.toLocaleLowerCase("tr-TR"), q.toLocaleUpperCase("tr-TR")])].map((v) => `%${v.replace(/[\\%_]/g, "\\$&")}%`);
+      const matches = q
+        ? or(...patterns.map((p) => ilike(customers.name, p)), digits.length >= 3 ? like(customers.waId, `%${digits}%`) : undefined)
+        : undefined;
       rows = await db
         .select({ c: conversations, customer: customers, assignee: { id: users.id, name: users.name } })
         .from(conversations)
@@ -106,6 +115,7 @@ export function registerConversationRoutes(
           and(
             eq(conversations.tenantId, tenantId),
             view === "mine" ? eq(conversations.assignedUserId, user.id) : undefined,
+            matches,
             before && !Number.isNaN(before.getTime()) ? lt(conversations.updatedAt, before) : undefined,
           ),
         )
@@ -174,7 +184,7 @@ export function registerConversationRoutes(
     if (!c) return notFound(res);
     const { user } = who(res);
 
-    const [[customer], [assignee], msgRows, runs, handoffRows, notificationRows] = await Promise.all([
+    const [[customer], [assignee], msgRows, runs, handoffRows, notificationRows, questionRows] = await Promise.all([
       db.select().from(customers).where(eq(customers.id, c.customerId)),
       c.assignedUserId
         ? db.select({ id: users.id, name: users.name }).from(users).where(eq(users.id, c.assignedUserId))
@@ -190,7 +200,8 @@ export function registerConversationRoutes(
       db
         .select({ agent: agentRuns.agent, question: agentRuns.input, answer: agentRuns.output, createdAt: agentRuns.createdAt })
         .from(agentRuns)
-        .where(and(eq(agentRuns.conversationId, c.id), ne(agentRuns.agent, "lina")))
+        // Müşteri kartı yazarı uzman değildir: sorusu ve cevabı yoktur.
+        .where(and(eq(agentRuns.conversationId, c.id), notInArray(agentRuns.agent, ["lina", "memory"])))
         .orderBy(desc(agentRuns.createdAt))
         .limit(50),
       db.select().from(handoffs).where(eq(handoffs.conversationId, c.id)).orderBy(desc(handoffs.createdAt)).limit(20),
@@ -201,6 +212,12 @@ export function registerConversationRoutes(
         .where(eq(notifications.conversationId, c.id))
         .orderBy(desc(notifications.createdAt))
         .limit(20),
+      // Lina'nın ekibe sorduğu, cevabı beklenen sorular: konuşmayı okuyan kişi Lina'nın beklediğini görsün.
+      db
+        .select({ id: teamQuestions.id, question: teamQuestions.question, createdAt: teamQuestions.createdAt })
+        .from(teamQuestions)
+        .where(and(eq(teamQuestions.conversationId, c.id), eq(teamQuestions.status, "open")))
+        .orderBy(asc(teamQuestions.createdAt)),
     ]);
 
     const windowOpenUntil = c.lastCustomerMessageAt ? new Date(c.lastCustomerMessageAt.getTime() + REPLY_WINDOW_MS) : null;
@@ -236,6 +253,7 @@ export function registerConversationRoutes(
         resolvedAt: h.resolvedAt,
       })),
       notifications: notificationRows.map(({ n, doneByName }) => toNotificationView(n, doneByName)),
+      teamQuestions: questionRows,
     });
   });
 

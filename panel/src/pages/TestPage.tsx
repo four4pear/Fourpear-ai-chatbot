@@ -25,7 +25,7 @@ type Entry =
 const AGENT_LABELS: Record<string, string> = { order: "Sipariş uzmanı", returns: "İade uzmanı", knowledge: "Mağaza bilgi uzmanı" };
 
 /** "geri bildirim: ..." ile başlayan mesaj müşteri mesajı değil, Lina için derstir. */
-const FEEDBACK_PREFIX = /^\s*ger[iı]?\s*bildiri?m\b[\s:：\-–—]*/i;
+const FEEDBACK_PREFIX = /^\s*ger[iı]?\s*b[iı]ld[iı]r[iı]?m\b[\s:：\-–—]*/i;
 
 /** WhatsApp'taki gibi: Lina son mesajdan bu kadar sonra cevaplar; her yeni mesajda bekleme baştan başlar. */
 export const TEST_REPLY_DELAY_MS = 10_000;
@@ -93,7 +93,8 @@ export function TestPage({ store, replyDelayMs = TEST_REPLY_DELAY_MS }: { store:
   function send() {
     const raw = text.trim();
     if (!raw) return;
-    const feedback = FEEDBACK_PREFIX.exec(raw);
+    // Türkçe küçük harfe çevrilerek bakılır: "GERİ BİLDİRİM" de tanınsın (uzunluk değişmez).
+    const feedback = FEEDBACK_PREFIX.exec(raw.toLocaleLowerCase("tr-TR"));
     if (feedback) {
       const body = raw.slice(feedback[0].length).trim();
       if (!body) { setError("Geri bildirimi “geri bildirim:” yazısından sonra yazın."); return; }
@@ -123,7 +124,7 @@ export function TestPage({ store, replyDelayMs = TEST_REPLY_DELAY_MS }: { store:
         const askedTeam = (data.teamQuestions ?? []).map((q): Entry => ({ kind: "asked", ...q, draft: "", teach: false, state: "open" }));
         show([...current.current, { kind: "assistant", text: data.replies.join("\n\n") }, ...askedTeam]);
       }
-      else restore("Lina cevap vermedi. Mağazanın bot ayarlarını kontrol edin veya yeni sohbet açın.");
+      else restore("Lina cevap vermedi. Yeni sohbet açıp tekrar deneyin.");
     } catch (e) {
       if (!controller.signal.aborted) restore(e instanceof Error ? e.message : "Mesaj gönderilemedi");
     } finally {
@@ -143,7 +144,9 @@ export function TestPage({ store, replyDelayMs = TEST_REPLY_DELAY_MS }: { store:
     show([...current.current, { kind: "feedback", text: feedback }]);
     setTraining(true);
     try {
-      const proposal = await api<Proposal>(`${base}/test/feedback`, { method: "POST", body: { history: conversationOf(current.current), feedback } });
+      // Eğitmen yalnızca müşteri ve Lina mesajlarını okur; ekibin iç cevabı konuşmaya dahil değildir.
+      const history = conversationOf(current.current).filter((t) => t.role !== "team");
+      const proposal = await api<Proposal>(`${base}/test/feedback`, { method: "POST", body: { history, feedback } });
       show([...current.current, { kind: "proposal", feedback, proposal, drafts: proposal.lessons, state: proposal.lessons.length ? "open" : "dismissed" }]);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Geri bildirim değerlendirilemedi");

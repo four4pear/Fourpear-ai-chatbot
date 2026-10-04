@@ -12,11 +12,21 @@ Lina'nın müşteriye davranışı ayrı belgede: [lina-davranis.md](lina-davran
 
 Bir kişi birden fazla mağazada farklı rollerle olabilir (ör. ajans).
 
+## Bekleyenler
+Ekibin yapması gerekenler, üç bölümde; her bölümde en uzun bekleyen üsttedir ve her kart konuşmaya bağlantı verir.
+- **Lina soruyor:** Lina'nın arka planda ekibe sorduğu sorular ([lina-davranis.md §15](lina-davranis.md)).
+- **Ekibe iletilenler:** önemli bildirimler. "Tamamlandı" denince listeden düşer; hemen çıkan "Geri al" ile ya da "Tamamlananları göster" listesinden (kimin, ne zaman tamamladığı yazar) geri açılır.
+- **Devredilen konuşmalar:** açık devri olan konuşmalar (aşağıda).
+- Menüdeki Bekleyenler simgesinde bekleyen iş sayısı görünür: açık sorular + açık önemli bildirimler + kimsenin devralmadığı devirler. Hangi sayfa açık olursa olsun 20 saniyede bir ve her işlemden sonra yenilenir.
+- Bir bölüm yüklenemezse diğerleri yine görünür. Oturum düşerse panel girişe döner.
+
 ## Sohbetler
-Ekranlar: **Tüm sohbetler** (liste: müşteri, durum, son mesaj; satıra tıklayınca konuşma açılır) ve **konuşma**
+Ekranlar: **Tüm sohbetler** (liste: müşteri, durum, son mesaj; satıra tıklayınca konuşma açılır; görünümler **Tümü / Ekibi bekleyen / Bende**, ad ya da telefonla arama) ve **konuşma**
 (mesajlar kimin yazdığıyla, müşterinin fotoğrafları, iç notlar ayrı; yanda Lina'nın devir özeti, ekibe iletilenler
 ve Lina'nın uzmanlara sordukları). Devredilen konuşmalar ayrıca **Bekleyenler → Devredilen konuşmalar** bölümünde
-listelenir. Konuşma ekranında **Devral**, mesaj yazma kutusu ve **Lina'ya geri ver** düğmeleri vardır; kurallar aşağıda.
+listelenir. Konuşma ekranında başlığın yanında **Devral** ve **Lina'ya geri ver**, mesajların altında yazma kutusu vardır; kurallar aşağıda.
+Yanda ayrıca Lina'nın ekibe sorduğu açık sorular görünür ve ekibe iletilen talep oradan da "Tamamlandı" yapılabilir.
+Yeni mesaj gelince ekran yalnızca kişi en alttaysa aşağı iner (eski mesajları okuyan yerinden edilmez).
 Lina'nın cevap taslağı henüz yapılmadı.
 
 - **Bekleyenler:** Lina'nın devrettiği, açık devri olan konuşmalar. Kimsenin devralmadığı en uzun bekleyen en üstte; devralınmış olanlar altta, kimde olduğu yazar.
@@ -56,5 +66,5 @@ Lina'nın cevabı WhatsApp'a gönderilemediyse bildirim her durumda önemlidir v
 - **Aynı vaka bir kez düşer:** konuşmada aynı türde ve **aynı siparişler için** açık önemli bildirim varsa yenisi açılmaz; o bildirim güncellenir (müşterinin yazdıkları birikir, Lina'nın son cevabı ve yeni ayrıntılar eklenir, sesli uyarı tekrarlanmaz) ve listede üste çıkar. Başka bir sipariş için istek ya da ekip tamamladıktan sonraki yazışma yeni bildirimdir. Sessiz kayıtlar birleştirilmez.
 - **"Tamamlandı" görülmemiş isteği kapatmaz:** ekip kartı açtıktan sonra müşteri yeniden yazdıysa "Tamamlandı" reddedilir ("Bu talep siz bakarken güncellendi"), kart yenilenir; yeni hâline bakıp tekrar basılır.
 - Mağazanın bütün ekibi görür (çalışan dahil); herkes "Tamamlandı" diyebilir, kimin kapattığı görünür.
-- API: `GET /api/tenants/:id/notifications?filter=important&status=open|done`, `POST /api/tenants/:id/notifications/:nid/done`. Konuşma ayrıntısında o konuşmanın bildirimleri de gelir.
+- API: `GET /api/tenants/:id/notifications?filter=important&status=open|done`, `POST /api/tenants/:id/notifications/:nid/done`, `POST …/:nid/reopen`, `GET /api/tenants/:id/waiting-count`. Konuşma ayrıntısında o konuşmanın bildirimleri de gelir.
 - Canlı olaylar: `notification` (yeni; `important` alanıyla, sesli uyarı buna göre), `notification_update` (tamamlandı ya da açık bildirim güncellendi).

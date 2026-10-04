@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import type { Me, Membership } from "./api";
-import { ChartIcon, ChatIcon, InboxIcon, SettingsIcon, ShieldIcon } from "./icons";
+import { api, WAITING_CHANGED, type Me, type Membership } from "./api";
+import { ChartIcon, ChatIcon, FlaskIcon, InboxIcon, SettingsIcon, ShieldIcon } from "./icons";
 import { Link, navigate } from "./router";
 import { rememberStore, useSession } from "./session";
 
@@ -10,7 +10,7 @@ export const SECTIONS: { key: SectionKey; label: string; ownerOnly: boolean; Ico
   { key: "bekleyenler", label: "Bekleyenler", ownerOnly: false, Icon: InboxIcon },
   { key: "sohbetler", label: "Tüm sohbetler", ownerOnly: false, Icon: ChatIcon },
   { key: "istatistik", label: "İstatistik", ownerOnly: true, Icon: ChartIcon },
-  { key: "test", label: "Lina’yı test et", ownerOnly: true, Icon: ChatIcon },
+  { key: "test", label: "Lina’yı test et", ownerOnly: true, Icon: FlaskIcon },
   { key: "ayarlar", label: "Ayarlar", ownerOnly: true, Icon: SettingsIcon },
 ];
 
@@ -19,9 +19,43 @@ export const visibleSections = (store: Membership) => SECTIONS.filter((s) => !s.
 
 type Active = SectionKey | "yonetici" | null;
 
+/** Menüdeki bekleyen iş sayısı bu sıklıkla yenilenir (hangi sayfa açık olursa olsun). */
+const WAITING_REFRESH_MS = 20_000;
+
+/** Ekibi bekleyen iş sayısı: Lina'nın soruları + ekibe iletilenler + kimsenin devralmadığı konuşmalar. */
+function useWaitingCount(store: Membership | null): number {
+  const [count, setCount] = useState(0);
+  const tenantId = store?.tenantId;
+  useEffect(() => {
+    setCount(0);
+    if (!tenantId) return;
+    let cancelled = false;
+    const load = () =>
+      api<{ total: number }>(`/tenants/${tenantId}/waiting-count`).then(
+        (r) => !cancelled && setCount(r.total),
+        () => {}, // sayı yüklenemezse rozet olduğu gibi kalır; sayfaların kendi hata yazısı var
+      );
+    void load();
+    const timer = setInterval(load, WAITING_REFRESH_MS);
+    window.addEventListener("focus", load);
+    window.addEventListener(WAITING_CHANGED, load);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+      window.removeEventListener("focus", load);
+      window.removeEventListener(WAITING_CHANGED, load);
+    };
+  }, [tenantId]);
+  return count;
+}
+
 export function Shell({ me, store, active, children }: { me: Me; store: Membership | null; active: Active; children: ReactNode }) {
   const sections = store ? visibleSections(store) : [];
   const title = active === "yonetici" ? "Tüm mağazalar" : SECTIONS.find((s) => s.key === active)?.label;
+  const waiting = useWaitingCount(store);
+  const badge = (key: SectionKey) =>
+    key === "bekleyenler" && waiting > 0 ? <span className="nav-badge" aria-hidden="true">{waiting > 99 ? "99+" : waiting}</span> : null;
+  const navLabel = (key: SectionKey, label: string) => (key === "bekleyenler" && waiting > 0 ? `${label} (${waiting} iş bekliyor)` : label);
 
   useEffect(() => {
     if (store) rememberStore(store.slug);
@@ -39,11 +73,12 @@ export function Shell({ me, store, active, children }: { me: Me; store: Membersh
             key={key}
             to={`/m/${store!.slug}/${key}`}
             className="rail-link"
-            aria-label={label}
-            title={label}
+            aria-label={navLabel(key, label)}
+            title={navLabel(key, label)}
             aria-current={active === key ? "page" : undefined}
           >
             <Icon />
+            {badge(key)}
           </Link>
         ))}
         {me.user.isSuperAdmin && (
@@ -78,8 +113,9 @@ export function Shell({ me, store, active, children }: { me: Me; store: Membersh
       {sections.length > 0 && (
         <nav className="bottom-nav" aria-label="Alt menü">
           {sections.map(({ key, label, Icon }) => (
-            <Link key={key} to={`/m/${store!.slug}/${key}`} aria-current={active === key ? "page" : undefined}>
+            <Link key={key} to={`/m/${store!.slug}/${key}`} aria-label={navLabel(key, label)} aria-current={active === key ? "page" : undefined}>
               <Icon />
+              {badge(key)}
               {label}
             </Link>
           ))}

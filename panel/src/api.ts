@@ -25,6 +25,16 @@ export class ApiError extends Error {
   }
 }
 
+/** Bekleyen iş sayısı değişmiş olabilir (soru cevaplandı, talep tamamlandı, konuşma devralındı): menüdeki rozet hemen yenilensin. */
+export const WAITING_CHANGED = "lina:waiting-changed";
+export const waitingChanged = () => window.dispatchEvent(new Event(WAITING_CHANGED));
+
+let onUnauthorized: (() => void) | null = null;
+/** Oturum düştüğünde (herhangi bir istekte 401) çağrılır; SessionProvider girişe döndürür. */
+export function setUnauthorizedHandler(handler: (() => void) | null) {
+  onUnauthorized = handler;
+}
+
 /** Sunucu API'sine istek. Hata mesajları sunucudan Türkçe gelir. */
 export async function api<T>(path: string, opts: { method?: string; body?: unknown; signal?: AbortSignal } = {}): Promise<T> {
   let res: Response;
@@ -47,6 +57,8 @@ export async function api<T>(path: string, opts: { method?: string; body?: unkno
   } catch {
     // Gövde JSON değilse aşağıdaki genel mesaj kullanılır.
   }
+  // Giriş ve davet uçlarındaki 401 "şifre yanlış" demektir; diğerlerinde oturum düşmüştür.
+  if (res.status === 401 && !path.startsWith("/auth/") && !path.startsWith("/tokens/") && path !== "/me") onUnauthorized?.();
   if (!res.ok) throw new ApiError(res.status, data.error ?? "Beklenmeyen bir hata oluştu. Lütfen tekrar deneyin.");
   return data as T;
 }

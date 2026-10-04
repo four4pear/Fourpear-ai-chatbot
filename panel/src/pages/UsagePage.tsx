@@ -38,7 +38,7 @@ const pct = (n: number | null) => (n === null ? "—" : `%${Math.round(n * 100)}
 /** İstatistik: yapay zekâ kullanımı ve tahmini maliyet; canlı konuşmalar ve test ekranı ayrı. */
 export function UsagePage({ store }: { store: Membership }) {
   const [days, setDays] = useState(7);
-  const [source, setSource] = useState<"live" | "test">("test");
+  const [source, setSource] = useState<"live" | "test">("live");
   const [usage, setUsage] = useState<Usage | null>(null);
   const [error, setError] = useState("");
   useEffect(() => {
