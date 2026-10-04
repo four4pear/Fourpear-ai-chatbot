@@ -22,6 +22,7 @@ import type { EventBus } from "../core/events.js";
 import { formatPhone } from "../lib/phone.js";
 import type { WhatsAppSender } from "../whatsapp/client.js";
 import { isUuid, param, type Locals } from "./api.js";
+import { awaitingReplyInHuman } from "./queue.js";
 
 type Middleware = (req: Request, res: Response, next: NextFunction) => unknown;
 
@@ -34,6 +35,8 @@ type Deps = {
   now?: () => Date;
   heartbeatMs?: number;
   cancelPendingReply?: (conversationId: string) => void;
+  /** Lina'ya geri verilince müşterinin cevapsız mesajı varsa Lina cevaplasın. */
+  triggerReply?: (conversationId: string) => void;
 };
 
 /** WhatsApp kuralı: müşterinin son mesajından sonra 24 saat serbest mesaj gönderilebilir. */
@@ -85,17 +88,38 @@ export function registerConversationRoutes(
     };
     let rows: Row[];
     if (view === "waiting") {
-      // Kimsenin devralmadığı en uzun bekleyen üstte; devralınmışlar altta.
-      rows = await db
-        .select({ c: conversations, customer: customers, assignee: { id: users.id, name: users.name } })
-        .from(handoffs)
-        .innerJoin(conversations, eq(conversations.id, handoffs.conversationId))
-        .innerJoin(customers, eq(customers.id, conversations.customerId))
-        .leftJoin(users, eq(users.id, conversations.assignedUserId))
-        .where(and(eq(handoffs.tenantId, tenantId), eq(handoffs.status, "open")))
-        .orderBy(sql`${conversations.assignedUserId} is not null`, asc(handoffs.createdAt))
-        .limit(100);
-      rows = rows.filter((r, i) => rows.findIndex((x) => x.c.id === r.c.id) === i);
+      // Ekibi bekleyenler: açık devri olan konuşmalar ve ekipteyken müşterinin yeniden yazdığı konuşmalar.
+      // Kimsenin devralmadığı en uzun bekleyen üstte; sonra cevap bekleyen müşteriler; devralınmış devirler altta.
+      const [handedOff, pending] = await Promise.all([
+        db
+          .select({ c: conversations, customer: customers, assignee: { id: users.id, name: users.name }, since: handoffs.createdAt })
+          .from(handoffs)
+          .innerJoin(conversations, eq(conversations.id, handoffs.conversationId))
+          .innerJoin(customers, eq(customers.id, conversations.customerId))
+          .leftJoin(users, eq(users.id, conversations.assignedUserId))
+          .where(and(eq(handoffs.tenantId, tenantId), eq(handoffs.status, "open")))
+          .orderBy(asc(handoffs.createdAt))
+          .limit(100),
+        awaitingReplyInHuman(db, tenantId),
+      ]);
+      const pendingIds = pending.map((p) => p.id);
+      const pendingRows = pendingIds.length
+        ? await db
+            .select({ c: conversations, customer: customers, assignee: { id: users.id, name: users.name } })
+            .from(conversations)
+            .innerJoin(customers, eq(customers.id, conversations.customerId))
+            .leftJoin(users, eq(users.id, conversations.assignedUserId))
+            .where(inArray(conversations.id, pendingIds))
+        : [];
+      const rank = (r: Row & { since?: Date | null }) => {
+        if (!r.c.assignedUserId) return 0;
+        if (pendingIds.includes(r.c.id)) return 1;
+        return 2;
+      };
+      const all = [...handedOff, ...pendingRows.map((r) => ({ ...r, since: r.c.lastCustomerMessageAt }))]
+        .filter((r, i, list) => list.findIndex((x) => x.c.id === r.c.id) === i)
+        .sort((a, b) => rank(a) - rank(b) || (a.since?.getTime() ?? 0) - (b.since?.getTime() ?? 0));
+      rows = all.map(({ c, customer, assignee }) => ({ c, customer, assignee }));
     } else {
       const before = typeof req.query.before === "string" ? new Date(req.query.before) : null;
       // Arama: müşteri adı ya da telefonun bir parçası (yalnızca rakamlar karşılaştırılır).
@@ -339,6 +363,9 @@ export function registerConversationRoutes(
       });
     });
     deps.events.publish(tenantId, { type: "conversation", conversationId: c.id });
+    // Müşterinin cevapsız mesajı varsa Lina hemen cevaplar (yoksa bir şey yapmaz): müşteri yeniden
+    // yazana kadar beklemesin. Devralınırken iptal edilen cevap da böylece telafi edilir.
+    deps.triggerReply?.(c.id);
     res.json({ ok: true });
   });
 

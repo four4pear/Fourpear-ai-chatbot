@@ -50,7 +50,8 @@ const timeAgo = (iso: string) => {
  * - "Lina soruyor": Lina'nın bilmediği ve arka planda ekibe sorduğu sorular. Ekip kısa bir cevap yazar;
  *   Lina müşteriye kendi cümleleriyle iletir.
  * - "Ekibe iletilenler": Lina'nın ekibe bıraktığı talepler (önemli bildirimler). Ekip işlemi yapıp tamamlar.
- * - "Devredilen konuşmalar": müşteri temsilci istedi ya da öfkesi sürdü; Lina konuşmayı ekibe devretti.
+ * - "Ekibi bekleyen konuşmalar": Lina'nın devrettiği konuşmalar ve ekipteyken (devralınmış, Lina susuyor)
+ *   müşterinin yeniden yazdığı, kimsenin cevaplamadığı konuşmalar.
  */
 export function WaitingPage({ store }: { store: Membership }) {
   const [open, setOpen] = useState<Question[] | null>(null);
@@ -216,13 +217,14 @@ export function WaitingPage({ store }: { store: Membership }) {
     </section>
 
     <section aria-labelledby="handed-off">
-      <h2 id="handed-off">Devredilen konuşmalar{handedOff?.length ? ` (${handedOff.length})` : ""}</h2>
-      <p className="hint">Müşteri temsilciyle görüşmek istedi ya da Lina konuyu çözemedi. Kimsenin devralmadığı en uzun bekleyen üstte; devralınmış olanlar altta.</p>
+      <h2 id="handed-off">Ekibi bekleyen konuşmalar{handedOff?.length ? ` (${handedOff.length})` : ""}</h2>
+      <p className="hint">Lina'nın devrettiği konuşmalar (müşteri temsilci istedi ya da Lina konuyu çözemedi) ve ekipteyken müşterinin yeniden yazdığı konuşmalar: Lina susuyor, cevabı devralan kişi yazmalı. Kimsenin devralmadığı en uzun bekleyen üstte.</p>
       {handedOff === null && !loadError && <p className="hint" role="status">Yükleniyor…</p>}
-      {handedOff?.length === 0 && <p className="hint">Şu an devredilen konuşma yok.</p>}
+      {handedOff?.length === 0 && <p className="hint">Şu an ekibi bekleyen konuşma yok.</p>}
       <div className="waiting-list">
         {handedOff?.map((c) => <article key={c.id} className="panel-card waiting-card" aria-label={`${c.customer.name} ile konuşma`}>
           <header><Who customer={c.customer} /> <span className="hint">{c.openHandoff ? `· ${timeAgo(c.openHandoff.createdAt)} ` : ""}· {statusLabel(c)}</span></header>
+          {c.status === "human" && c.lastMessage?.sender === "customer" && <p className="waiting-question waiting-alert">Müşteri {timeAgo(c.lastMessage.createdAt)} yazdı, cevap bekliyor.</p>}
           {c.openHandoff && <p className="waiting-question">{HANDOFF_REASONS[c.openHandoff.reason] ?? c.openHandoff.reason}</p>}
           {c.openHandoff && <p className="waiting-text">{c.openHandoff.summary}</p>}
           <div className="waiting-actions"><span /><Link className="btn btn-secondary" to={chat(c.id)} aria-label={`${c.customer.name} ile konuşmayı aç`}>Konuşmayı aç</Link></div>

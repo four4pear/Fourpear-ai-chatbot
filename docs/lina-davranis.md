@@ -165,7 +165,8 @@ Sipariş, kargo, iade, iptal, değişim ve şikayet (§3), ürün/stok/fiyat ve 
 | **bot** | Varsayılan | Normal çalışır |
 | **bekliyor** | Lina devretti, ekip henüz devralmadı | **Basit sorulara cevap vermeye devam eder.** Devredilen konu tekrar sorulursa: müşteri temsilci istemişse ekibin ne zaman döneceğini söyler (§6); diğer durumlarda ekipten ve zamandan söz etmeden talebin işleme alındığını kendi cümleleriyle söyler. Aynı konuyu tekrar devretmez; yeni bir konu devir gerektirirse devir kaydına eklenir. |
 | **ekipte** | Ekipten biri panelde "Devral" dedi | **Tamamen susar.** |
-| → bot | Sadece ekip panelde **"Bota geri ver"** deyince | |
+| → bot | Sadece ekip panelde **"Lina'ya geri ver"** deyince | Müşterinin cevapsız mesajı varsa Lina hemen cevaplar; müşteri yeniden yazana kadar beklemez. |
+| ekipteyken müşteri yazarsa | Devralan kişi cevaplamalı | Lina susar; konuşma panelde **Bekleyenler → Ekibi bekleyen konuşmalar**'da "cevap bekliyor" diye görünür ve menü sayısına girer. |
 
 ## 6. Ne zaman dönülecek (mesai)
 Mağaza mesai saatlerini panelden girer.

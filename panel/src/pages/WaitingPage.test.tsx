@@ -77,7 +77,7 @@ it("her kart konuşmaya bağlantı verir (Bekleyenler'e geri dönülecek şekild
 it("ekibe iletilen talep listelenir; 'Tamamlandı' denince listeden düşer, yanlış basıldıysa geri alınır", async () => {
   const posted = server("agent");
   await screen.findByText("İade: ekip kararı gerekiyor (#MO-9013)");
-  expect(screen.getByText(/yeniden yazdı/)).toBeTruthy();
+  expect(screen.getByText(/müşteri .* yeniden yazdı$/)).toBeTruthy();
   expect(screen.getByText("Para iadesi 50 gündür yapılmadı.")).toBeTruthy();
   expect(screen.getByText("İade birimine ilettim.")).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: /^Tamamlandı: Elif/ }));
@@ -115,6 +115,22 @@ it("devredilen konuşma sebebi ve özetiyle listelenir", async () => {
   server("agent");
   await screen.findByText("Temsilci istedi");
   expect(screen.getByText("Müşteri temsilciyle görüşmek istiyor; kargo gecikmesinden şikayetçi.")).toBeTruthy();
+});
+
+it("ekipteyken müşteri yeniden yazdıysa konuşma 'cevap bekliyor' diye listelenir", async () => {
+  vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+    if (url.includes("/conversations")) return json({ conversations: [{
+      ...handedOff, id: "c7", status: "human", assignedTo: { id: "u2", name: "Ali" }, openHandoff: null,
+      customer: { name: "Merve", phone: "+90 531 000 00 03" },
+      lastMessage: { sender: "customer", type: "text", text: "Hâlâ cevap yok", createdAt: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString() },
+    }] });
+    if (url.includes("/notifications")) return json({ notifications: [] });
+    return json({ questions: [] });
+  }));
+  render(<WaitingPage store={{ tenantId: "t", slug: "s", name: "Betül Saday", role: "agent" }} />);
+  await screen.findByText("Müşteri 3 sa önce yazdı, cevap bekliyor.");
+  expect(screen.getByText(/Ekipte: Ali/)).toBeTruthy();
+  expect(screen.getByRole("link", { name: "Merve ile konuşmayı aç" })).toBeTruthy();
 });
 
 it("bir bölüm yüklenemezse diğerleri yine görünür", async () => {

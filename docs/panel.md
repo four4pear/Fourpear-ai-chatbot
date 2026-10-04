@@ -16,8 +16,8 @@ Bir kişi birden fazla mağazada farklı rollerle olabilir (ör. ajans).
 Ekibin yapması gerekenler, üç bölümde; her bölümde en uzun bekleyen üsttedir ve her kart konuşmaya bağlantı verir.
 - **Lina soruyor:** Lina'nın arka planda ekibe sorduğu sorular ([lina-davranis.md §15](lina-davranis.md)).
 - **Ekibe iletilenler:** önemli bildirimler. "Tamamlandı" denince listeden düşer; hemen çıkan "Geri al" ile ya da "Tamamlananları göster" listesinden (kimin, ne zaman tamamladığı yazar) geri açılır.
-- **Devredilen konuşmalar:** açık devri olan konuşmalar (aşağıda).
-- Menüdeki Bekleyenler simgesinde bekleyen iş sayısı görünür: açık sorular + açık önemli bildirimler + kimsenin devralmadığı devirler. Hangi sayfa açık olursa olsun 20 saniyede bir ve her işlemden sonra yenilenir.
+- **Ekibi bekleyen konuşmalar:** açık devri olan konuşmalar (aşağıda) ve ekipteyken müşterinin yeniden yazdığı, kimsenin cevaplamadığı konuşmalar ("Müşteri … yazdı, cevap bekliyor").
+- Menüdeki Bekleyenler simgesinde bekleyen iş sayısı görünür: açık sorular + açık önemli bildirimler + kimsenin devralmadığı devirler + ekipte cevap bekleyen müşteriler. Hangi sayfa açık olursa olsun 20 saniyede bir ve her işlemden sonra yenilenir.
 - Bir bölüm yüklenemezse diğerleri yine görünür. Oturum düşerse panel girişe döner.
 
 ## Sohbetler
@@ -32,7 +32,7 @@ Lina'nın cevap taslağı henüz yapılmadı.
 - **Bekleyenler:** Lina'nın devrettiği, açık devri olan konuşmalar. Kimsenin devralmadığı en uzun bekleyen en üstte; devralınmış olanlar altta, kimde olduğu yazar.
 - **Bende:** Benim devraldığım konuşmalar. **Tümü:** bütün konuşmalar, en son hareket eden üstte.
 - **Devralma:** İlk tıklayan alır; Lina o konuşmada susar. Başkasının devraldığı konuşmayı yalnızca mağaza sahibi alabilir (çalışan izinde/meşgulse).
-- **Bota geri ver:** Devralan kişi, mağaza sahibi ya da (henüz kimse devralmadıysa) herhangi bir ekip üyesi yapabilir. Açık devirler "çözüldü" olarak kapanır, Lina yeniden cevap verir.
+- **Lina'ya geri ver:** Devralan kişi, mağaza sahibi ya da (henüz kimse devralmadıysa) herhangi bir ekip üyesi yapabilir. Açık devirler "çözüldü" olarak kapanır; müşterinin cevapsız mesajı varsa Lina hemen cevaplar.
 - **Cevap yazma:** Sadece konuşmayı devralan kişi yazabilir. Mesaj **imzasız**, mağaza adına gider.
 - **24 saat kuralı (WhatsApp):** Müşterinin son mesajından 24 saat geçtiyse serbest mesaj gönderilemez; yazma kutusu kapanır ve nedeni yazar. (Meta onaylı şablon desteği sonra.)
 - Devralma ve bota geri verme olayları sohbette not olarak görünür (müşteriye gitmez).

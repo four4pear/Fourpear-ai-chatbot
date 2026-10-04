@@ -5,6 +5,7 @@ import { conversations, customers, handoffs, notifications, teamQuestions, users
 import type { EventBus } from "../core/events.js";
 import { formatPhone } from "../lib/phone.js";
 import { isUuid, param, type Locals } from "./api.js";
+import { awaitingReplyInHuman } from "./queue.js";
 
 type Middleware = (req: Request, res: Response, next: NextFunction) => unknown;
 
@@ -146,12 +147,12 @@ export function registerNotificationRoutes(
   });
 
   /**
-   * Ekibi bekleyen iş sayıları (menüdeki rozet için): Lina'nın soruları, ekibe iletilen önemli talepler
-   * ve kimsenin devralmadığı devredilmiş konuşmalar.
+   * Ekibi bekleyen iş sayıları (menüdeki rozet için): Lina'nın soruları, ekibe iletilen önemli talepler,
+   * kimsenin devralmadığı devredilmiş konuşmalar ve ekipteyken müşterinin yeniden yazdığı konuşmalar.
    */
   api.get("/tenants/:tenantId/waiting-count", ...member, async (req, res) => {
     const tenantId = param(req, "tenantId");
-    const [[questions], [forwarded], [handedOff]] = await Promise.all([
+    const [[questions], [forwarded], [handedOff], pending] = await Promise.all([
       db.select({ n: count() }).from(teamQuestions).where(and(eq(teamQuestions.tenantId, tenantId), eq(teamQuestions.status, "open"))),
       db
         .select({ n: count() })
@@ -162,8 +163,9 @@ export function registerNotificationRoutes(
         .from(handoffs)
         .innerJoin(conversations, eq(conversations.id, handoffs.conversationId))
         .where(and(eq(handoffs.tenantId, tenantId), eq(handoffs.status, "open"), isNull(conversations.assignedUserId))),
+      awaitingReplyInHuman(db, tenantId),
     ]);
-    const counts = { questions: questions?.n ?? 0, forwarded: forwarded?.n ?? 0, handoffs: handedOff?.n ?? 0 };
+    const counts = { questions: questions?.n ?? 0, forwarded: forwarded?.n ?? 0, handoffs: (handedOff?.n ?? 0) + pending.length };
     res.json({ ...counts, total: counts.questions + counts.forwarded + counts.handoffs });
   });
 }

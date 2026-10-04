@@ -2,7 +2,7 @@ import type { AddressInfo } from "node:net";
 import type { Server } from "node:http";
 import { randomBytes } from "node:crypto";
 import { eq } from "drizzle-orm";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { createApp } from "../src/app.js";
 import { EventBus, type PanelEvent } from "../src/core/events.js";
 import type { Deps } from "../src/core/conversation.js";
@@ -25,6 +25,8 @@ let sendFails = false;
 const sent: { to: string; text: string }[] = [];
 const events: PanelEvent[] = [];
 const cookies: Record<string, string> = {};
+/** Lina'ya geri verilince cevap kurulur mu? (zamanlayıcı gerçek cevabı hazırlamaz) */
+const replyRequests: string[] = [];
 const ids: Record<string, string> = {};
 
 async function call(who: "zeynep" | "ali" | "sahip", method: string, path: string, body?: unknown) {
@@ -62,7 +64,7 @@ beforeAll(async () => {
   ids.other = convB!.id;
 
   const deps = { db, log: { info() {}, warn() {}, error() {} } } as unknown as Deps;
-  const { app } = createApp({ WHATSAPP_APP_SECRET: "x", WHATSAPP_VERIFY_TOKEN: "y" }, deps, undefined, {
+  const { app, scheduler } = createApp({ WHATSAPP_APP_SECRET: "x", WHATSAPP_VERIFY_TOKEN: "y" }, deps, undefined, {
     db,
     publicUrl: ORIGIN,
     allowedOrigins: [ORIGIN],
@@ -71,7 +73,7 @@ beforeAll(async () => {
       sendText: async ({ to, text }) => {
         if (sendFails) throw new Error("WhatsApp hatası");
         sent.push({ to, text });
-        return ["wamid.1"];
+        return [`wamid.${sent.length}`];
       },
       markReadAndTyping: async () => {},
       downloadMedia: async () => ({ data: Buffer.alloc(0), mimeType: "image/jpeg" }),
@@ -81,6 +83,7 @@ beforeAll(async () => {
     now: () => now,
     log: { info() {}, warn() {}, error() {} },
   });
+  vi.spyOn(scheduler, "onCustomerMessage").mockImplementation((conversationId) => { replyRequests.push(conversationId); });
   server = app.listen(0);
   base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   for (const key of ["zeynep", "ali", "sahip"]) {
@@ -105,6 +108,7 @@ beforeEach(async () => {
   sendFails = false;
   sent.length = 0;
   events.length = 0;
+  replyRequests.length = 0;
   await db.delete(customers).where(eq(customers.tenantId, tenantA));
   const [cust] = await db.insert(customers).values({ tenantId: tenantA, waId: "905321234567", name: "Ayşe" }).returning();
   const [c] = await db
@@ -193,6 +197,39 @@ describe("panel: konuşmayı devralma, yazma, Lina'ya geri verme", () => {
     expect(handoff).toMatchObject({ status: "resolved", resolvedBy: ids.zeynep });
     // Geri verildikten sonra yazılamaz.
     expect((await call("zeynep", "POST", conv("/messages"), { text: "Merhaba" })).status).toBe(409);
+  });
+
+  it("Lina'ya geri verilince müşterinin cevapsız mesajı varsa Lina cevaplar; müşteri yeniden yazana kadar beklemez", async () => {
+    await call("zeynep", "POST", conv("/takeover"));
+    // Ekipteyken müşteri yazdı, kimse cevaplamadı.
+    await database.db.insert(messages).values({ tenantId: tenantA, conversationId: ids.conv!, sender: "customer", text: "Orada mısınız?" });
+    expect((await call("zeynep", "POST", conv("/release"))).status).toBe(200);
+    expect(replyRequests).toEqual([ids.conv]);
+  });
+
+  it("ekipteyken müşterinin yeniden yazdığı konuşma Bekleyenler'de ve menü sayısında görünür; ekip cevaplayınca düşer", async () => {
+    await call("zeynep", "POST", conv("/takeover"));
+    const waiting = async () => (await call("ali", "GET", `/api/tenants/${tenantA}/conversations?view=waiting`)).body.conversations;
+    const count = async () => (await call("ali", "GET", `/api/tenants/${tenantA}/waiting-count`)).body;
+    // Devralındı ama müşterinin "Yetkiliyle görüşmek istiyorum" mesajı hâlâ cevapsız: sayıya girer.
+    expect((await waiting()).map((c: any) => c.id)).toEqual([ids.conv]);
+    expect((await count()).handoffs).toBe(1);
+    const sentReply = await call("zeynep", "POST", conv("/messages"), { text: "Merhaba, ben Zeynep." });
+    expect([sentReply.status, sentReply.body]).toEqual([200, { messageId: expect.any(String) }]);
+    // Cevaplandı: sayıdan düşer; açık devir yüzünden listede kalır (devralınmışlar altta).
+    expect((await count()).handoffs).toBe(0);
+    expect((await waiting()).map((c: any) => c.id)).toEqual([ids.conv]);
+    await database.db.update(handoffs).set({ status: "resolved" }).where(eq(handoffs.conversationId, ids.conv!));
+    expect(await waiting()).toEqual([]);
+
+    await database.db.insert(messages).values({ tenantId: tenantA, conversationId: ids.conv!, sender: "customer", text: "Orada mısınız?" });
+    const [row] = await waiting();
+    expect(row).toMatchObject({ id: ids.conv, status: "human", assignedTo: { name: "Zeynep" }, lastMessage: { sender: "customer", text: "Orada mısınız?" } });
+    expect((await count()).handoffs).toBe(1);
+
+    expect((await call("zeynep", "POST", conv("/messages"), { text: "Buradayım, bakıyorum." })).status).toBe(200);
+    expect(await waiting()).toEqual([]);
+    expect((await count()).handoffs).toBe(0);
   });
 
   it("kimse devralmadıysa herhangi bir ekip üyesi Lina'ya geri verebilir; sahip başkasınınkini de verir", async () => {
