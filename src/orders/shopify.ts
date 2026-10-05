@@ -142,7 +142,13 @@ export function shopifyOrderSource(shopify: ShopifyApi, store: ShopifyStore, opt
     async byName(typed) {
       const digits = typed.match(/\d+/g)?.join("");
       if (!digits) return null;
-      const match = (await orders(`name:${digits}`, 5)).find((o) => sameOrderNumber(o.name, typed));
+      // Bulunamazsa "#" ile de denenir (mağazaya göre arama biçimi farklı davranabiliyor).
+      let match = (await orders(`name:${digits}`, 5)).find((o) => sameOrderNumber(o.name, typed));
+      if (!match) match = (await orders(`name:#${digits}`, 5)).find((o) => sameOrderNumber(o.name, typed));
+      if (!match && !store.scopes.split(",").includes("read_all_orders")) {
+        // Shopify yalnızca son 60 günün siparişlerini verir; daha eski sipariş "yok" gibi görünür.
+        console.warn(`[sipariş] ${store.shopDomain}: #${digits} bulunamadı. read_all_orders izni yok: yalnızca son 60 günün siparişleri okunabilir.`);
+      }
       return match ? toOrderFacts(match, countryCode) : null;
     },
 

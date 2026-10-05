@@ -13,6 +13,12 @@ export const SHOPIFY_SCOPES = [
   "read_customers",
 ].join(",");
 
+/**
+ * İstenir ama zorunlu değildir: Shopify yalnızca son 60 günün siparişlerini verir; daha eskisi için bu izin
+ * gerekir ve Shopify'ın onayına bağlıdır. İzin yoksa yükleme bozulmaz (bkz. routes.ts hasAllScopes).
+ */
+export const OPTIONAL_SHOPIFY_SCOPES = "read_all_orders";
+
 export type ShopifyAppCredentials = { apiKey: string; apiSecret: string };
 
 export type ShopifyTokenResponse = {
@@ -78,7 +84,7 @@ export function readState(state: string, shop: string, secret: string, now = Dat
 export function authorizeUrl(opts: { shop: string; apiKey: string; redirectUri: string; state: string }): string {
   const params = new URLSearchParams({
     client_id: opts.apiKey,
-    scope: SHOPIFY_SCOPES,
+    scope: `${SHOPIFY_SCOPES},${OPTIONAL_SHOPIFY_SCOPES}`,
     redirect_uri: opts.redirectUri,
     state: opts.state,
   });
