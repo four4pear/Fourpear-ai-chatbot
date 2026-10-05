@@ -252,7 +252,7 @@ export function buildOrderSheet(
 
   const lines = [
     verifiedBy === "name"
-      ? `SİPARİŞ ${order.name} (doğrulandı: müşterinin yazdığı ad soyad siparişle eşleşiyor; yazdığı WhatsApp numarası siparişteki numara değil)`
+      ? `SİPARİŞ ${order.name} (doğrulandı: müşterinin yazdığı ad soyad siparişle eşleşiyor)`
       : `SİPARİŞ ${order.name} (doğrulandı: müşterinin WhatsApp numarasıyla eşleşiyor)`,
     `Sipariş tarihi: ${longDate(orderDay)} · Bugün: ${longDate(today)}`,
     `Durum: ${statusLabel(order, active, waiting, timeZone)}`,
