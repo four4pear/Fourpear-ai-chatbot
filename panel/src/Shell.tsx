@@ -78,6 +78,7 @@ export function Shell({ me, store, active, children }: { me: Me; store: Membersh
             aria-current={active === key ? "page" : undefined}
           >
             <Icon />
+            <span className="rail-label">{label}</span>
             {badge(key)}
           </Link>
         ))}
@@ -90,6 +91,7 @@ export function Shell({ me, store, active, children }: { me: Me; store: Membersh
             aria-current={active === "yonetici" ? "page" : undefined}
           >
             <ShieldIcon />
+            <span className="rail-label">Mağazalar</span>
           </Link>
         )}
         <span className="rail-spacer" />

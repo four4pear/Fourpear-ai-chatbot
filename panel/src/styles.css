@@ -210,7 +210,7 @@ textarea {
 .shell {
   min-height: 100dvh;
   display: grid;
-  grid-template-columns: 72px minmax(0, 1fr);
+  grid-template-columns: 88px minmax(0, 1fr);
 }
 
 .rail {
@@ -229,12 +229,23 @@ textarea {
 }
 .rail-link {
   position: relative;
-  width: 48px;
-  height: 48px;
+  width: 76px;
+  padding: 8px 2px 6px;
   border-radius: 12px;
-  display: grid;
-  place-items: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
   color: var(--rail-icon);
+  text-align: center;
+  text-decoration: none;
+}
+/* Simgenin altında adı: yalnızca simgelerden hangisinin ne olduğu anlaşılmıyordu. */
+.rail-label {
+  font-size: 11px;
+  line-height: 1.15;
+  font-weight: 500;
+  overflow-wrap: anywhere;
 }
 .rail-link:hover {
   color: #ffffff;
@@ -516,7 +527,7 @@ textarea {
 .waiting-actions-left { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
 .link-button { background: none; border: 0; padding: 0; font: inherit; font-weight: 600; color: var(--accent); text-decoration: underline; cursor: pointer; }
 .rail-link, .bottom-nav a { position: relative; }
-.nav-badge { position: absolute; top: 2px; right: 2px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: var(--danger); color: #fff; font-size: 11px; font-weight: 700; line-height: 18px; text-align: center; }
+.nav-badge { position: absolute; top: 4px; right: 14px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: var(--danger); color: #fff; font-size: 11px; font-weight: 700; line-height: 18px; text-align: center; }
 .bottom-nav .nav-badge { top: 4px; right: calc(50% - 22px); }
 .conversation-closed { margin: 0; padding: 12px 16px; border-top: 1px solid var(--border); font-size: 13px; color: var(--muted); }
 .chat-bubble { max-width: 88%; padding: 10px 14px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 12px; align-self: flex-start; }

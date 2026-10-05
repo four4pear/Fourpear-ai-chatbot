@@ -169,7 +169,7 @@ describe("menü ve oturum", () => {
     await screen.findByRole("heading", { name: "İstatistik" });
     const menu = screen.getByRole("navigation", { name: "Ana menü" });
     const link = await within(menu).findByRole("link", { name: "Bekleyenler (3 iş bekliyor)" });
-    expect(link.textContent).toBe("3");
+    expect(link.textContent).toBe("Bekleyenler3"); // simge altındaki ad + sayı rozeti
     expect(requests.some((r) => r.path === "/tenants/t1/waiting-count")).toBe(true);
   });
 
