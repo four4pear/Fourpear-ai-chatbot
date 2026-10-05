@@ -2,6 +2,7 @@ import { TestPage } from "./pages/TestPage";
 import { WaitingPage } from "./pages/WaitingPage";
 import { ConversationPage, ConversationsPage } from "./pages/ConversationsPage";
 import { UsagePage } from "./pages/UsagePage";
+import { SettingsPage } from "./pages/SettingsPage";
 import type { Me } from "./api";
 import { AdminPage, ComingSoon, Forbidden, NoStore, NotFound } from "./pages/SimplePages";
 import { LoginPage } from "./pages/LoginPage";
@@ -88,6 +89,8 @@ function Routes() {
           <WaitingPage key={store.tenantId} store={store} />
         ) : section.key === "istatistik" ? (
           <UsagePage key={store.tenantId} store={store} />
+        ) : section.key === "ayarlar" ? (
+          <SettingsPage key={store.tenantId} store={store} />
         ) : section.key === "sohbetler" ? (
           <ConversationsPage key={store.tenantId} store={store} />
         ) : (

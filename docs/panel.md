@@ -68,3 +68,6 @@ Lina'nın cevabı WhatsApp'a gönderilemediyse bildirim her durumda önemlidir v
 - Mağazanın bütün ekibi görür (çalışan dahil); herkes "Tamamlandı" diyebilir, kimin kapattığı görünür.
 - API: `GET /api/tenants/:id/notifications?filter=important&status=open|done`, `POST /api/tenants/:id/notifications/:nid/done`, `POST …/:nid/reopen`, `GET /api/tenants/:id/waiting-count`. Konuşma ayrıntısında o konuşmanın bildirimleri de gelir.
 - Canlı olaylar: `notification` (yeni; `important` alanıyla, sesli uyarı buna göre), `notification_update` (tamamlandı ya da açık bildirim güncellendi).
+
+## Ayarlar
+Yalnızca mağaza sahibi. Şimdilik **Lina'yı aç/kapat** (acil durdurma): kapalıyken Lina hiçbir müşteriye cevap vermez, mesajlar panelde görünür, ekip konuşmaları devralıp yazabilir; açılınca yalnızca yeni mesajlara cevap verilir. API: `GET/PATCH /api/tenants/:id/settings`. Mesai saatleri, Lina'ya notlar, sabit metinler, günlük sınır ve ekip yönetimi sonraki adımlarda.

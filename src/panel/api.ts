@@ -13,6 +13,7 @@ import { NOTIFICATION_LABELS, registerNotificationRoutes } from "./notifications
 import { registerLessonRoutes } from "./lessons.js";
 import { registerTeamQuestionRoutes } from "./team-questions.js";
 import { registerUsageRoutes } from "./usage.js";
+import { registerSettingsRoutes } from "./settings.js";
 import {
   AuthError,
   SESSION_TTL_MS,
@@ -327,6 +328,7 @@ export function registerPanelApi(app: Express, deps: PanelApiDeps) {
   registerLessonRoutes(api, deps, { requireUser, requireTenant });
   registerTeamQuestionRoutes(api, deps, { requireUser, requireTenant });
   registerUsageRoutes(api, deps, { requireUser, requireTenant });
+  registerSettingsRoutes(api, deps, { requireUser, requireTenant });
 
   api.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
     deps.log.error("Panel API hatası", err);

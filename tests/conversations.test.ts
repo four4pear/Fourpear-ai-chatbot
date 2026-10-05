@@ -276,6 +276,19 @@ describe("panel: konuşmayı devralma, yazma, Lina'ya geri verme", () => {
     expect(body.expertCalls).toMatchObject([{ agent: "returns", question: "İade?", answer: "14 gün." }]);
   });
 
+  it("ayarlar: yalnızca sahip Lina'yı kapatıp açabilir; kapalıyken ayar kalıcıdır", async () => {
+    const url = `/api/tenants/${tenantA}/settings`;
+    expect((await call("zeynep", "GET", url)).status).toBe(403);
+    expect((await call("zeynep", "PATCH", url, { botEnabled: false })).status).toBe(403);
+    expect((await call("sahip", "PATCH", url, { botEnabled: "evet" })).status).toBe(400);
+    expect((await call("sahip", "GET", url)).body).toEqual({ botEnabled: true });
+    expect((await call("sahip", "PATCH", url, { botEnabled: false })).body).toEqual({ botEnabled: false });
+    expect((await call("sahip", "GET", url)).body).toEqual({ botEnabled: false });
+    const [t] = await database.db.select().from(tenants).where(eq(tenants.id, tenantA));
+    expect(t!.settings).toMatchObject({ botEnabled: false, dailyMessageLimit: 200 }); // diğer ayarlar korunur
+    expect((await call("sahip", "PATCH", url, { botEnabled: true })).body).toEqual({ botEnabled: true });
+  });
+
   it("başka mağazanın konuşması devralınamaz, yazılamaz, geri verilemez", async () => {
     const other = `/api/tenants/${tenantA}/conversations/${ids.other}`;
     expect((await call("sahip", "POST", `${other}/takeover`)).status).toBe(404);
