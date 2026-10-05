@@ -13,6 +13,8 @@ import { returnsProviderFor } from "./returns/provider.js";
 import { shopifyApps } from "./shopify/apps.js";
 import { createShopifyApi } from "./shopify/client.js";
 import { createWhatsAppClient } from "./whatsapp/client.js";
+import { createRoutingSender } from "./whatsapp/routing.js";
+import { createZernioClient } from "./whatsapp/zernio.js";
 import { EventBus } from "./core/events.js";
 import { groqTranscriber } from "./core/transcribe.js";
 import { botClosedByHours, findUnansweredConversations, type Deps } from "./core/conversation.js";
@@ -55,7 +57,7 @@ const deps: Deps = {
   db,
   events,
   llm: llmFromClient(new Anthropic({ apiKey: config.ANTHROPIC_API_KEY })),
-  wa: createWhatsAppClient(config.GRAPH_API_VERSION),
+  wa: createRoutingSender(createWhatsAppClient(config.GRAPH_API_VERSION), createZernioClient({ baseUrl: config.ZERNIO_API_URL, log: console })),
   model: config.CLAUDE_MODEL,
   masterKey: config.MASTER_KEY,
   historyLimit: config.HISTORY_LIMIT,
@@ -197,8 +199,9 @@ void openPendingByHours().catch((err) => console.error("Mesai kontrolü", err));
 const server = app.listen(config.PORT, () => {
   console.log(`Sunucu hazır: http://localhost:${config.PORT} (webhook: /webhook/whatsapp, model: ${config.CLAUDE_MODEL})`);
   if (!whatsappConfigured(config)) {
-    console.warn("WhatsApp ayarları (WHATSAPP_APP_SECRET, WHATSAPP_VERIFY_TOKEN) eksik: WhatsApp webhook'u kapalı, panel çalışır.");
+    console.warn("Meta WhatsApp ayarları (WHATSAPP_APP_SECRET, WHATSAPP_VERIFY_TOKEN) eksik: /webhook/whatsapp kapalı, panel çalışır.");
   }
+  if (!config.ZERNIO_WEBHOOK_SECRET) console.warn("ZERNIO_WEBHOOK_SECRET eksik: /webhook/zernio kapalı.");
 });
 
 async function shutdown() {

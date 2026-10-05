@@ -27,6 +27,7 @@ import { encryptSecret } from "../src/lib/crypto.js";
 import type { WhatsAppSender } from "../src/whatsapp/client.js";
 
 const APP_SECRET = "test-secret";
+const ZERNIO_SECRET = "zernio-test-secret";
 const VERIFY_TOKEN = "verify-me";
 const MASTER_KEY = randomBytes(32).toString("base64");
 const PHONE_NUMBER_ID = "111222333";
@@ -85,11 +86,14 @@ const toolUse = (name: string, input: unknown) =>
   message([{ type: "tool_use", id: `toolu_${name}`, name, input } as Anthropic.ToolUseBlock], "tool_use");
 
 const sent: { to: string; text: string; token: string }[] = [];
+/** Zernio hatlarında cevabın hangi konuşma kimliğiyle gittiği. */
+const chatRefs: (string | undefined)[] = [];
 /** Her gelen mesaj için "yazıyor…" gösterildi mi (okundu her durumda gider). */
 const typing: boolean[] = [];
 const fakeWa: WhatsAppSender = {
-  async sendText({ to, text, accessToken }) {
+  async sendText({ to, text, accessToken, chatRef }) {
     sent.push({ to, text, token: accessToken });
+    chatRefs.push(chatRef);
     return [`wamid.out.${sent.length}`];
   },
   async markReadAndTyping(opts) {
@@ -129,7 +133,7 @@ beforeAll(async () => {
     replyDelayOverrideMs: 0,
   };
   appDeps = deps;
-  const created = createApp({ WHATSAPP_APP_SECRET: APP_SECRET, WHATSAPP_VERIFY_TOKEN: VERIFY_TOKEN }, deps);
+  const created = createApp({ WHATSAPP_APP_SECRET: APP_SECRET, WHATSAPP_VERIFY_TOKEN: VERIFY_TOKEN, ZERNIO_WEBHOOK_SECRET: ZERNIO_SECRET }, deps);
   queue = created.queue;
   scheduler = created.scheduler;
   server = created.app.listen(0);
@@ -154,6 +158,11 @@ beforeAll(async () => {
     phoneNumberId: PHONE_NUMBER_ID,
     accessTokenEnc: encryptSecret("EAAG-maius", MASTER_KEY),
   });
+  await database.db.insert(whatsappAccounts).values({
+    tenantId,
+    phoneNumberId: "zernio:acc1",
+    accessTokenEnc: encryptSecret("sk_zernio", MASTER_KEY),
+  });
 });
 
 afterAll(async () => {
@@ -175,6 +184,7 @@ async function setSettings(patch: Partial<TenantSettings>) {
 
 beforeEach(async () => {
   sent.length = 0;
+  chatRefs.length = 0;
   typing.length = 0;
   linaCalls.length = 0;
   llmMode = "normal";
@@ -242,6 +252,64 @@ describe("webhook doğrulama", () => {
       expect((await fetch(`${url}/webhook/whatsapp?hub.mode=subscribe&hub.verify_token=&hub.challenge=1`)).status).toBe(503);
       expect((await fetch(`${url}/webhook/whatsapp`, { method: "POST", body: "{}" })).status).toBe(503);
       expect((await fetch(`${url}/health`)).status).toBe(200);
+    } finally {
+      off.close();
+    }
+  });
+});
+
+describe("Zernio webhook'u", () => {
+  let zSeq = 0;
+  const zernioBody = (over: Record<string, unknown> = {}, message: Record<string, unknown> = {}) => ({
+    id: `evt-${++zSeq}`,
+    event: "message.received",
+    account: { accountId: "acc1" },
+    conversation: { id: "conv-1" },
+    message: { id: `zmsg-${zSeq}`, text: "merhaba", platform: "whatsapp", sender: { id: CUSTOMER, name: "Ayşe" }, timestamp: "2026-09-25T09:00:00Z", ...message },
+    ...over,
+  });
+  async function postZernio(body: unknown, secret = ZERNIO_SECRET) {
+    const raw = JSON.stringify(body);
+    const sig = createHmac("sha256", secret).update(raw).digest("hex");
+    const res = await fetch(`${baseUrl}/webhook/zernio`, { method: "POST", headers: { "content-type": "application/json", "x-zernio-signature": sig }, body: raw });
+    await queue.idle();
+    await scheduler.idle();
+    return res.status;
+  }
+
+  it("imzalı mesaj cevaplanır: cevap Zernio anahtarı ve konuşma kimliğiyle gider, kimlik saklanır", async () => {
+    expect(await postZernio(zernioBody())).toBe(200);
+    expect(sent).toEqual([{ to: CUSTOMER, text: "Merhaba, nasıl yardımcı olabilirim?", token: "sk_zernio" }]);
+    expect(chatRefs).toEqual(["conv-1"]);
+    const [customer] = await database.db.select().from(customers);
+    expect(customer).toMatchObject({ waId: CUSTOMER, name: "Ayşe", channelRef: "conv-1" });
+  });
+
+  it("yanlış imza 401, işlem yok", async () => {
+    expect(await postZernio(zernioBody(), "yanlis")).toBe(401);
+    expect(sent).toHaveLength(0);
+  });
+
+  it("aynı olay iki kez gelirse tek cevap verilir", async () => {
+    const body = zernioBody();
+    await postZernio(body);
+    await postZernio(body);
+    expect(sent).toHaveLength(1);
+  });
+
+  it("WhatsApp dışı platform ve başka olaylar sessizce geçilir", async () => {
+    expect(await postZernio(zernioBody({}, { platform: "instagram" }))).toBe(200);
+    expect(await postZernio(zernioBody({ event: "message.delivered" }))).toBe(200);
+    expect(sent).toHaveLength(0);
+    expect(await database.db.select().from(messages)).toHaveLength(0);
+  });
+
+  it("sır girilmemişse kapalı (503)", async () => {
+    const { app } = createApp({ WHATSAPP_APP_SECRET: "x", WHATSAPP_VERIFY_TOKEN: "y" }, { log: { info() {}, warn() {}, error() {} } } as unknown as Deps);
+    const off = app.listen(0);
+    try {
+      const url = `http://127.0.0.1:${(off.address() as AddressInfo).port}`;
+      expect((await fetch(`${url}/webhook/zernio`, { method: "POST", body: "{}" })).status).toBe(503);
     } finally {
       off.close();
     }

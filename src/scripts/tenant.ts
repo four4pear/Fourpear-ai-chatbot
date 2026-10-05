@@ -4,6 +4,8 @@
  *   npm run tenant -- upsert --slug maius --name MAIUS --domain maiusonline.com \
  *     --hours "1,2,3,4,5,6 10:00-17:00" [--notes "Bu hafta kargoda gecikme var"]
  *   npm run tenant -- whatsapp --slug maius --phone-number-id 123   (anahtar gizli sorulur)
+ *   npm run tenant -- zernio --slug maius [--account-id abc]   (Zernio üzerinden WhatsApp; API anahtarı gizli sorulur)
+ *   npm run tenant -- zernio-webhook [--url https://.../webhook/zernio]   (Zernio'ya webhook adresini kaydeder)
  *   npm run tenant -- shopify-app --slug maius --shop maius.myshopify.com --client-id abc123
  *        (mağazaya özel Shopify uygulaması; Client secret gizli sorulur)
  *   npm run tenant -- shopify-link --slug maius --shop maius.myshopify.com
@@ -60,6 +62,8 @@ import { createInstallToken, isValidShopDomain } from "../shopify/oauth.js";
 import { currentTexts, recordSnapshot, refreshCampaignDoc, versionsByTitle, type RecordResult } from "../archive/archive.js";
 import { parseProductsJson, productSnapshot, siteTextsOf } from "../archive/storefront.js";
 import { archiveTenant, describeRun } from "../archive/sync.js";
+import { ZERNIO_PREFIX } from "../whatsapp/zernio.js";
+import { listZernioAccounts, registerZernioWebhook } from "../whatsapp/zernio-admin.js";
 
 const [command, ...rest] = process.argv.slice(2);
 const { values: args } = parseArgs({
@@ -72,6 +76,7 @@ const { values: args } = parseArgs({
     notes: { type: "string" },
     hours: { type: "string" },
     "phone-number-id": { type: "string" },
+    "account-id": { type: "string" },
     token: { type: "string" },
     "display-phone": { type: "string" },
     shop: { type: "string" },
@@ -245,6 +250,39 @@ try {
     };
     await db.insert(whatsappAccounts).values(values).onConflictDoUpdate({ target: whatsappAccounts.phoneNumberId, set: values });
     console.log(`WhatsApp numarası ${values.phoneNumberId} → ${tenant.slug} mağazasına bağlandı`);
+  } else if (command === "zernio") {
+    // Zernio'daki WhatsApp hesabını mağazaya bağlar. API anahtarı gizli sorulur (kabuk geçmişine düşmez).
+    const tenant = await tenantBySlug();
+    const apiKey = await promptSecret("Zernio API anahtarı (yazdığınız görünmez, sonra Enter): ");
+    if (!apiKey) throw new Error("API anahtarı boş olamaz");
+    let accountId = args["account-id"];
+    if (!accountId) {
+      const whatsapp = (await listZernioAccounts(apiKey, { baseUrl: config.ZERNIO_API_URL })).filter((a) => a.platform === "whatsapp");
+      if (whatsapp.length === 0) throw new Error("Bu anahtarın bağlı bir WhatsApp hesabı yok (Zernio'da önce numarayı bağlayın)");
+      if (whatsapp.length > 1) {
+        for (const a of whatsapp) console.log(`  ${a.id}  ${a.name}`);
+        throw new Error("Birden çok WhatsApp hesabı var: hangisi olacaksa --account-id ile yazın");
+      }
+      accountId = whatsapp[0]!.id;
+      console.log(`WhatsApp hesabı bulundu: ${whatsapp[0]!.name || accountId}`);
+    }
+    const values = {
+      tenantId: tenant.id,
+      phoneNumberId: ZERNIO_PREFIX + accountId,
+      accessTokenEnc: encryptSecret(apiKey, config.MASTER_KEY),
+      displayPhone: args["display-phone"] ?? null,
+    };
+    await db.insert(whatsappAccounts).values(values).onConflictDoUpdate({ target: whatsappAccounts.phoneNumberId, set: values });
+    console.log(`Zernio hesabı ${accountId} → ${tenant.slug} mağazasına bağlandı`);
+  } else if (command === "zernio-webhook") {
+    // Sır sunucunun ortamından (ZERNIO_WEBHOOK_SECRET) okunur; API anahtarı gizli sorulur.
+    const secret = config.ZERNIO_WEBHOOK_SECRET;
+    if (!secret) throw new Error("ZERNIO_WEBHOOK_SECRET ayarlı değil (Railway → Variables)");
+    const url = args.url ?? `${publicUrl()}/webhook/zernio`;
+    const apiKey = await promptSecret("Zernio API anahtarı (yazdığınız görünmez, sonra Enter): ");
+    if (!apiKey) throw new Error("API anahtarı boş olamaz");
+    await registerZernioWebhook(apiKey, { baseUrl: config.ZERNIO_API_URL, url, secret });
+    console.log(`Zernio webhook'u kaydedildi: ${url}`);
   } else if (command === "shopify-app") {
     // Mağazaya özel Shopify uygulaması (özel dağıtım). Client secret gizli sorulur; komut satırında dolaşmaz.
     const tenant = await tenantBySlug();

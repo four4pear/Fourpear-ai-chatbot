@@ -7,10 +7,11 @@ import { registerShopifyRoutes, type ShopifyRouteDeps } from "./shopify/routes.j
 import { registerPanelApi, type PanelApiDeps } from "./panel/api.js";
 import { DEFAULT_PANEL_DIST, registerPanelStatic } from "./panel/static.js";
 import { isValidSignature } from "./whatsapp/signature.js";
-import { extractInboundEvents, type WaWebhookPayload } from "./whatsapp/types.js";
+import { extractInboundEvents, type InboundEvent, type WaWebhookPayload } from "./whatsapp/types.js";
+import { isValidZernioSignature, zernioToInbound, type ZernioWebhookPayload } from "./whatsapp/zernio.js";
 
 export function createApp(
-  config: Pick<Config, "WHATSAPP_APP_SECRET" | "WHATSAPP_VERIFY_TOKEN">,
+  config: Pick<Config, "WHATSAPP_APP_SECRET" | "WHATSAPP_VERIFY_TOKEN"> & Partial<Pick<Config, "ZERNIO_WEBHOOK_SECRET">>,
   deps: Deps,
   shopify?: ShopifyRouteDeps,
   panel?: PanelApiDeps,
@@ -67,7 +68,46 @@ export function createApp(
 
     // Meta hızlı 200 bekler; işleme arka planda devam eder.
     res.sendStatus(200);
-    for (const event of extractInboundEvents(payload)) {
+    dispatch(extractInboundEvents(payload));
+  });
+
+  // Zernio üzerinden bağlı hatlar: aynı alma hattına Meta biçimine çevrilmiş olay verilir.
+  const zernioOff = (_req: express.Request, res: express.Response, next: express.NextFunction) => {
+    if (config.ZERNIO_WEBHOOK_SECRET) return next();
+    res.status(503).json({ error: "Zernio henüz ayarlanmadı (ZERNIO_WEBHOOK_SECRET)" });
+  };
+  app.post("/webhook/zernio", zernioOff, express.raw({ type: "*/*", limit: "1mb" }), (req, res) => {
+    const raw = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
+    if (!isValidZernioSignature(raw, req.get("x-zernio-signature"), config.ZERNIO_WEBHOOK_SECRET!)) {
+      res.sendStatus(401);
+      return;
+    }
+    let payload: ZernioWebhookPayload;
+    try {
+      payload = JSON.parse(raw.toString("utf8"));
+    } catch {
+      res.sendStatus(400);
+      return;
+    }
+    // Zernio 5 sn içinde 2xx bekler, yoksa yeniden dener; işleme arka planda devam eder.
+    res.sendStatus(200);
+    const event = zernioToInbound(payload);
+    if (event) dispatch([event]);
+    else if (payload.event === "message.received" && payload.message?.platform?.toLowerCase() === "whatsapp") {
+      // Beklenmedik biçim: içerik (telefon, metin) yazılmadan yalnızca eksik alanlar kaydedilir.
+      const m = payload.message;
+      const missing = [
+        !(payload.account?.accountId ?? payload.account?.id) && "account",
+        !payload.conversation?.id && "conversation.id",
+        !m.sender?.id && "sender.id",
+        !m.id && "message.id",
+      ].filter(Boolean);
+      deps.log.warn(`Zernio WhatsApp mesajı işlenemedi (eksik: ${missing.join(", ") || "gönderen kimliği telefon numarası değil"})`);
+    }
+  });
+
+  function dispatch(events: InboundEvent[]) {
+    for (const event of events) {
       queue.push(`${event.phoneNumberId}:${event.message.from}`, async () => {
         const result = await ingestInbound(deps, event);
         deps.log.info(`[${event.phoneNumberId}] ${event.message.from} ${event.message.type} → ${result.outcome}`);
@@ -82,7 +122,7 @@ export function createApp(
         // hazırlanan cevap iptal edilmez (müşteri cevapsız kalmasın).
       });
     }
-  });
+  }
 
   if (shopify) registerShopifyRoutes(app, shopify);
   if (panel) {

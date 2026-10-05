@@ -109,7 +109,7 @@ const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 /** Token maliyetini sınırlamak için geçmişte görsel olarak gönderilecek son fotoğraf sayısı. */
 const MAX_IMAGES_IN_HISTORY = 3;
 
-export type WaTarget = { phoneNumberId: string; accessToken: string; to: string };
+export type WaTarget = { phoneNumberId: string; accessToken: string; to: string; /** Zernio konuşma kimliği (Meta'da boş). */ chatRef?: string };
 
 /**
  * WhatsApp'tan gelen bir müşteri mesajını alır: kaydeder, okundu + "yazıyor…" gösterir,
@@ -133,7 +133,7 @@ export async function ingestInbound(deps: Deps, event: InboundEvent): Promise<In
   const settings = resolveSettings(tenant.settings);
   const { message } = event;
 
-  const conversation = await findOrCreateConversation(db, tenant, account, message.from, event.contactName);
+  const conversation = await findOrCreateConversation(db, tenant, account, message.from, event.contactName, event.chatRef);
   const conversationId = conversation.id;
 
   const inserted = await db
@@ -165,7 +165,7 @@ export async function ingestInbound(deps: Deps, event: InboundEvent): Promise<In
     .where(eq(conversations.id, conversationId));
 
   const accessToken = decryptSecret(account.accessTokenEnc, deps.masterKey);
-  const wa: WaTarget = { phoneNumberId: account.phoneNumberId, accessToken, to: message.from };
+  const wa: WaTarget = { phoneNumberId: account.phoneNumberId, accessToken, to: message.from, chatRef: event.chatRef };
   // Lina cevap vermeyecekse (kapalı, ekipte ya da günlük sınır aşıldı) "yazıyor…" gösterilmez:
   // müşteri cevap bekleyip boşa kalmasın. Mesaj yine okundu işaretlenir.
   const limit = settings.dailyMessageLimit;
@@ -230,14 +230,14 @@ export async function respond(deps: Deps, conversationId: string, ctl: RespondCo
   const now = deps.now?.() ?? new Date();
 
   const [row] = await db
-    .select({ conversation: conversations, tenant: tenants, account: whatsappAccounts, waId: customers.waId })
+    .select({ conversation: conversations, tenant: tenants, account: whatsappAccounts, waId: customers.waId, chatRef: customers.channelRef })
     .from(conversations)
     .innerJoin(tenants, eq(tenants.id, conversations.tenantId))
     .innerJoin(whatsappAccounts, eq(whatsappAccounts.id, conversations.whatsappAccountId))
     .innerJoin(customers, eq(customers.id, conversations.customerId))
     .where(eq(conversations.id, conversationId));
   if (!row) return "gone";
-  const { conversation, tenant, account, waId } = row;
+  const { conversation, tenant, account, waId, chatRef } = row;
   const settings = resolveSettings(tenant.settings);
   if (!settings.botEnabled) return "bot_disabled";
   if (conversation.status === "human") return "human_mode";
@@ -251,6 +251,7 @@ export async function respond(deps: Deps, conversationId: string, ctl: RespondCo
     phoneNumberId: account.phoneNumberId,
     accessToken: decryptSecret(account.accessTokenEnc, deps.masterKey),
     to: waId,
+    chatRef: chatRef ?? undefined,
   };
   // Hazırlanırken yeni mesaj geldiyse ya da ekip devraldıysa bu cevap artık gönderilmez.
   const stillOurs = async () => {
@@ -473,14 +474,15 @@ async function findOrCreateConversation(
   account: WhatsappAccount,
   waId: string,
   name: string | undefined,
+  chatRef?: string,
 ): Promise<Conversation> {
   const [customer] = await db
     .insert(customers)
-    .values({ tenantId: tenant.id, waId, name })
+    .values({ tenantId: tenant.id, waId, name, channelRef: chatRef })
     .onConflictDoUpdate({
       target: [customers.tenantId, customers.waId],
-      // İsim gelmediyse mevcut ismi koru.
-      set: name ? { name } : { waId },
+      // İsim ya da konuşma kimliği gelmediyse mevcut olan korunur.
+      set: { waId, ...(name ? { name } : {}), ...(chatRef ? { channelRef: chatRef } : {}) },
     })
     .returning();
 
@@ -741,7 +743,7 @@ export async function deliverText(
 /** Konuşmanın WhatsApp hedefi: hangi numaradan, hangi müşteriye (token çözülmüş). */
 export async function waTargetFor(db: DB, masterKey: string, conversationId: string): Promise<WaTarget> {
   const [row] = await db
-    .select({ account: whatsappAccounts, waId: customers.waId })
+    .select({ account: whatsappAccounts, waId: customers.waId, chatRef: customers.channelRef })
     .from(conversations)
     .innerJoin(whatsappAccounts, eq(whatsappAccounts.id, conversations.whatsappAccountId))
     .innerJoin(customers, eq(customers.id, conversations.customerId))
@@ -751,5 +753,6 @@ export async function waTargetFor(db: DB, masterKey: string, conversationId: str
     phoneNumberId: row.account.phoneNumberId,
     accessToken: decryptSecret(row.account.accessTokenEnc, masterKey),
     to: row.waId,
+    chatRef: row.chatRef ?? undefined,
   };
 }

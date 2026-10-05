@@ -27,6 +27,8 @@ export type InboundEvent = {
   phoneNumberId: string;
   message: WaIncomingMessage;
   contactName?: string;
+  /** Aracı servisteki (Zernio) konuşma kimliği; cevap bununla gönderilir. */
+  chatRef?: string;
 };
 
 /** Webhook yükünden müşteri mesajlarını çıkarır; teslim/okundu durumlarını atlar. */

@@ -119,6 +119,8 @@ export const customers = pgTable(
     /** WhatsApp numarası (sadece rakam, ülke koduyla), ör. 905321234567 */
     waId: text("wa_id").notNull(),
     name: text("name"),
+    /** Aracı servisteki (Zernio) konuşma kimliği; cevap bununla gönderilir. Meta'da boştur. */
+    channelRef: text("channel_ref"),
     createdAt: createdAt(),
   },
   (t) => [uniqueIndex("customers_tenant_wa_idx").on(t.tenantId, t.waId)],

@@ -176,6 +176,21 @@ Shopify sayfa/politika değişikliği için bildirim göndermediğinden bilgiler
 
 **Gerçek numara:** Başka bir WhatsApp hesabında kayıtlı olmayan bir numara ekleyin, işletme doğrulamasını ve görünen ad onayını tamamlayın.
 
+## Zernio ile WhatsApp (aracı servis)
+
+Meta işletme doğrulaması beklemeden bağlanmak için [Zernio](https://zernio.com) kullanılabilir (Meta'nın resmi yolunu aracılık eder). Meta kodu aynen durur; hat hangi yolla bağlıysa o yoldan konuşur (`src/whatsapp/routing.ts`).
+
+1. Zernio'da hesap açın, WhatsApp numarasını bağlayın (Embedded Signup ya da WhatsApp Business uygulamasında QR) ve **API anahtarı** üretin (anahtar bir daha gösterilmez).
+2. Railway → Variables: `ZERNIO_WEBHOOK_SECRET` = kendiniz belirlediğiniz uzun rastgele metin (`openssl rand -hex 24`).
+3. Sunucuda (`railway ssh`):
+   ```bash
+   node dist/scripts/tenant.js zernio-webhook                 # Zernio'ya webhook adresini kaydeder (API anahtarı gizli sorulur)
+   node dist/scripts/tenant.js zernio --slug betulsaday       # WhatsApp hesabını mağazaya bağlar (anahtar gizli sorulur)
+   ```
+4. Webhook adresi: `https://<sunucu>/webhook/zernio`; olaylar `X-Zernio-Signature` (HMAC-SHA256, hex) ile doğrulanır.
+
+Zernio hattında hesap `zernio:<hesap kimliği>` olarak saklanır, API anahtarı şifreli tutulur; cevap için gereken konuşma kimliği `customers.channel_ref` alanındadır. Zernio'nun "yazıyor…" ucu belgelerde ayrıntılı olmadığı için reddedilirse bir kez uyarı verilip bırakılır.
+
 ## Davranış kuralları
 
 Tamamı [docs/lina-davranis.md](docs/lina-davranis.md) içinde; kod bu belgeye göre yazılır. Özet:

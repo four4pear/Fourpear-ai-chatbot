@@ -23,6 +23,12 @@ const schema = z.object({
   WHATSAPP_APP_SECRET: z.string().optional(),
   WHATSAPP_VERIFY_TOKEN: z.string().optional(),
   GRAPH_API_VERSION: z.string().default("v23.0"),
+  /**
+   * Zernio (aracı servis) webhook'u: kayıtta kendi belirlediğimiz sır; gelen olayların imzası bununla
+   * doğrulanır. Boşsa Zernio webhook'u kapalıdır.
+   */
+  ZERNIO_WEBHOOK_SECRET: z.string().optional(),
+  ZERNIO_API_URL: z.string().url().default("https://zernio.com/api/v1"),
   /** Konuşma geçmişinden Claude'a gönderilecek son mesaj sayısı. */
   HISTORY_LIMIT: z.coerce.number().default(20),
   TZ: z.string().default("Europe/Istanbul"),
