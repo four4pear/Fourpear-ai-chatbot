@@ -2,9 +2,9 @@ import { replySummary, simulate, type SimulationMode } from "./simulator.js";
 import { DEMO_SCENARIOS } from "../orders/demo.js";
 import type { Deps } from "../core/conversation.js";
 import express, { type Express, type NextFunction, type Request, type Response } from "express";
-import { and, eq, ne } from "drizzle-orm";
+import { and, count, eq, gt, isNull, ne } from "drizzle-orm";
 import type { DB } from "../db/client.js";
-import { agentRuns, memberships, tenants, users, type MemberRole, type User } from "../db/schema.js";
+import { agentRuns, authTokens, memberships, sessions, tenants, users, type MemberRole, type User } from "../db/schema.js";
 import { FailureLimiter } from "../auth/rate-limit.js";
 import type { EventBus } from "../core/events.js";
 import type { WhatsAppSender } from "../whatsapp/client.js";
@@ -229,7 +229,47 @@ export function registerPanelApi(app: Express, deps: PanelApiDeps) {
       .innerJoin(users, eq(users.id, memberships.userId))
       .where(eq(memberships.tenantId, param(req, "tenantId")))
       .orderBy(users.name);
-    res.json({ members: rows });
+    // Bekleyen davetler: gönderilmiş ama henüz kabul edilmemiş ve süresi dolmamış.
+    const invites = await db
+      .select({ id: authTokens.id, email: authTokens.email, role: authTokens.role, expiresAt: authTokens.expiresAt })
+      .from(authTokens)
+      .where(and(eq(authTokens.tenantId, param(req, "tenantId")), eq(authTokens.kind, "invite"), isNull(authTokens.usedAt), gt(authTokens.expiresAt, new Date())))
+      .orderBy(authTokens.createdAt);
+    res.json({ members: rows, invites });
+  });
+
+  /** Bekleyen daveti iptal eder: link artık çalışmaz. */
+  api.delete("/tenants/:tenantId/invites/:inviteId", requireUser, requireTenant("owner"), async (req, res) => {
+    const inviteId = param(req, "inviteId");
+    if (!isUuid(inviteId)) return res.status(404).json({ error: "Davet bulunamadı" });
+    const deleted = await db
+      .delete(authTokens)
+      .where(and(eq(authTokens.id, inviteId), eq(authTokens.tenantId, param(req, "tenantId")), eq(authTokens.kind, "invite"), isNull(authTokens.usedAt)))
+      .returning({ id: authTokens.id });
+    if (!deleted.length) return res.status(404).json({ error: "Davet bulunamadı" });
+    res.json({ ok: true });
+  });
+
+  /**
+   * Ekipten çıkarır: erişim hemen kapanır (her istekte üyelik kontrol edilir). Kendini ve mağazanın son
+   * sahibini çıkaramazsınız. Başka mağazası kalmayan kişinin oturumları da silinir.
+   */
+  api.delete("/tenants/:tenantId/members/:userId", requireUser, requireTenant("owner"), async (req, res) => {
+    const tenantId = param(req, "tenantId");
+    const userId = param(req, "userId");
+    const requester = (res.locals as Locals).user!;
+    if (!isUuid(userId)) return res.status(404).json({ error: "Bu mağazada böyle bir kullanıcı yok" });
+    if (userId === requester.id) return res.status(409).json({ error: "Kendinizi ekipten çıkaramazsınız." });
+    const [member] = await db.select().from(memberships).where(and(eq(memberships.tenantId, tenantId), eq(memberships.userId, userId)));
+    if (!member) return res.status(404).json({ error: "Bu mağazada böyle bir kullanıcı yok" });
+    if (member.role === "owner") {
+      const [owners] = await db.select({ n: count() }).from(memberships).where(and(eq(memberships.tenantId, tenantId), eq(memberships.role, "owner")));
+      if ((owners?.n ?? 0) <= 1) return res.status(409).json({ error: "Mağazanın son sahibi çıkarılamaz." });
+    }
+    await db.delete(memberships).where(eq(memberships.id, member.id));
+    const [left] = await db.select({ n: count() }).from(memberships).where(eq(memberships.userId, userId));
+    if (!left?.n) await db.delete(sessions).where(eq(sessions.userId, userId));
+    res.json({ ok: true });
   });
 
   api.post("/tenants/:tenantId/invites", requireUser, requireTenant("owner"), async (req, res) => {

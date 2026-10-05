@@ -563,3 +563,15 @@ textarea {
 .settings-times { display: flex; gap: 16px; flex-wrap: wrap; }
 .settings-times input { margin-left: 6px; border: 1px solid var(--border-strong); border-radius: 8px; padding: 6px 8px; font: inherit; }
 .settings-check { display: flex; gap: 8px; align-items: center; margin-top: 8px; font-weight: 600; }
+
+.settings-card h3 { margin: 12px 0 0; font-size: 14px; color: var(--muted); }
+.team-list { list-style: none; margin: 0; padding: 0; width: 100%; display: flex; flex-direction: column; gap: 8px; }
+.team-list li { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; padding: 8px 0; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
+.team-actions { display: flex; gap: 8px; }
+.team-actions .btn, .team-list .btn { padding: 6px 12px; font-size: 13px; }
+.team-link { width: 100%; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; padding: 12px; border-radius: 8px; background: var(--accent-tint); }
+.team-link p { margin: 0; }
+.team-link input { width: 100%; box-sizing: border-box; border: 1px solid var(--border-strong); border-radius: 8px; padding: 8px 10px; font: inherit; font-size: 13px; background: var(--surface); }
+.team-invite { display: flex; gap: 8px; flex-wrap: wrap; width: 100%; }
+.team-invite input, .team-invite select { border: 1px solid var(--border-strong); border-radius: 8px; padding: 8px 10px; font: inherit; background: var(--surface); }
+.team-invite input { flex: 1; min-width: 200px; }

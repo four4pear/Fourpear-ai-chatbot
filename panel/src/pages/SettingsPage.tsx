@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, type Membership } from "../api";
+import { useSession } from "../session";
+import { TeamSection } from "./TeamSection";
 
 type Hours = { days: number[]; start: string; end: string };
 type Settings = { botEnabled: boolean; botHoursOnly: boolean; businessHours: Hours };
@@ -18,6 +20,7 @@ export function SettingsPage({ store }: { store: Membership }) {
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const path = `/tenants/${store.tenantId}/settings`;
+  const { me } = useSession();
 
   useEffect(() => {
     api<Settings>(path).then((s) => { setSettings(s); setHours(s.businessHours); }, (e) => setError(e instanceof Error ? e.message : "Ayarlar yüklenemedi"));
@@ -79,6 +82,7 @@ export function SettingsPage({ store }: { store: Membership }) {
           : "Kapalıyken Lina her saat cevap verir; mesai saatleri yalnızca ekibin ne zaman çalıştığını belirtir."}</p>
       </section>
     </>}
-    <p className="hint">Lina'ya notlar, sabit metinler ve ekip yönetimi sonraki adımlarda burada olacak.</p>
+    {me && <TeamSection store={store} userId={me.user.id} />}
+    <p className="hint">Lina'ya notlar ve sabit metinler sonraki adımlarda burada olacak.</p>
   </main>;
 }

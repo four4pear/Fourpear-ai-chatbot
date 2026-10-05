@@ -2,6 +2,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { SettingsPage } from "./SettingsPage";
+vi.mock("../session", () => ({ useSession: () => ({ me: { user: { id: "u1", name: "Serap", email: "s@m.test", isSuperAdmin: false }, memberships: [] } }) }));
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
 const store = { tenantId: "t", slug: "s", name: "Betül Saday", role: "owner" as const };

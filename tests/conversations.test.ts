@@ -299,6 +299,36 @@ describe("panel: konuşmayı devralma, yazma, Lina'ya geri verme", () => {
     expect((await call("sahip", "PATCH", url, { botHoursOnly: true })).body).toMatchObject({ botHoursOnly: true, businessHours: { start: "10:00" } });
   });
 
+  it("ekip: bekleyen davetler listelenir ve iptal edilir; çıkarılan kişinin erişimi hemen kapanır", async () => {
+    const url = `/api/tenants/${tenantA}`;
+    expect((await call("zeynep", "GET", `${url}/members`)).status).toBe(403); // çalışan ekibi göremez
+    const invite = await call("sahip", "POST", `${url}/invites`, { email: "yeni@maius.test", role: "agent" });
+    expect(invite.status).toBe(200);
+    const listed = (await call("sahip", "GET", `${url}/members`)).body;
+    expect(listed.members.map((m: any) => m.name).sort()).toEqual(["Ali", "Serap", "Zeynep"]);
+    expect(listed.invites).toMatchObject([{ email: "yeni@maius.test", role: "agent" }]);
+    const inviteId = listed.invites[0].id;
+    expect((await call("zeynep", "DELETE", `${url}/invites/${inviteId}`)).status).toBe(403);
+    expect((await call("sahip", "DELETE", `${url}/invites/${inviteId}`)).status).toBe(200);
+    expect((await call("sahip", "GET", `${url}/members`)).body.invites).toEqual([]);
+    expect((await call("sahip", "DELETE", `${url}/invites/${inviteId}`)).status).toBe(404);
+
+    // Kendini ve son sahibi çıkaramaz; çalışanı çıkarınca o kişinin bu mağazaya erişimi hemen biter.
+    expect((await call("sahip", "DELETE", `${url}/members/${ids.sahip}`)).status).toBe(409);
+    expect((await call("zeynep", "GET", `${url}/conversations`)).status).toBe(200);
+    expect((await call("zeynep", "DELETE", `${url}/members/${ids.ali}`)).status).toBe(403);
+    expect((await call("sahip", "DELETE", `${url}/members/${ids.zeynep}`)).status).toBe(200);
+    // Başka mağazası olmadığı için oturumu da silinir (401); başka mağazası olsaydı bu mağaza 404 verirdi.
+    expect((await call("zeynep", "GET", `${url}/conversations`)).status).toBe(401);
+    expect((await call("sahip", "DELETE", `${url}/members/${ids.zeynep}`)).status).toBe(404);
+    // Başka mağazanın üyesi bu mağazadan çıkarılamaz.
+    expect((await call("sahip", "DELETE", `/api/tenants/${tenantB}/members/${ids.ali}`)).status).toBe(404);
+    // Test düzeni: zeynep'i geri ekle ve yeniden giriş yaptır.
+    await database.db.insert(memberships).values({ userId: ids.zeynep!, tenantId: tenantA, role: "agent" });
+    const login = await fetch(`${base}/api/auth/login`, { method: "POST", headers: { "content-type": "application/json", origin: ORIGIN }, body: JSON.stringify({ email: "zeynep@maius.test", password: PASSWORD }) });
+    cookies.zeynep = login.headers.get("set-cookie")!.split(";")[0]!;
+  });
+
   it("başka mağazanın konuşması devralınamaz, yazılamaz, geri verilemez", async () => {
     const other = `/api/tenants/${tenantA}/conversations/${ids.other}`;
     expect((await call("sahip", "POST", `${other}/takeover`)).status).toBe(404);
