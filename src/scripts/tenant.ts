@@ -3,7 +3,7 @@
  *
  *   npm run tenant -- upsert --slug maius --name MAIUS --domain maiusonline.com \
  *     --hours "1,2,3,4,5,6 10:00-17:00" [--notes "Bu hafta kargoda gecikme var"]
- *   npm run tenant -- whatsapp --slug maius --phone-number-id 123 --token EAAG...
+ *   npm run tenant -- whatsapp --slug maius --phone-number-id 123   (anahtar gizli sorulur)
  *   npm run tenant -- shopify-app --slug maius --shop maius.myshopify.com --client-id abc123
  *        (mağazaya özel Shopify uygulaması; Client secret gizli sorulur)
  *   npm run tenant -- shopify-link --slug maius --shop maius.myshopify.com
@@ -234,10 +234,13 @@ try {
     }
   } else if (command === "whatsapp") {
     const tenant = await tenantBySlug();
+    // Erişim anahtarı gizli sorulur: komut satırında yazılırsa kabuk geçmişine düşer. (--token hâlâ çalışır.)
+    const token = args.token ?? (await promptSecret("WhatsApp erişim anahtarı (yazdığınız görünmez, sonra Enter): "));
+    if (!token) throw new Error("Erişim anahtarı boş olamaz");
     const values = {
       tenantId: tenant.id,
       phoneNumberId: required("phone-number-id"),
-      accessTokenEnc: encryptSecret(required("token"), config.MASTER_KEY),
+      accessTokenEnc: encryptSecret(token, config.MASTER_KEY),
       displayPhone: args["display-phone"] ?? null,
     };
     await db.insert(whatsappAccounts).values(values).onConflictDoUpdate({ target: whatsappAccounts.phoneNumberId, set: values });
