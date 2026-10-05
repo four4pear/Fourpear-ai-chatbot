@@ -436,6 +436,8 @@ describe("bildirim türü", () => {
   it("doğrulanamayan siparişte yalnızca şikayet önemlidir", () => {
     expect(classifyFindings(f({ topics: ["cancel"], unverified: true }))).toMatchObject({ kind: "unverified", important: false });
     expect(classifyFindings(f({ topics: ["complaint"], unverified: true }))).toMatchObject({ kind: "complaint", important: true });
+    // Müşteri bilgilerini yazdı ama sipariş bulunamadı: ekibin önüne düşer. Yalnızca "ad soyad iste" sessiz kalır.
+    expect(classifyFindings(f({ topics: ["status"], unverified: true, failedIdentity: true }))).toMatchObject({ kind: "order_not_found", important: true });
     expect(classifyFindings(f({ topics: ["return"], orders: verified(false) }))).toMatchObject({ kind: "return_request", important: false });
   });
 

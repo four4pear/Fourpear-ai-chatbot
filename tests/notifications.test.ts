@@ -283,7 +283,10 @@ describe("panel: ekibe bildirimler", () => {
       const lockedTurn = () => Object.assign(newFindings(), { topics: ["status" as const], unverified: true, identityLocked: true });
       await record(4, "MO-9008, adım Merve Şahin", "Doğrulayamadım, kontrol ediyorum.", lockedTurn());
       await record(5, "MO-9009, adım Zehra Çelik", "Doğrulayamadım, kontrol ediyorum.", lockedTurn());
-      const important = (await mine()).filter((n) => n.important);
+      const all = await mine();
+      // Yanlış denemeler "sipariş bulunamadı" kartında toplanır (aynı vaka tek kart), kilit ayrı kartta.
+      expect(all.filter((n) => n.kind === "order_not_found")).toHaveLength(1);
+      const important = all.filter((n) => n.kind === "verify_locked");
       expect(important).toHaveLength(1);
       expect(important[0]).toMatchObject({ kind: "verify_locked", question: "MO-9008, adım Merve Şahin\nMO-9009, adım Zehra Çelik" });
       expect(important[0]!.details.issues![0]).toContain("son 24 saatte 3 kez siparişle eşleşmeyen ad soyad yazıldı");

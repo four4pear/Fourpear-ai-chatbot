@@ -36,6 +36,8 @@ export function classifyFindings(f: OrderFindings): { kind: NotificationKind; ki
   if (f.lookupFailed && !verified) kinds.add("lookup_failed");
   if (f.unverified) kinds.add("unverified");
   if (f.identityLocked) kinds.add("verify_locked");
+  // Müşteri bilgilerini yazdı ama sipariş bulunamadı: ekip bakar (yazım hatası, farklı ad, eski sipariş...).
+  if (f.failedIdentity) kinds.add("order_not_found");
   // Sipariş listesi gösterilip "hangisi?" diye soruldu: sessiz kayıt; asıl bildirim müşteri seçince gelir.
   if (!kinds.size) kinds.add("order_question");
   const sorted = NOTIFICATION_KINDS.filter((k) => kinds.has(k));
@@ -71,6 +73,9 @@ export async function recordOrderNotification(
   const important = classified.important || !input.replySent;
   const orderNames = [...input.findings.orders.keys()];
   const failedIdentity = input.findings.failedIdentity ? 1 : 0;
+  if (failedIdentity) {
+    issues.push("Müşterinin yazdığı bilgilerle (sipariş numarası, ad soyad ya da telefon) sipariş bulunamadı. Yazım hatası, farklı ad ya da eski sipariş olabilir: konuşmaya bakıp gerekirse devralıp müşteriye yazın.");
+  }
   const answer = input.answer.slice(0, MAX_TEXT);
 
   if (important) {

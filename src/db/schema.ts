@@ -356,6 +356,7 @@ export const textArchive = pgTable(
  * lookup_failed: sipariş sistemine ulaşılamadı (ör. Shopify hatası); müşterinin isteği ekibe kalır.
  * return_review: iade uzmanı talebin ekip kararı gerektirdiğine karar verdi (kural dışı istek, iade sürecinde sorun).
  * daily_limit: müşteri günlük mesaj sınırını aştı; Lina o gün cevap vermeyi durdurdu (müşteriye bir şey yazılmaz).
+ * order_not_found: müşteri sipariş numarası ve ad soyad yazdı ama sipariş bulunamadı ya da bilgiler eşleşmedi.
  * verify_locked: aynı numaradan çok sayıda yanlış ad soyad denemesi; ad soyadla doğrulama 24 saat kapalı.
  */
 export const IMPORTANT_KINDS = [
@@ -368,6 +369,7 @@ export const IMPORTANT_KINDS = [
   "no_tracking",
   "daily_limit",
   "verify_locked",
+  "order_not_found",
 ] as const;
 export const RECORD_KINDS = ["return_request", "return_status", "unverified", "order_question"] as const;
 /** Önem sırasıyla: bir cevapta birden fazla konu varsa bildirimin türü ilk sıradaki olur. */

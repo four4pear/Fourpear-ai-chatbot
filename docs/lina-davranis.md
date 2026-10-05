@@ -283,6 +283,7 @@ Sipariş konularında (§3) konuşma devredilmez; ekip panelde bildirim görür.
   - şikayet
   - iade: ekip kararı gerekiyor (iade uzmanı iletti)
   - sipariş bilgisine ulaşılamadı
+  - sipariş bulunamadı (müşteri numara, ad soyad ya da telefon yazdı ama eşleşen sipariş yok; yalnızca "ad soyadınızı yazar mısınız?" diye sorulması sayılmaz)
   - çok sayıda yanlış doğrulama denemesi (ad soyadla doğrulama 24 saat kapandı, §3.1)
   - günlük mesaj sınırı aşıldı (Lina o gün cevap vermeyi durdurdu, §9)
 - **Cevap gönderilemedi:** Lina'nın cevabı WhatsApp'a gönderilemediyse (müşteri cevapsız kaldı) bildirim her durumda önemlidir ve bu not düşülür.
