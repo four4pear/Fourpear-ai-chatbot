@@ -188,6 +188,7 @@ Mağaza mesai saatlerini panelden girer.
 
 ## 9. Diğer
 - Bot kapalıyken hiç cevap verilmez (mesajlar panelde görünür).
+- **Yalnızca mesai saatlerinde** (mağaza ayarı, varsayılan kapalı): mesai dışında Lina susar; mesaj kaydedilir, "yazıyor…" gösterilmez, müşteriye bir şey yazılmaz. Mesai başlayınca bekleyen mesajlara cevap verir (son 72 saat). Mesai günleri ve saatleri panel Ayarlar'dan değişir (§6).
 - Lina cevap vermeyecekse (bot kapalı, konuşma ekipte ya da günlük sınır aşıldı) müşteriye "yazıyor…" gösterilmez; mesaj yalnızca okundu işaretlenir.
 - Emoji tepkisi (👍), sticker, WhatsApp sistem bildirimleri ve sohbeti ilk açma bildirimi cevaplanmaz; kaydedilir, günlük sınıra sayılmaz, Lina'nın geçmişine girmez.
 - **Günlük mesaj sınırı (fatura koruması):** bir müşteri aynı gün içinde (mağazanın saatine göre gece yarısından beri) 200'den fazla mesaj yazarsa Lina o gün o müşteriye cevap vermeyi durdurur; ertesi gün kendiliğinden devam eder. Sayılan yalnızca müşterinin mesajlarıdır (yazı, fotoğraf, ses vb.; tepki ve sticker sayılmaz), Lina'nın cevapları sayılmaz. **Müşteriye sınırdan söz edilmez, mesaj gönderilmez**; ekibe günde bir kez önemli bildirim düşer ("Günlük mesaj sınırı aşıldı", §12). Sınırın içinde kalan önceki mesajlar için hazırlanmakta olan cevap iptal edilmez. Sınır mağaza ayarıdır (varsayılan 200); spam ve karşıdaki otomatik cevap botlarına karşı korur.

@@ -26,6 +26,8 @@ export type BusinessHours = {
 
 export type TenantSettings = {
   botEnabled: boolean;
+  /** Açıksa Lina yalnızca mesai saatlerinde cevap verir; dışındaki mesajlar açılışta cevaplanır. */
+  botHoursOnly: boolean;
   dailyMessageLimit: number;
   businessHours: BusinessHours;
   /** Varsayılan sabit metinlerin yerine geçen mağaza metinleri. */
@@ -55,6 +57,7 @@ export type TenantSettings = {
 
 export const defaultTenantSettings: TenantSettings = {
   botEnabled: true,
+  botHoursOnly: false,
   dailyMessageLimit: 200,
   businessHours: { days: [1, 2, 3, 4, 5], start: "09:00", end: "18:00" },
   texts: {},

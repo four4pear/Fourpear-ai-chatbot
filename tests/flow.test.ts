@@ -462,6 +462,29 @@ describe("sabit metinler ve ayarlar", () => {
     expect(again).toBe("nothing");
   });
 
+  it("'yalnızca mesai saatlerinde': mesai dışında Lina susar, 'yazıyor…' yok; mesai açılınca bekleyen mesajı cevaplar", async () => {
+    // Test saati cuma 12:00 (İstanbul). Mesai 13:00-18:00: şu an kapalı.
+    const hours = (start: string) => ({ days: [0, 1, 2, 3, 4, 5, 6], start, end: "18:00" });
+    await setSettings({ botHoursOnly: true, businessHours: hours("13:00") });
+    await post(text("siparişim nerede"));
+    expect(sent).toEqual([]);
+    expect(typing).toEqual([false]);
+    const stored = await database.db.select().from(messages).where(eq(messages.sender, "customer"));
+    expect(stored).toHaveLength(1); // mesaj kaydedildi, panelde görünür
+
+    // Mesai başladı: aynı mesaj cevaplanır (açılış işi cevapsız konuşmayı sıraya alır).
+    await setSettings({ botHoursOnly: true, businessHours: hours("10:00") });
+    const { respond, findUnansweredConversations } = await import("../src/core/conversation.js");
+    const waiting = await findUnansweredConversations(database.db, new Date(now.getTime() - 72 * 3600_000), tenantId);
+    expect(waiting).toHaveLength(1);
+    expect(await respond(appDeps, waiting[0]!, { signal: new AbortController().signal, isCurrent: () => true })).toBe("replied");
+    expect(sent).toHaveLength(1);
+    // Kapalıyken "mesai dışı" ayarı yoksa her saat cevap verilir (varsayılan).
+    await setSettings({ businessHours: hours("13:00") });
+    await post(text("merhaba"));
+    expect(sent).toHaveLength(2);
+  });
+
   it("bot kapalıysa cevap vermez", async () => {
     await setSettings({ botEnabled: false });
     await post(text("merhaba"));

@@ -14,7 +14,7 @@ import { shopifyApps } from "./shopify/apps.js";
 import { createShopifyApi } from "./shopify/client.js";
 import { createWhatsAppClient } from "./whatsapp/client.js";
 import { EventBus } from "./core/events.js";
-import { findUnansweredConversations, type Deps } from "./core/conversation.js";
+import { botClosedByHours, findUnansweredConversations, type Deps } from "./core/conversation.js";
 import { findStaleMemories, IdleMemoryScheduler, purgeExpiredMemories, updateMemory } from "./core/memory.js";
 import { KeyedQueue } from "./core/queue.js";
 
@@ -172,6 +172,26 @@ for (const conversationId of unanswered) {
 }
 if (unanswered.length) console.log(`Cevapsız kalan ${unanswered.length} konuşma yeniden sıraya alındı.`);
 
+// "Lina yalnızca mesai saatlerinde": mesai dışında gelen mesajlar beklemişti; mağaza açılınca (dakikada
+// bir bakılır) ya da sunucu açılışında mesai içindeyse cevaplanmak üzere sıraya alınır. Cevaplanmışlar
+// respond() içinde "nothing" döner.
+const hoursState = new Map<string, boolean>();
+async function openPendingByHours() {
+  const stores = await db.select().from(tenants);
+  for (const t of stores) {
+    const settings = resolveSettings(t.settings);
+    const closed = !settings.botHoursOnly || botClosedByHours(settings, config.TZ, new Date());
+    const wasClosed = hoursState.get(t.id) ?? true;
+    hoursState.set(t.id, closed);
+    if (closed || !wasClosed || !settings.botEnabled) continue;
+    const waiting = await findUnansweredConversations(db, new Date(Date.now() - 72 * 60 * 60 * 1000), t.id);
+    for (const id of waiting) scheduler.onCustomerMessage(id, { delayMs: 5_000, maxWaitMs: 5_000 });
+    if (waiting.length) console.log(`Mesai başladı (${t.slug}): ${waiting.length} bekleyen konuşma cevaplanıyor.`);
+  }
+}
+const hoursTimer = setInterval(() => void openPendingByHours().catch((err) => console.error("Mesai kontrolü", err)), 60 * 1000);
+void openPendingByHours().catch((err) => console.error("Mesai kontrolü", err));
+
 const server = app.listen(config.PORT, () => {
   console.log(`Sunucu hazır: http://localhost:${config.PORT} (webhook: /webhook/whatsapp, model: ${config.CLAUDE_MODEL})`);
   if (!whatsappConfigured(config)) {
@@ -184,6 +204,7 @@ async function shutdown() {
   clearInterval(syncTimer);
   clearInterval(archiveTimer);
   clearInterval(memoryTimer);
+  clearInterval(hoursTimer);
   // Bekleyen cevaplar bir sonraki açılışta yeniden kurulur (findUnansweredConversations).
   scheduler.stop();
   server.close();

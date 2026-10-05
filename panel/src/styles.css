@@ -548,3 +548,7 @@ textarea {
 .settings-card { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; margin: 16px 0; }
 .settings-card h2 { margin: 0; font-size: 16px; }
 .settings-card p { margin: 0; }
+.settings-days { display: flex; gap: 12px; flex-wrap: wrap; border: 0; padding: 0; margin: 0; }
+.settings-times { display: flex; gap: 16px; flex-wrap: wrap; }
+.settings-times input { margin-left: 6px; border: 1px solid var(--border-strong); border-radius: 8px; padding: 6px 8px; font: inherit; }
+.settings-check { display: flex; gap: 8px; align-items: center; margin-top: 8px; font-weight: 600; }

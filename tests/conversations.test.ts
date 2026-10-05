@@ -281,12 +281,22 @@ describe("panel: konuşmayı devralma, yazma, Lina'ya geri verme", () => {
     expect((await call("zeynep", "GET", url)).status).toBe(403);
     expect((await call("zeynep", "PATCH", url, { botEnabled: false })).status).toBe(403);
     expect((await call("sahip", "PATCH", url, { botEnabled: "evet" })).status).toBe(400);
-    expect((await call("sahip", "GET", url)).body).toEqual({ botEnabled: true });
-    expect((await call("sahip", "PATCH", url, { botEnabled: false })).body).toEqual({ botEnabled: false });
-    expect((await call("sahip", "GET", url)).body).toEqual({ botEnabled: false });
+    expect((await call("sahip", "GET", url)).body).toMatchObject({ botEnabled: true, botHoursOnly: false });
+    expect((await call("sahip", "PATCH", url, { botEnabled: false })).body).toMatchObject({ botEnabled: false });
+    expect((await call("sahip", "GET", url)).body).toMatchObject({ botEnabled: false });
     const [t] = await database.db.select().from(tenants).where(eq(tenants.id, tenantA));
     expect(t!.settings).toMatchObject({ botEnabled: false, dailyMessageLimit: 200 }); // diğer ayarlar korunur
-    expect((await call("sahip", "PATCH", url, { botEnabled: true })).body).toEqual({ botEnabled: true });
+    expect((await call("sahip", "PATCH", url, { botEnabled: true })).body).toMatchObject({ botEnabled: true });
+
+    // Mesai saatleri: doğrulanır, sıralanır, "yalnızca mesai saatlerinde" ayrı açılır.
+    const hours = (h: unknown) => call("sahip", "PATCH", url, { businessHours: h });
+    expect((await hours({ days: [], start: "10:00", end: "18:00" })).status).toBe(400);
+    expect((await hours({ days: [1, 7], start: "10:00", end: "18:00" })).status).toBe(400);
+    expect((await hours({ days: [1], start: "18:00", end: "10:00" })).status).toBe(400);
+    expect((await hours({ days: [1], start: "10:00", end: "25:00" })).status).toBe(400);
+    expect((await call("sahip", "PATCH", url, {})).status).toBe(400);
+    expect((await hours({ days: [6, 1, 1, 2], start: "10:00", end: "18:00" })).body).toMatchObject({ businessHours: { days: [1, 2, 6], start: "10:00", end: "18:00" } });
+    expect((await call("sahip", "PATCH", url, { botHoursOnly: true })).body).toMatchObject({ botHoursOnly: true, businessHours: { start: "10:00" } });
   });
 
   it("başka mağazanın konuşması devralınamaz, yazılamaz, geri verilemez", async () => {

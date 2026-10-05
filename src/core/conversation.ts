@@ -13,6 +13,7 @@ import {
   type Conversation,
   type Message,
   type Tenant,
+  type TenantSettings,
   type WhatsappAccount,
 } from "../db/schema.js";
 import { runLina, type HandoffRequest } from "../agents/lina.js";
@@ -60,7 +61,7 @@ export type Deps = {
 /** Gelen mesajın alınma sonucu. "queued": cevap zamanlayıcıya bırakıldı (bkz. reply-scheduler.ts). */
 export type IngestResult =
   | { outcome: "unknown_number" | "duplicate" }
-  | { outcome: "ignored" | "bot_disabled" | "human_mode" | "daily_limit"; conversationId: string }
+  | { outcome: "ignored" | "bot_disabled" | "human_mode" | "outside_hours" | "daily_limit"; conversationId: string }
   | {
       outcome: "queued";
       conversationId: string;
@@ -76,6 +77,7 @@ export type IngestResult =
 export type RespondOutcome =
   | "gone"
   | "bot_disabled"
+  | "outside_hours"
   | "human_mode"
   | "nothing"
   | "unsupported_type"
@@ -165,7 +167,8 @@ export async function ingestInbound(deps: Deps, event: InboundEvent): Promise<In
   // müşteri cevap bekleyip boşa kalmasın. Mesaj yine okundu işaretlenir.
   const limit = settings.dailyMessageLimit;
   const overLimit = (await countCustomerMessagesToday(db, conversationId, deps.timeZone, now)) > limit;
-  const silent = !settings.botEnabled || conversation.status === "human" || overLimit;
+  const outsideHours = botClosedByHours(settings, deps.timeZone, now);
+  const silent = !settings.botEnabled || conversation.status === "human" || outsideHours || overLimit;
   deps.wa
     .markReadAndTyping({ ...wa, messageId: message.id, typing: !silent })
     .catch((err) => deps.log.warn("Okundu bilgisi gönderilemedi", err));
@@ -195,6 +198,8 @@ export async function ingestInbound(deps: Deps, event: InboundEvent): Promise<In
     }).catch((err: unknown) => deps.log.error(`Sınır bildirimi kaydedilemedi (tenant=${tenant.slug})`, err));
     return { outcome: "daily_limit", conversationId };
   }
+  // Mesai saati dışında Lina susar; mesaj kaydedilir, mesai açılınca cevaplanır (index.ts açılış işi).
+  if (outsideHours) return { outcome: "outside_hours", conversationId };
 
   return {
     outcome: "queued",
@@ -227,6 +232,7 @@ export async function respond(deps: Deps, conversationId: string, ctl: RespondCo
   const settings = resolveSettings(tenant.settings);
   if (!settings.botEnabled) return "bot_disabled";
   if (conversation.status === "human") return "human_mode";
+  if (botClosedByHours(settings, deps.timeZone, now)) return "outside_hours";
 
   const batch = await unansweredCustomerMessages(db, conversationId);
   if (batch.length === 0) return "nothing";
@@ -402,7 +408,12 @@ const answeredThroughOf = (batch: { seq: number }[]) => Math.max(...batch.map((m
  * Sunucu yeniden başlarken bekleme sırasında kalmış konuşmalar: son mesajı `since`'den sonra
  * gelmiş, cevapsız müşteri mesajı olan ve ekipte olmayanlar. Açılışta zamanlayıcıya alınır.
  */
-export async function findUnansweredConversations(db: DB, since: Date): Promise<string[]> {
+/** "Lina yalnızca mesai saatlerinde" açıkken ve şu an mesai dışıysa true. */
+export function botClosedByHours(settings: TenantSettings, timeZone: string, now: Date): boolean {
+  return settings.botHoursOnly && !businessStatus(settings.businessHours, timeZone, now).open;
+}
+
+export async function findUnansweredConversations(db: DB, since: Date, tenantId?: string): Promise<string[]> {
   const latest = await db
     .selectDistinctOn([messages.conversationId], {
       conversationId: messages.conversationId,
@@ -418,7 +429,7 @@ export async function findUnansweredConversations(db: DB, since: Date): Promise<
   const rows = await db
     .select({ id: conversations.id })
     .from(conversations)
-    .where(and(inArray(conversations.id, candidates), ne(conversations.status, "human")));
+    .where(and(inArray(conversations.id, candidates), ne(conversations.status, "human"), tenantId ? eq(conversations.tenantId, tenantId) : undefined));
   return rows.map((r) => r.id);
 }
 
