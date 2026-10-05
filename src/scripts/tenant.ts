@@ -257,8 +257,14 @@ try {
     if (!apiKey) throw new Error("API anahtarı boş olamaz");
     let accountId = args["account-id"];
     if (!accountId) {
-      const whatsapp = (await listZernioAccounts(apiKey, { baseUrl: config.ZERNIO_API_URL })).filter((a) => a.platform === "whatsapp");
-      if (whatsapp.length === 0) throw new Error("Bu anahtarın bağlı bir WhatsApp hesabı yok (Zernio'da önce numarayı bağlayın)");
+      const all = await listZernioAccounts(apiKey, { baseUrl: config.ZERNIO_API_URL });
+      const whatsapp = all.filter((a) => a.platform.includes("whatsapp"));
+      if (whatsapp.length === 0) {
+        // Teşhis: anahtarın gördüğü hesaplar (kimlik ve platform adı; gizli bir şey yok).
+        console.log(all.length ? `Zernio'nun bu anahtarla gördüğü hesaplar (${all.length}):` : "Zernio bu anahtarla hiç hesap görmüyor (liste boş).");
+        for (const a of all) console.log(`  platform=${a.platform || "?"}  id=${a.id}  ad=${a.name || "-"}`);
+        throw new Error("Bu anahtarın bağlı bir WhatsApp hesabı yok (Zernio'da önce numarayı bağlayın)");
+      }
       if (whatsapp.length > 1) {
         for (const a of whatsapp) console.log(`  ${a.id}  ${a.name}`);
         throw new Error("Birden çok WhatsApp hesabı var: hangisi olacaksa --account-id ile yazın");
