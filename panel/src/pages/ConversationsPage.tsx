@@ -311,7 +311,7 @@ function ChatMessage({ m, tenantId, onImageLoad }: { m: Message; tenantId: strin
   return <div className={`chat-bubble${m.sender === "customer" ? "" : " ours"}`}>
     <span>{who} · {time(m.createdAt)}</span>
     {m.hasImage && <img className="conversation-image" src={`/api/tenants/${tenantId}/media/${m.id}`} alt="Müşterinin gönderdiği fotoğraf" onLoad={onImageLoad} />}
-    {m.text ? <p>{m.text}</p> : !m.hasImage && <p className="hint">{m.type === "image" ? "Fotoğraf (saklanamadı)" : (TYPE_LABELS[m.type] ?? "Desteklenmeyen mesaj")}</p>}
+    {m.text ? <p>{m.type === "audio" && <span className="hint">Sesli mesaj, yazıya çevrildi: </span>}{m.text}</p> : !m.hasImage && <p className="hint">{m.type === "image" ? "Fotoğraf (saklanamadı)" : (TYPE_LABELS[m.type] ?? "Desteklenmeyen mesaj")}</p>}
     {m.sendError && <p role="alert" className="test-error">Müşteriye gönderilemedi. Mesajı yeniden yazıp gönderin.</p>}
   </div>;
 }

@@ -178,7 +178,8 @@ Mağaza mesai saatlerini panelden girer.
 - Fotoğraf indirilir ve saklanır (ekip panelde görür).
 - Lina fotoğrafı görür ve yorumlar (ör. hasar teyidi, "bu ürün sizde var mı?").
 - Açıklama (caption) varsa mesaj olarak değerlendirilir.
-- Ses, video, belge, konum: Faz 4'e kadar desteklenmiyor (sabit metin, §8). Sticker cevaplanmaz (§9).
+- **Sesli mesajlar:** `GROQ_API_KEY` tanımlıysa ses Groq'un Whisper servisiyle yazıya çevrilir ve mesajın metni olur; Lina onu normal mesaj gibi cevaplar (metnin yazıya çevrildiğini bilir, yanlış duyulmuş olabileceğini hesaba katar). **Ses kaydı saklanmaz**, yalnızca metin kalır; panelde "Sesli mesaj, yazıya çevrildi: …" görünür. Çevrilemezse (anahtar yok, servis hatası, sessiz ya da 10 MB'dan büyük kayıt) müşteriye sabit "yazarak iletin" metni gider (§8). Müşterinin sesi Groq'a gönderilir.
+- Video, belge, konum: desteklenmiyor (sabit metin, §8). Sticker cevaplanmaz (§9).
 
 ## 8. Sabit metinler (mağaza panelden düzenleyebilir; varsayılanlar)
 | Anahtar | Ne zaman | Varsayılan metin |

@@ -76,6 +76,8 @@ sonra yeni sohbet açın.
 
 **Müşteri kartı:** Lina her müşteri için kısa bir kart tutar (ad soyad, açık konular, geçmiş talepler, tercihler); her
 cevaptan sonra arka planda `CLAUDE_MEMORY_MODEL` (varsayılan Haiku) ile güncellenir, son mesajdan 6 ay sonra silinir.
+
+**Sesli mesajlar (isteğe bağlı):** `GROQ_API_KEY` (console.groq.com, ücretsiz katman) tanımlanırsa sesli mesajlar Whisper ile yazıya çevrilir ve normal mesaj gibi cevaplanır; ses kaydı saklanmaz. Anahtar yoksa sesli mesaja "yazarak iletin" denir.
 Test ekranında sağda görünür; "Aynı müşteri, yeni sohbet" ile geri dönen müşteri denenir (docs/lina-davranis.md §14).
 
 **Lina'yı eğitmek:** Test ekranında Lina'nın cevabı yanlış ya da eksikse "geri bildirim: …" yazın. Bu mesaj Lina'ya

@@ -379,6 +379,35 @@ describe("sabit metinler ve ayarlar", () => {
     expect(sent.map((s) => s.text)).toEqual([DEFAULT_TEXTS.unsupported]);
   });
 
+  it("sesli mesaj yazıya çevrilir ve normal mesaj gibi cevaplanır; ses kaydı saklanmaz", async () => {
+    appDeps.transcribe = async (audio) => (audio.data.length ? "Siparişim ne zaman gelir?" : null);
+    try {
+      await post(payload({ type: "audio", audio: { id: "a5", mime_type: "audio/ogg; codecs=opus", voice: true } }));
+      expect(sent.map((s) => s.text)).toEqual(["Merhaba, nasıl yardımcı olabilirim?"]);
+      const [stored] = await database.db.select().from(messages).where(eq(messages.type, "audio"));
+      expect(stored).toMatchObject({ sender: "customer", text: "Siparişim ne zaman gelir?" });
+      expect(await database.db.select().from(media)).toEqual([]); // ses saklanmadı
+      // Lina metnin yazıya çevrildiğini bilir (yanlış duyulmuş olabilir).
+      expect(linaCalls[0]!.messages).toEqual([
+        { role: "user", content: [{ type: "text", text: "[sesli mesaj, yazıya çevrildi] Siparişim ne zaman gelir?" }] },
+      ]);
+    } finally { delete appDeps.transcribe; }
+  });
+
+  it("çeviri başarısız ya da boşsa müşteriye 'yazarak iletin' denir; hata cevabı bozmaz", async () => {
+    appDeps.transcribe = async () => { throw new Error("servis kapalı"); };
+    try {
+      await post(payload({ type: "audio", audio: { id: "a6" } }));
+      expect(sent.map((s) => s.text)).toEqual([DEFAULT_TEXTS.unsupported]);
+    } finally { delete appDeps.transcribe; }
+    sent.length = 0;
+    appDeps.transcribe = async () => null; // sessiz kayıt
+    try {
+      await post(payload({ type: "audio", audio: { id: "a7" } }));
+      expect(sent.map((s) => s.text)).toEqual([DEFAULT_TEXTS.unsupported]);
+    } finally { delete appDeps.transcribe; }
+  });
+
   it("mağazanın kendi metnini kullanır", async () => {
     await setSettings({ texts: { unsupported: "Sesli mesaj dinleyemiyorum, yazar mısınız?" } });
     await post(payload({ type: "audio", audio: { id: "a2" } }));

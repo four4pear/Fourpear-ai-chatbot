@@ -13,6 +13,9 @@ const schema = z.object({
   CLAUDE_MODEL: z.string().default("claude-sonnet-5"),
   /** Müşteri kartını güncelleyen model: her cevaptan sonra arka planda çalışır, hızlı ve ucuz olmalı. */
   CLAUDE_MEMORY_MODEL: z.string().default("claude-haiku-4-5-20251001"),
+  /** Sesli mesajları yazıya çeviren Groq (Whisper) anahtarı; boşsa sesli mesajlara "yazarak iletin" denir. */
+  GROQ_API_KEY: z.string().optional(),
+  STT_MODEL: z.string().default("whisper-large-v3-turbo"),
   /**
    * Meta WhatsApp: uygulamanın gizli anahtarı ve webhook'ta girilen doğrulama metni. İkisi de
    * girilene kadar WhatsApp webhook'u kapalıdır (panel, Shopify ve arşiv yine çalışır).

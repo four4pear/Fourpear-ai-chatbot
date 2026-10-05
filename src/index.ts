@@ -14,6 +14,7 @@ import { shopifyApps } from "./shopify/apps.js";
 import { createShopifyApi } from "./shopify/client.js";
 import { createWhatsAppClient } from "./whatsapp/client.js";
 import { EventBus } from "./core/events.js";
+import { groqTranscriber } from "./core/transcribe.js";
 import { botClosedByHours, findUnansweredConversations, type Deps } from "./core/conversation.js";
 import { findStaleMemories, IdleMemoryScheduler, purgeExpiredMemories, updateMemory } from "./core/memory.js";
 import { KeyedQueue } from "./core/queue.js";
@@ -63,6 +64,7 @@ const deps: Deps = {
   // İade sistemi bağlı mağazada Lina iade talebinin durumunu okur (yalnızca okuma).
   returnsFor: (tenantId) => returnsProviderFor(db, config.MASTER_KEY, tenantId),
   memory: { model: config.CLAUDE_MEMORY_MODEL, schedule: (customerId, task) => memoryIdle.schedule(customerId, task) },
+  ...(config.GROQ_API_KEY && { transcribe: groqTranscriber(config.GROQ_API_KEY, config.STT_MODEL) }),
 };
 
 let shopifyRoutes;

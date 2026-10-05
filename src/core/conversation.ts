@@ -29,6 +29,7 @@ import { loadLessons, withLessons } from "./lessons.js";
 import { loadMemory, updateMemory } from "./memory.js";
 import { openTeamQuestions, recordTeamQuestions, TEAM_ANSWER_TYPE, type AskedQuestion } from "./team-questions.js";
 import { businessStatus } from "./business-hours.js";
+import type { Transcriber } from "./transcribe.js";
 import type { EventBus } from "./events.js";
 import { identityLocked, recordLimitNotification, recordOrderNotification } from "./notifications.js";
 import { fixedText } from "./texts.js";
@@ -56,6 +57,8 @@ export type Deps = {
    * müşterinin güncellemelerini sıraya koyar; yoksa güncelleme kartı okumaz ama yazmaz (test ekranı).
    */
   memory?: { model: string; schedule?: (customerId: string, task: () => Promise<void>) => void };
+  /** Sesli mesajı yazıya çevirir; yoksa sesli mesajlara sabit "yazarak iletin" metni gider. */
+  transcribe?: Transcriber;
 };
 
 /** Gelen mesajın alınma sonucu. "queued": cevap zamanlayıcıya bırakıldı (bkz. reply-scheduler.ts). */
@@ -177,6 +180,12 @@ export async function ingestInbound(deps: Deps, event: InboundEvent): Promise<In
   if (message.type === "image" && message.image?.id) {
     await storeImage(deps, tenant.id, messageId, accessToken, message.image.id);
   }
+  // Sesli mesaj: yazıya çevrilip mesajın metni olur; ses kaydı saklanmaz. Çevrilemezse (servis yok, hata,
+  // sessizlik) metin boş kalır ve müşteriye "yazarak iletin" denir.
+  if (message.type === "audio" && message.audio?.id && deps.transcribe) {
+    const text = await transcribeVoice(deps, accessToken, message.audio.id);
+    if (text) await db.update(messages).set({ text }).where(eq(messages.id, messageId));
+  }
   // Fotoğraf kaydedildikten sonra: panel mesajı açtığında fotoğraf da hazır olsun.
   deps.events?.publish(tenant.id, { type: "message", conversationId });
 
@@ -251,7 +260,7 @@ export async function respond(deps: Deps, conversationId: string, ctl: RespondCo
   };
 
   // Toplu mesajda Lina'nın okuyabileceği bir şey yoksa (sadece ses/video…) sabit metin bir kez.
-  if (!batch.some((m) => UNDERSTOOD_TYPES.has(m.type))) {
+  if (!batch.some((m) => UNDERSTOOD_TYPES.has(m.type) || (m.type === "audio" && m.text))) {
     if (!(await stillOurs())) return "cancelled";
     await sendAndStore(deps, tenant, conversation, wa, fixedText(settings, "unsupported"), "system", answeredThroughOf(batch));
     return "unsupported_type";
@@ -439,6 +448,16 @@ function messageText(message: WaIncomingMessage): string | null {
   return null;
 }
 
+async function transcribeVoice(deps: Deps, accessToken: string, mediaId: string): Promise<string | null> {
+  try {
+    const audio = await deps.wa.downloadMedia({ accessToken, mediaId });
+    return (await deps.transcribe!(audio)) ?? null;
+  } catch (err) {
+    deps.log.error("Sesli mesaj yazıya çevrilemedi", err);
+    return null;
+  }
+}
+
 async function storeImage(deps: Deps, tenantId: string, messageId: string, accessToken: string, waMediaId: string) {
   try {
     const { data, mimeType } = await deps.wa.downloadMedia({ accessToken, mediaId: waMediaId });
@@ -602,6 +621,8 @@ export function toClaudeMessages(rows: HistoryRow[]): Anthropic.MessageParam[] {
       }
     } else {
       let text = row.text ?? `[müşteri ${MEDIA_LABELS[row.type] ?? row.type} gönderdi]`;
+      // Sesli mesajın metni konuşma tanımadan gelir: yanlış duyulmuş olabilir, Lina bunu bilsin.
+      if (row.type === "audio" && row.text) text = `[sesli mesaj, yazıya çevrildi] ${row.text}`;
       if (row.sender === "agent") text = `(Mağaza ekibi yazdı) ${text}`;
       blocks.push({ type: "text", text });
     }
