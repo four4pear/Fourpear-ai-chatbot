@@ -334,3 +334,19 @@ describe("panel: ekibe bildirimler", () => {
     expect(body.notifications.map((n: any) => n.label).sort()).toEqual(["Gecikme", "Sipariş sorusu"]);
   });
 });
+
+describe("systemRecord: uzman cevabına eklenen kesin kayıt", () => {
+  it("önemli bildirim açılacaksa nedenleriyle söyler, açılmayacaksa iletilmediğini yazar", async () => {
+    const { systemRecord } = await import("../src/core/notifications.js");
+    const { newFindings } = await import("../src/agents/orders.js");
+    const quiet = Object.assign(newFindings(), { topics: ["return" as const] });
+    expect(systemRecord(quiet)).toContain("AÇILMAYACAK");
+    expect(systemRecord(quiet)).toContain("deme");
+    const review = Object.assign(newFindings(), { topics: ["return" as const], issues: [{ kind: "return_review" as const, orderName: "#MO-1", text: "İade: x" }] });
+    expect(systemRecord(review)).toContain("ÖNEMLİ bildirim açılacak (iade incelemesi)");
+    const lookup = Object.assign(newFindings(), { topics: ["status" as const], lookupFailed: true });
+    expect(systemRecord(lookup)).toContain("sipariş bilgisine ulaşılamadı");
+    const locked = Object.assign(newFindings(), { topics: ["status" as const], unverified: true, identityLocked: true });
+    expect(systemRecord(locked)).toContain("çok sayıda yanlış doğrulama denemesi");
+  });
+});

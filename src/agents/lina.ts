@@ -4,6 +4,7 @@ import type { Tenant } from "../db/schema.js";
 import type { KnowledgeBase } from "../knowledge/base.js";
 import { askKnowledgeAgent } from "./knowledge.js";
 import { askOrderAgent, newFindings, type OrderAgentDeps, type OrderFindings } from "./orders.js";
+import { systemRecord } from "../core/notifications.js";
 import type { AskedQuestion } from "../core/team-questions.js";
 import { linaSystemPrompt, turnContext, type TurnInfo } from "./prompts.js";
 import { askReturnsAgent, RETURN_TOPICS } from "./returns.js";
@@ -137,7 +138,9 @@ export async function runLina(
       // Bildirim yalnızca sipariş sistemi bağlıyken; bağlı değilse iletilecek konu devredilir.
       if (orders) findings.topics.push(topic === "damaged" ? "complaint" : topic);
       try {
-        return await askReturnsAgent(ctx, tenant, { knowledge, orders }, { topic, question, ...requestOf(parsed) }, findings);
+        const answer = await askReturnsAgent(ctx, tenant, { knowledge, orders }, { topic, question, ...requestOf(parsed) }, findings);
+        // Sipariş sistemi bağlıyken bildirimi bulgular açar: Lina'ya kesin kayıt da gider.
+        return orders ? `${answer}\n\n${systemRecord(findings)}` : answer;
       } catch (err) {
         if (orders && !(err instanceof CancelledError)) findings.lookupFailed = true;
         throw err;
@@ -179,7 +182,8 @@ export async function runLina(
         const { topic, question } = parsed;
         findings.topics.push(topic);
         try {
-          return await askOrderAgent(ctx, tenant, orders, { topic, question, ...requestOf(parsed) }, findings);
+          const answer = await askOrderAgent(ctx, tenant, orders, { topic, question, ...requestOf(parsed) }, findings);
+          return `${answer}\n\n${systemRecord(findings)}`;
         } catch (err) {
           // Sipariş sistemine ulaşılamadı: müşterinin isteği sessiz kayda düşmesin (ekibe önemli bildirim).
           if (!(err instanceof CancelledError)) findings.lookupFailed = true;

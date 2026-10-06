@@ -45,6 +45,33 @@ export function classifyFindings(f: OrderFindings): { kind: NotificationKind; ki
   return { kind, kinds: sorted, important: (IMPORTANT_KINDS as readonly NotificationKind[]).includes(kind) };
 }
 
+const KIND_TEXT: Partial<Record<NotificationKind, string>> = {
+  complaint: "şikayet",
+  return_review: "iade incelemesi",
+  cancel_request: "iptal isteği",
+  change_request: "değişiklik isteği",
+  lookup_failed: "sipariş bilgisine ulaşılamadı",
+  delay: "gecikme",
+  no_tracking: "takip numarası yok",
+  verify_locked: "çok sayıda yanlış doğrulama denemesi",
+  order_not_found: "sipariş bulunamadı",
+};
+
+/**
+ * Uzman cevabının sonuna kodun eklediği kesin kayıt: ekibe önemli bildirim gerçekten açılacak mı?
+ * Uzmanın "iletildi" yazısı bir modelin cümlesidir; bildirimi açan, bulgulardır (findings). Lina müşteriye
+ * "iletildi/işleme alındı" demeyi bu kayda göre yapar, böylece söz verilen talep ekibe düşmeden kalmaz.
+ */
+export function systemRecord(f: OrderFindings): string {
+  const c = classifyFindings(f);
+  const head = "SİSTEM KAYDI (kodun yazdığı kesin bilgidir; uzmanın yazısı bununla çelişirse bu geçerlidir):";
+  if (c.important) {
+    const labels = c.kinds.filter((k) => (IMPORTANT_KINDS as readonly NotificationKind[]).includes(k)).map((k) => KIND_TEXT[k] ?? k);
+    return `${head} ekibe ÖNEMLİ bildirim açılacak (${labels.join(", ")}). Talebin işleme alındığını söyleyebilirsin.`;
+  }
+  return `${head} ekibe önemli bildirim AÇILMAYACAK; talep ekibe iletilmedi. Müşteriye "iletildi" ya da "işleme alındı" deme.`;
+}
+
 /**
  * Cevap hazırlandıktan sonra: sipariş konusundaki bildirimi kaydeder ve panele haber verir.
  * Cevap WhatsApp'a gönderilemediyse müşteri cevapsız kalmıştır: bildirim her durumda önemlidir.

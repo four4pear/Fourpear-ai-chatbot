@@ -962,6 +962,9 @@ describe("konuşma akışı: sipariş sorusu devredilmez, ekibe bildirim düşer
     const [n] = await allNotifications();
     expect(n).toMatchObject({ kind: "return_request", important: false, orderNames: ["#MO-9002"] });
     expect(await database.db.select().from(handoffs)).toHaveLength(0);
+    // Lina'ya giden uzman cevabının sonunda kodun yazdığı kesin kayıt: ekibe bildirim açılmayacak.
+    expect(sent[0]).toContain("SİSTEM KAYDI");
+    expect(sent[0]).toContain("ekibe önemli bildirim AÇILMAYACAK");
   });
 
   it("kural dışı iade isteği: iade uzmanı ekibe iletir, önemli bildirim düşer, konuşma devredilmez", async () => {
@@ -975,6 +978,16 @@ describe("konuşma akışı: sipariş sorusu devredilmez, ekibe bildirim düşer
     expect(n).toMatchObject({ kind: "return_review", important: true, orderNames: ["#MO-9002"] });
     expect(n!.details.issues).toEqual(["İade: Kampanyalı ürünü beden olmadı diye iade etmek istiyor."]);
     expect(await database.db.select().from(handoffs)).toHaveLength(0);
+    expect(sent[0]).toContain("ekibe ÖNEMLİ bildirim açılacak (iade incelemesi)");
+  });
+
+  it("uzman 'iletildi' yazsa da forward_to_team çağrılmadıysa kayıt bildirim açılmayacağını söyler", async () => {
+    returnsAgentScript = () => reply("EKİBE: iletildi\nKural izin vermiyor ama ekibe ilettim.");
+    await say("MO-9002 kampanyalı ama iade etmek istiyorum");
+    expect(sent[0]).toContain("Kural izin vermiyor ama ekibe ilettim.");
+    expect(sent[0]).toContain("ekibe önemli bildirim AÇILMAYACAK");
+    const [n] = await allNotifications();
+    expect(n).toMatchObject({ important: false });
   });
 
   it("hasarlı ürün iade uzmanına gider ve her durumda önemlidir", async () => {
@@ -982,6 +995,7 @@ describe("konuşma akışı: sipariş sorusu devredilmez, ekibe bildirim düşer
     expect(textOf(calls.returns[0]!.messages[0]!.content)).toContain("Konu: hasarlı, hatalı ya da yanlış ürün");
     const [n] = await allNotifications();
     expect(n).toMatchObject({ kind: "complaint", important: true });
+    expect(sent[0]).toContain("ekibe ÖNEMLİ bildirim açılacak (şikayet)");
   });
 
   it("Shopify'ı bağlı olmayan mağaza: sipariş uzmanı yok; iade uzmanı politikalarla çalışır, iletilecek konu devredilir", async () => {
@@ -997,6 +1011,8 @@ describe("konuşma akışı: sipariş sorusu devredilmez, ekibe bildirim düşer
     const request = calls.returns[0]!;
     expect(textOf(request.messages[0]!.content)).toContain("Sipariş sistemi bağlı değil");
     expect(request.tools!.map((t) => ("name" in t ? t.name : ""))).not.toContain("forward_to_team");
+    // Sipariş sistemi yokken bildirimi bulgular açmaz: kayıt eklenmez, eski kural (uzmanın yazısı) geçerli.
+    expect(sent.at(-1)).not.toContain("SİSTEM KAYDI");
     expect((request.system as Anthropic.TextBlockParam[])[0]!.text).toContain('EKİBE satırına "iletilmeli"');
     expect(await allNotifications()).toHaveLength(0);
   });

@@ -287,6 +287,7 @@ Sipariş konularında (§3) konuşma devredilmez; ekip panelde bildirim görür.
   - sipariş bulunamadı (müşteri numara, ad soyad ya da telefon yazdı ama eşleşen sipariş yok; yalnızca "ad soyadınızı yazar mısınız?" diye sorulması sayılmaz)
   - çok sayıda yanlış doğrulama denemesi (ad soyadla doğrulama 24 saat kapandı, §3.1)
   - günlük mesaj sınırı aşıldı (Lina o gün cevap vermeyi durdurdu, §9)
+- **Söz ile kayıt tutarlı olur (6 Ekim 2026):** Lina müşteriye "iletildi / işleme alındı" demeyi uzmanın yazısına değil, kodun uzman cevabının sonuna eklediği **SİSTEM KAYDI**'na göre yapar ("ekibe ÖNEMLİ bildirim açılacak (…)" ya da "açılmayacak, iletilmedi"). Uzman metinde "iletildi" yazsa da forward_to_team çağrılmadıysa kayıt "açılmayacak" der; böylece müşteriye söz verilen talep panele düşmemiş kalmaz. Sipariş sistemi bağlı değilse kayıt eklenmez, eski kural (uzmanın "iletildi/iletilmeli" yazısı, devir) geçerlidir.
 - **Cevap gönderilemedi:** Lina'nın cevabı WhatsApp'a gönderilemediyse (müşteri cevapsız kaldı) bildirim her durumda önemlidir ve bu not düşülür.
 - **Kayıt** (sessiz): diğer sipariş soruları, kargodaki siparişin iptal isteği, iade isteği, iade durumu, doğrulanamayan sipariş sorusu.
 - **Takip numarası beklenmeyenler:** Mağazadan teslim alma ve dijital ürünlerde "takip numarası yok" bildirimi açılmaz.
