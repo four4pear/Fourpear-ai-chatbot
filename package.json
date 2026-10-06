@@ -12,7 +12,8 @@
     "tenant": "tsx src/scripts/tenant.ts",
     "db:generate": "drizzle-kit generate",
     "chat": "tsx src/scripts/chat.ts",
-    "dev:panel": "vite --config panel/vite.config.ts"
+    "dev:panel": "vite --config panel/vite.config.ts",
+    "saglik": "node scripts/saglik.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.128.0",
