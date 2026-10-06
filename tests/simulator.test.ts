@@ -61,7 +61,7 @@ describe.each<SimulationMode>(["transaction", "copy"])("test sohbeti (%s)", (mod
       const result = await simulate(deps, tenant!.id, [
         { role: "user", text: "Merhaba" }, { role: "user", text: "siparişim gelmedi" }, { role: "user", text: "#1045" },
       ], { mode });
-      expect(result.replies).toEqual(["Siparişinize bakıyorum."]);
+      expect(result.replies).toEqual(["Merhaba, ben Lina. Siparişinize bakıyorum."]);
       expect(create).toHaveBeenCalledTimes(1);
       const sent = create.mock.calls[0]![0].messages;
       expect(sent).toHaveLength(1);
@@ -88,7 +88,7 @@ describe.each<SimulationMode>(["transaction", "copy"])("test sohbeti (%s)", (mod
       });
       const deps = { db: source.db, llm: { create }, wa: {}, model: "claude-sonnet-5", historyLimit: 20, timeZone: "Europe/Istanbul", log: console } as unknown as Deps;
       const result = await simulate(deps, tenant!.id, [{ role: "user", text: "MO-9001 hasarlı geldi" }], { mode, demo: true });
-      expect(result.replies).toEqual(["Çok üzgünüm, hemen ilgileniyorum."]);
+      expect(result.replies).toEqual(["Merhaba, ben Lina. Çok üzgünüm, hemen ilgileniyorum."]);
       expect(result.notifications).toMatchObject([{ kind: "complaint", important: true, orderNames: [expect.stringContaining("MO-9001")] }]);
       const summary = replySummary(result.usage);
       expect(summary).toMatchObject({ apiCalls: 3, memoryCostUsd: null });

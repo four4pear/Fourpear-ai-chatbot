@@ -177,9 +177,12 @@ export type TurnInfo = {
 export function ensureIntro(text: string, botName: string): string {
   const head = text.slice(0, 120).toLowerCase();
   if (head.includes(botName.toLowerCase())) return text;
-  const turkish = /[ığşöüçİĞŞÖÜÇ]|\b(ve|bir|için|ile|siz|biz|bu|çok|size)\b/i.test(text);
+  const turkish = /[ığşöüçİĞŞÖÜÇ]|\b(ve|bir|için|ile|siz|biz|bu|çok|size|merhaba|selam|nasıl)\b/i.test(text);
   if (!turkish) return text;
-  return `Merhaba, ben ${botName}. ${text}`;
+  // Cevap zaten selamla başlıyorsa selam iki kez edilmez: "Merhaba, nasıl…" → "Merhaba, ben Lina. Nasıl…".
+  const rest = text.replace(/^(merhaba|selam|iyi günler|günaydın|iyi akşamlar)[,!.\s]*/i, "");
+  const body = rest ? rest.charAt(0).toLocaleUpperCase("tr-TR") + rest.slice(1) : "";
+  return `Merhaba, ben ${botName}.${body ? ` ${body}` : ""}`;
 }
 
 /** Mesaja özel durum bilgisi (sistem isteminin önbelleğe alınmayan ikinci bloğu). */

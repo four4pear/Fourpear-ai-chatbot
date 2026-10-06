@@ -188,6 +188,11 @@ describe("ensureIntro: ilk temasta tanıtım garantisi", () => {
     const { ensureIntro } = await import("../src/agents/prompts.js");
     expect(ensureIntro("Bu tamamen bizim hatamız, çok özür dilerim.", "Lina")).toBe("Merhaba, ben Lina. Bu tamamen bizim hatamız, çok özür dilerim.");
   });
+  it("cevap selamla başlıyorsa selam iki kez edilmez", async () => {
+    const { ensureIntro } = await import("../src/agents/prompts.js");
+    expect(ensureIntro("Merhaba, nasıl yardımcı olabilirim?", "Lina")).toBe("Merhaba, ben Lina. Nasıl yardımcı olabilirim?");
+    expect(ensureIntro("Merhaba", "Lina")).toBe("Merhaba, ben Lina.");
+  });
   it("tanıtım zaten varsa dokunmaz", async () => {
     const { ensureIntro } = await import("../src/agents/prompts.js");
     expect(ensureIntro("Merhaba, ben Lina. Hemen bakıyorum.", "Lina")).toBe("Merhaba, ben Lina. Hemen bakıyorum.");

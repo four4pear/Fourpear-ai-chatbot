@@ -279,7 +279,7 @@ describe("Zernio webhook'u", () => {
 
   it("imzalı mesaj cevaplanır: cevap Zernio anahtarı ve konuşma kimliğiyle gider, kimlik saklanır", async () => {
     expect(await postZernio(zernioBody())).toBe(200);
-    expect(sent).toEqual([{ to: CUSTOMER, text: "Merhaba, nasıl yardımcı olabilirim?", token: "sk_zernio" }]);
+    expect(sent).toEqual([{ to: CUSTOMER, text: "Merhaba, ben Lina. Nasıl yardımcı olabilirim?", token: "sk_zernio" }]);
     expect(chatRefs).toEqual(["conv-1"]);
     const [customer] = await database.db.select().from(customers);
     expect(customer).toMatchObject({ waId: CUSTOMER, name: "Ayşe", channelRef: "conv-1" });
@@ -342,7 +342,7 @@ describe("mesaj akışı", () => {
     await post(text("merhaba"));
     await post(text("nasılsınız"));
     expect(systemContextOf(linaCalls[0]!)).toContain("İlk temas");
-    expect(systemContextOf(linaCalls[0]!)).toContain('Cevabın "Merhaba, ben Lina." ile başlasın');
+    expect(systemContextOf(linaCalls[0]!)).toContain('Cevabın İLK CÜMLESİ her zaman "Merhaba, ben Lina." olsun');
     expect(systemContextOf(linaCalls[1]!)).toContain("kendini yeniden tanıtma");
   });
 });
@@ -417,7 +417,7 @@ describe("devir", () => {
 describe("fotoğraf", () => {
   it("fotoğrafı saklar ve Lina'ya görsel olarak gönderir", async () => {
     await post(payload({ type: "image", image: { id: "img1", mime_type: "image/jpeg", caption: "kırık geldi" } }));
-    expect(sent.map((s) => s.text)).toEqual(["Fotoğrafınızı gördüm."]);
+    expect(sent.map((s) => s.text)).toEqual(["Merhaba, ben Lina. Fotoğrafınızı gördüm."]);
 
     const [saved] = await database.db.select().from(media).where(eq(media.waMediaId, "img1"));
     expect(saved!.data.toString()).toBe("jpeg-bytes-img1");
@@ -451,7 +451,7 @@ describe("sabit metinler ve ayarlar", () => {
     appDeps.transcribe = async (audio) => (audio.data.length ? "Siparişim ne zaman gelir?" : null);
     try {
       await post(payload({ type: "audio", audio: { id: "a5", mime_type: "audio/ogg; codecs=opus", voice: true } }));
-      expect(sent.map((s) => s.text)).toEqual(["Merhaba, nasıl yardımcı olabilirim?"]);
+      expect(sent.map((s) => s.text)).toEqual(["Merhaba, ben Lina. Nasıl yardımcı olabilirim?"]);
       const [stored] = await database.db.select().from(messages).where(eq(messages.type, "audio"));
       expect(stored).toMatchObject({ sender: "customer", text: "Siparişim ne zaman gelir?" });
       expect(await database.db.select().from(media)).toEqual([]); // ses saklanmadı
@@ -495,7 +495,7 @@ describe("sabit metinler ve ayarlar", () => {
     await setSettings({ dailyMessageLimit: 1 });
     await post(payload({ type: "reaction", reaction: { message_id: "x", emoji: "❤️" } }));
     await post(text("merhaba"));
-    expect(sent.map((s) => s.text)).toEqual(["Merhaba, nasıl yardımcı olabilirim?"]);
+    expect(sent.map((s) => s.text)).toEqual(["Merhaba, ben Lina. Nasıl yardımcı olabilirim?"]);
     expect(linaCalls[0]!.messages).toEqual([{ role: "user", content: [{ type: "text", text: "merhaba" }] }]);
   });
 
@@ -509,7 +509,7 @@ describe("sabit metinler ve ayarlar", () => {
     await post(text("bir"));
     await post(text("iki"));
     await post(text("üç"));
-    expect(sent.map((s) => s.text)).toEqual(["Merhaba, nasıl yardımcı olabilirim?"]);
+    expect(sent.map((s) => s.text)).toEqual(["Merhaba, ben Lina. Nasıl yardımcı olabilirim?"]);
     expect(typing).toEqual([true, false, false]);
     const notified = await database.db.select().from(notifications);
     expect(notified).toMatchObject([{ kind: "daily_limit", important: true, status: "open", question: "iki", answer: "" }]);
@@ -546,7 +546,7 @@ describe("sabit metinler ve ayarlar", () => {
   it("cevap hazırlanırken gelen mesaj, cevap kaydedildikten sonra bile cevapsız sayılır ve bir sonraki cevaba girer", async () => {
     llmMode = "inject";
     await post(text("bir"));
-    expect(sent.map((s) => s.text)).toEqual(["Merhaba, nasıl yardımcı olabilirim?"]);
+    expect(sent.map((s) => s.text)).toEqual(["Merhaba, ben Lina. Nasıl yardımcı olabilirim?"]);
     // "iki" ilk cevaptan önce kaydedildi ama o cevap onu görmedi: sonraki cevap ikisini birlikte karşılar.
     await post(text("üç"));
     const lastUser = linaCalls.at(-1)!.messages.at(-1)!.content as Anthropic.ContentBlockParam[];
@@ -672,7 +672,7 @@ describe("art arda mesajlar (gerçek zamanlayıcı)", () => {
 
     expect(calls2).toHaveLength(1);
     expect(lastUserContent(0)).toEqual([{ type: "text", text: "Merhaba\nsiparişim gelmedi\n#1045" }]);
-    expect(sent.map((s) => s.text)).toEqual(["Cevap: Merhaba\nsiparişim gelmedi\n#1045"]);
+    expect(sent.map((s) => s.text)).toEqual(["Merhaba, ben Lina. Cevap: Merhaba\nsiparişim gelmedi\n#1045"]);
   });
 
   it("Lina cevabı hazırlarken gelen mesaj: hazırlanan iptal, hepsine tek cevap; özür ve devir yok", async () => {

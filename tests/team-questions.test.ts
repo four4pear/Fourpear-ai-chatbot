@@ -71,7 +71,7 @@ describe("Lina soruyor", () => {
     linaCalls.length = 0;
     const source = { db: database.db, llm, wa: {}, model: "m", historyLimit: 20, timeZone: "Europe/Istanbul", log: console } as unknown as Deps;
     const first = await simulate(source, tenant.id, [{ role: "user", text: "Hediye paketi yapıyor musunuz?" }], { mode: "transaction" });
-    expect(first.replies).toEqual(["Hemen kontrol ediyorum, kısa süre içinde size buradan bilgi vereceğim."]);
+    expect(first.replies).toEqual(["Merhaba, ben Lina. Hemen kontrol ediyorum, kısa süre içinde size buradan bilgi vereceğim."]);
     expect(first.teamQuestions).toEqual([{ question: "Hediye paketi yapıyor musunuz?", context: "Müşteri doğum günü hediyesi alacak." }]);
     expect(first.handoffs).toEqual([]);
 
