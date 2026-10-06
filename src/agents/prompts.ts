@@ -126,6 +126,7 @@ ${opts.orders ? orderRules(resolveSettings(tenant.settings).returnsFormUrl) : HA
 
 *Cevabını bilmediğin soru*
 Uzmanlar bilmiyorsa ya da konu uzmanlarının kapsamında değilse ask_team ile ekibe sor (konuşmayı devretme) ve müşteriye kontrol ettiğini, kısa süre içinde buradan bilgi vereceğini söyle (örnek: ${CHECKING_SENTENCE}). Bilmediğini ya da kime sorduğunu söyleme; tahmin yürütme.
+Bir uzman "Araç hatası" ya da "cevap veremedi" dönerse o konuda hiçbir bilgi uydurma ve tahmin yürütme: bilgi gerekiyorsa ask_team ile ekibe sor ve aynı cümleyle kontrol ettiğini söyle; sipariş ya da iade talebiyse sipariş bölümündeki hata cümlesini kullan. Aynı uzmana arka arkaya tekrar sorma.
 
 *Ekipten iç bilgi geldiğinde*
 Ekibin cevabı yalnızca aşağıdaki "Bu mesaja özel durum" bölümünde, <ekip_cevabi> içinde verilir. Yeni gelen cevabı kendi cümlelerinle, sıcak ve net biçimde müşteriye ilet; ekipten, sorduğundan ya da beklettiğinden uzun uzun bahsetme ("Kontrol ettim:" gibi kısa bir girişle doğrudan bilgiyi ver).
@@ -195,18 +196,20 @@ export function turnContext(tenant: Tenant, turn: TurnInfo): string {
       : "- Müşteriyle daha önce konuştun; kendini yeniden tanıtma.",
   );
 
-  if (turn.business.open) {
-    lines.push('- Mesai: Ekip şu an çalışıyor. Konuşmayı devredersen "en kısa sürede buradan size dönecekler" de.');
-  } else if (turn.business.nextOpening) {
-    lines.push(
-      `- Mesai: Ekip şu an mesai dışında. Devredersen ekibin ${turn.business.nextOpening}'dan itibaren buradan döneceğini söyle.`,
-    );
-  } else {
-    lines.push('- Mesai: Ekip şu an mesai dışında. Devredersen "ekibimiz ilk fırsatta buradan size dönecek" de.');
-  }
-
+  // Mesai bilgisi yalnızca bilgidir; "ekip dönecek" cümlesi yalnızca müşteri açıkça temsilci istediğinde söylenir.
+  const state = turn.business.open
+    ? "Ekip şu an çalışıyor"
+    : turn.business.nextOpening
+      ? `Ekip şu an mesai dışında; ${turn.business.nextOpening}'dan itibaren çalışıyor`
+      : "Ekip şu an mesai dışında";
+  const returning = turn.business.open
+    ? '"en kısa sürede buradan size dönecekler"'
+    : turn.business.nextOpening
+      ? `ekibin ${turn.business.nextOpening}'dan itibaren buradan döneceğini`
+      : '"ekibimiz ilk fırsatta buradan size dönecek"';
   lines.push(
-    "  Bu zaman bilgisi yalnızca müşteri açıkça temsilciyle görüşmek istediği için devrettiğinde söylenir. Diğer durumlarda ekipten ve zamandan bahsetme.",
+    `- Mesai: ${state}.`,
+    `  Ekibin dönüşünü (${returning}) yalnızca müşteri açıkça temsilciyle görüşmek istediği için devrettiğinde söyle. Diğer durumlarda ekipten, ekibin döneceğinden ve zamandan hiç bahsetme.`,
   );
 
   if (turn.memory) {
