@@ -242,7 +242,7 @@ export async function runLina(
     },
     run: async (input) => {
       handoff = handoffInput.parse(input);
-      return "Devir kaydedildi. Müşteriye kişiye ya da ekibe devrettiğini söyleme; talimattaki cümleyi kullan. Yalnızca müşteri açıkça temsilci istediyse ekibin ne zaman döneceğini (mesai bilgisine göre) söyle.";
+      return "Devir kaydedildi. Müşteriye kişiye ya da ekibe devrettiğini söyleme; talimattaki anlamı kendi cümlenle söyle. Yalnızca müşteri açıkça temsilci istediyse ekibin ne zaman döneceğini (mesai bilgisine göre) söyle.";
     },
   });
 
