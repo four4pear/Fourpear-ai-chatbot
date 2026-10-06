@@ -16,6 +16,7 @@ import {
   type TenantSettings,
   type WhatsappAccount,
 } from "../db/schema.js";
+import { ensureIntro } from "../agents/prompts.js";
 import { runLina, type HandoffRequest } from "../agents/lina.js";
 import type { OrderFindings } from "../agents/orders.js";
 import { CancelledError, describeLlmError, type Llm } from "../agents/runner.js";
@@ -319,7 +320,7 @@ export async function respond(deps: Deps, conversationId: string, ctl: RespondCo
       reply = fixedText(settings, "failure");
       handoff = { reason: "other", summary: `Asistan cevap üretemedi (stop_reason: ${result.stopReason}). Mesajlar: "${lastText}"` };
     } else {
-      reply = result.text;
+      reply = turn.firstContact ? ensureIntro(result.text, tenant.botName) : result.text;
       handoff = result.handoff;
       orderFindings = result.orders;
       teamQuestions = result.teamQuestions;

@@ -182,3 +182,18 @@ describe("mesai hesabı (Pzt–Cmt 10:00–17:00)", () => {
   it("pazar günü yarın (pazartesi)", () =>
     expect(at("2026-09-27T09:00:00Z")).toEqual({ open: false, nextOpening: "yarın saat 10:00" }));
 });
+
+describe("ensureIntro: ilk temasta tanıtım garantisi", () => {
+  it("tanıtım yoksa Türkçe cevabın başına eklenir", async () => {
+    const { ensureIntro } = await import("../src/agents/prompts.js");
+    expect(ensureIntro("Bu tamamen bizim hatamız, çok özür dilerim.", "Lina")).toBe("Merhaba, ben Lina. Bu tamamen bizim hatamız, çok özür dilerim.");
+  });
+  it("tanıtım zaten varsa dokunmaz", async () => {
+    const { ensureIntro } = await import("../src/agents/prompts.js");
+    expect(ensureIntro("Merhaba, ben Lina. Hemen bakıyorum.", "Lina")).toBe("Merhaba, ben Lina. Hemen bakıyorum.");
+  });
+  it("başka dildeki cevaba Türkçe tanıtım eklenmez", async () => {
+    const { ensureIntro } = await import("../src/agents/prompts.js");
+    expect(ensureIntro("Hello! Yes, we ship worldwide within a few days.", "Lina")).toBe("Hello! Yes, we ship worldwide within a few days.");
+  });
+});

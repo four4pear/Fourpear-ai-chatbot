@@ -22,6 +22,7 @@ Sen bu mağazanın müşteri temsilcisisin; amacın müşterinin sorununu çözm
 - Bir talep ekibe bildirildiyse (SİSTEM KAYDI bildirim açılacağını söylüyorsa; kayıt yoksa uzman "iletildi" ya da "ekibe bildirilecek" dediyse) bunu cevabın başında değil, bilgileri verdikten sonra, bir kez ve kendi cümlelerinle söyle; talebin işleme alındığı anlamı yeterli (örnek: ${PROCESSED_SENTENCE}). Aynı anlamı üst üste tekrarlama ("ilettim", "bildirdim", "işleme alındı" bir arada olmaz); ekip, kontrol ya da süre ekleme.
 - Talimattaki "kontrol ediyorum" ve "işleme alındı" örnekleri kalıp değildir: anlamını koru, konuşmaya uygun kendi cümlelerinle söyle.
 - Cevabın sonuna genel bir yardım teklifi ya da kapanış sorusu ekleme: "Başka bir sorunuz var mı?", "Başka bir konuda yardımcı olabilir miyim?" ve benzerlerini hiçbir biçimde yazma. Bilgiyi verip dur, müşteri isterse yazar. Soru yalnızca bir şeyi öğrenmen gerekiyorsa (eksik bilgi) sorulur. Müşteri teşekkür ederse kısaca karşılık ver ("Rica ederim", "Ne demek, iyi günler dilerim" gibi) ve yeni bir soru ekleme.
+- Dil: müşteri hangi dilde yazdıysa (Türkçe, İngilizce, Almanca…) o dilde cevap ver; ilk temastaki tanıtımı da o dilde yap ("Hello, I'm Lina."). Müşteri dil değiştirirse sen de değiştir. Uzmanlardan gelen Türkçe bilgiyi müşterinin diline çevirerek anlat.
 - Müşteri sipariş numarasını mesajında yazdıysa (ör. MO-1271, #1271) onu kullan; yeniden sorma.
 - Kararı ekibe ait konularda sonuç vaat etme ("iadeniz onaylanacak", "ücretsiz değişim yapacağız" gibi).`;
 
@@ -168,13 +169,26 @@ export type TurnInfo = {
   teamAnswers?: { fresh: string[]; earlier: string[] };
 };
 
+/**
+ * İlk temasta cevabın "Merhaba, ben Lina." ile başlaması bir kuraldır; model şikayet ve sinirli mesajlarda
+ * bazen empatiyle başlayıp atlıyor. Cevap tanıtımı ilk cümlelerinde içermiyorsa ve Türkçeyse kod başına
+ * ekler. Başka dildeki cevaba Türkçe tanıtım eklenmez (model onu müşterinin dilinde yazar).
+ */
+export function ensureIntro(text: string, botName: string): string {
+  const head = text.slice(0, 120).toLowerCase();
+  if (head.includes(botName.toLowerCase())) return text;
+  const turkish = /[ığşöüçİĞŞÖÜÇ]|\b(ve|bir|için|ile|siz|biz|bu|çok|size)\b/i.test(text);
+  if (!turkish) return text;
+  return `Merhaba, ben ${botName}. ${text}`;
+}
+
 /** Mesaja özel durum bilgisi (sistem isteminin önbelleğe alınmayan ikinci bloğu). */
 export function turnContext(tenant: Tenant, turn: TurnInfo): string {
   const lines = ["## Bu mesaja özel durum"];
 
   lines.push(
     turn.firstContact
-      ? `- İlk temas: Bu müşteri sana ilk kez yazıyor. Cevabın "Merhaba, ben ${tenant.botName}." ile başlasın (müşterinin dilinde), sonra hiç oyalanmadan müşterinin konusuna geç ve aynı mesajda cevapla. Mağaza adını ya da ne olduğunu ekleme.`
+      ? `- İlk temas: Bu müşteri sana ilk kez yazıyor. Cevabın İLK CÜMLESİ her zaman "Merhaba, ben ${tenant.botName}." olsun (müşterinin dilinde). Müşteri şikayet, hasar ya da sinirli bir mesajla yazsa bile bu kural değişmez: önce bu tanıtım, hemen ardından özür ya da anlayışını göster ve aynı mesajda konusuna cevap ver. Mağaza adını ya da ne olduğunu ekleme.`
       : "- Müşteriyle daha önce konuştun; kendini yeniden tanıtma.",
   );
 
