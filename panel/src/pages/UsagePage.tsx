@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, type Membership } from "../api";
+import { Segmented } from "../ui";
 
 type Row = {
   agent: string;
@@ -49,14 +50,13 @@ export function UsagePage({ store }: { store: Membership }) {
   const total = usage?.totals.find((t) => t.source === source);
   const rows = (usage?.rows ?? []).filter((r) => r.source === source).sort((a, b) => (b.costUsd ?? 0) - (a.costUsd ?? 0));
   return <main className="page usage-page">
-    <div className="test-heading"><div><p className="hint">{store.name}</p><h1>İstatistik</h1></div></div>
-    <p className="hint">Yapay zekâ kullanımı ve tahmini maliyet. Tutarlar Anthropic liste fiyatlarıyla hesaplanır; kesin tutar Anthropic faturasındadır.</p>
-    <div className="usage-filters">
-      <div role="group" aria-label="Dönem">{PERIODS.map((p) => <button key={p.days} className={`btn ${days === p.days ? "btn-primary" : "btn-secondary"}`} onClick={() => setDays(p.days)}>{p.label}</button>)}</div>
-      <div role="group" aria-label="Kaynak">
-        <button className={`btn ${source === "live" ? "btn-primary" : "btn-secondary"}`} onClick={() => setSource("live")}>Müşteri konuşmaları</button>
-        <button className={`btn ${source === "test" ? "btn-primary" : "btn-secondary"}`} onClick={() => setSource("test")}>Test ekranı</button>
-      </div>
+    <div className="usage-head">
+      <div><p className="hint">{store.name}</p><h1>İstatistik</h1></div>
+      <Segmented label="Dönem" value={days} options={PERIODS.map((p) => ({ value: p.days, label: p.label }))} onChange={setDays} />
+    </div>
+    <div className="usage-sub">
+      <Segmented label="Kaynak" value={source} options={[{ value: "live", label: "Müşteri konuşmaları" }, { value: "test", label: "Test ekranı" }]} onChange={setSource} />
+      <p className="hint">Yapay zekâ kullanımı ve tahmini maliyet. Tutarlar Anthropic liste fiyatlarıyla hesaplanır; kesin tutar Anthropic faturasındadır.</p>
     </div>
     {error && <p role="alert" className="test-error">{error}</p>}
     {!usage && !error && <p className="hint" role="status">Yükleniyor…</p>}
@@ -67,14 +67,17 @@ export function UsagePage({ store }: { store: Membership }) {
         <div className="panel-card"><span className="hint">Cevap başına</span><strong>{usd(total?.perReplyUsd ?? null)}</strong></div>
         <div className="panel-card"><span className="hint">Önbellekten okunan</span><strong>{pct(total?.cacheHitRate ?? null)}</strong></div>
       </div>
-      {rows.length === 0 ? <p className="hint">Bu dönemde kayıt yok.</p> : <div className="usage-table-wrap"><table className="usage-table">
-        <thead><tr><th>Ajan</th><th>Çalışma</th><th>API çağrısı</th><th>Girdi</th><th>Önbellekten okunan</th><th>Önbelleğe yazılan</th><th>Çıktı</th><th>Ort. süre</th><th>Tahmini tutar</th></tr></thead>
-        <tbody>{rows.map((r) => <tr key={`${r.agent}-${r.model}`}>
-          <td>{AGENT_LABELS[r.agent] ?? r.agent}<br /><span className="hint">{r.model}</span></td>
-          <td>{num(r.runs)}</td><td>{num(r.apiCalls)}</td><td>{num(r.inputTokens)}</td><td>{num(r.cacheReadTokens)}</td>
-          <td>{num(r.cacheWriteTokens)}</td><td>{num(r.outputTokens)}</td><td>{(r.avgMs / 1000).toFixed(1)} sn</td><td>{usd(r.costUsd)}</td>
-        </tr>)}</tbody>
-      </table></div>}
+      <section className="panel-card usage-table-card" aria-labelledby="usage-by-agent">
+        <h2 id="usage-by-agent">Ajanlara göre kullanım</h2>
+        {rows.length === 0 ? <p className="hint">Bu dönemde kayıt yok.</p> : <div className="usage-table-wrap"><table className="usage-table">
+          <thead><tr><th>Ajan</th><th>Çalışma</th><th>API çağrısı</th><th>Girdi</th><th>Önbellekten okunan</th><th>Önbelleğe yazılan</th><th>Çıktı</th><th>Ort. süre</th><th>Tahmini tutar</th></tr></thead>
+          <tbody>{rows.map((r) => <tr key={`${r.agent}-${r.model}`}>
+            <td>{AGENT_LABELS[r.agent] ?? r.agent}<br /><span className="hint">{r.model}</span></td>
+            <td>{num(r.runs)}</td><td>{num(r.apiCalls)}</td><td>{num(r.inputTokens)}</td><td>{num(r.cacheReadTokens)}</td>
+            <td>{num(r.cacheWriteTokens)}</td><td>{num(r.outputTokens)}</td><td>{(r.avgMs / 1000).toFixed(1)} sn</td><td>{usd(r.costUsd)}</td>
+          </tr>)}</tbody>
+        </table></div>}
+      </section>
     </>}
   </main>;
 }

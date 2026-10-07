@@ -8,3 +8,14 @@ export function Switch({ checked, onChange, label, disabled }: { checked: boolea
     </button>
   );
 }
+
+/** Taslaktaki sekmeli seçici (Bugün / Son 7 gün / Son 30 gün): birkaç seçenekten biri seçilir. */
+export function Segmented<T extends string | number>({ label, value, options, onChange }: { label: string; value: T; options: { value: T; label: string }[]; onChange: (next: T) => void }) {
+  return (
+    <div className="segmented" role="tablist" aria-label={label}>
+      {options.map((o) => (
+        <button key={String(o.value)} type="button" role="tab" aria-selected={o.value === value} onClick={() => onChange(o.value)}>{o.label}</button>
+      ))}
+    </div>
+  );
+}
