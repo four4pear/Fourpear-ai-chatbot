@@ -575,3 +575,19 @@ textarea {
 .team-invite { display: flex; gap: 8px; flex-wrap: wrap; width: 100%; }
 .team-invite input, .team-invite select { border: 1px solid var(--border-strong); border-radius: 8px; padding: 8px 10px; font: inherit; background: var(--surface); }
 .team-invite input { flex: 1; min-width: 200px; }
+
+.bell-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  margin-right: 6px;
+  border: 1px solid var(--border, #d9d9d9);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text, inherit);
+  cursor: pointer;
+}
+.bell-btn:hover { background: var(--accent-soft); color: var(--accent-hover); }
+.bell-btn[aria-pressed="false"] { opacity: 0.6; }

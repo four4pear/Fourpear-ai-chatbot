@@ -17,7 +17,7 @@ Ekibin yapması gerekenler, üç bölümde; her bölümde en uzun bekleyen üstt
 - **Lina soruyor:** Lina'nın arka planda ekibe sorduğu sorular ([lina-davranis.md §15](lina-davranis.md)).
 - **Ekibe iletilenler:** önemli bildirimler. "Tamamlandı" denince listeden düşer; hemen çıkan "Geri al" ile ya da "Tamamlananları göster" listesinden (kimin, ne zaman tamamladığı yazar) geri açılır.
 - **Ekibi bekleyen konuşmalar:** açık devri olan konuşmalar (aşağıda) ve ekipteyken müşterinin yeniden yazdığı, kimsenin cevaplamadığı konuşmalar ("Müşteri … yazdı, cevap bekliyor").
-- Menüdeki Bekleyenler simgesinde bekleyen iş sayısı görünür: açık sorular + açık önemli bildirimler + kimsenin devralmadığı devirler + ekipte cevap bekleyen müşteriler. Hangi sayfa açık olursa olsun 20 saniyede bir ve her işlemden sonra yenilenir.
+- Menüdeki Bekleyenler simgesinde bekleyen iş sayısı görünür: açık sorular + açık önemli bildirimler + kimsenin devralmadığı devirler + ekipte cevap bekleyen müşteriler. Hangi sayfa açık olursa olsun 20 saniyede bir, her işlemden sonra ve sunucudan canlı olay (devir, bildirim, ekibe soru) gelince hemen yenilenir. Sayı **artarsa** (ilk yüklemede değil) ses çalar ve pencere arka plandaysa masaüstü bildirimi çıkar; sekme başlığında da "(3)" görünür. Üst çubuktaki **zil** bu uyarıyı açar/kapatır (tercih bu cihazda kalır); açarken deneme sesi çalar ve tarayıcı bildirim izni istenir. Bildirimde müşteri bilgisi yoktur, yalnızca "yeni iş geldi" ve toplam sayı yazar.
 - Bir bölüm yüklenemezse diğerleri yine görünür. Oturum düşerse panel girişe döner.
 
 ## Sohbetler
@@ -47,7 +47,7 @@ Lina'nın cevap taslağı henüz yapılmadı.
 - Çalışan "Taslağı kullan" ile yazma kutusuna alır, düzenleyip gönderir. Taslak kendiliğinden gönderilmez.
 
 ## Bildirimler
-- Yeni bir konuşma bekleyenlere düşünce: panelde sesli uyarı + tarayıcı/telefon bildirimi (izin istenir).
+- Yeni bir konuşma bekleyenlere düşünce: panelde sesli uyarı + tarayıcı/telefon bildirimi (izin istenir). Uygulandı (6 Ekim 2026): bkz. menüdeki Bekleyenler rozeti ve zil düğmesi. Telefona anlık (kapalı sekme) bildirim için web push ayrıca gerekir, henüz yok.
 - Panel sayfa yenilemeden canlı güncellenir.
 
 ## Sipariş bildirimleri (Lina'nın ekibe bildirimleri)
@@ -57,7 +57,7 @@ listelenir; ekip işlemi yapınca "Tamamlandı" der. Sessiz kayıtların ekranı
 
 | Tür | Önem |
 |---|---|
-| Şikayet, İade: ekip kararı gerekiyor, İptal isteği (kargoya verilmemiş), Değişiklik isteği, Sipariş bilgisine ulaşılamadı, Gecikme, Takip numarası yok, Günlük mesaj sınırı aşıldı, Sipariş bulunamadı, Çok sayıda yanlış doğrulama denemesi | ⚠️ Önemli: sesli uyarı + tarayıcı bildirimi |
+| Şikayet, İade: ekip kararı gerekiyor, İptal isteği (kargoya verilmemiş), Değişiklik isteği, Sipariş bilgisine ulaşılamadı, Gecikme, Takip numarası yok, Günlük mesaj sınırı aşıldı, Sipariş bulunamadı, Çok sayıda yanlış doğrulama denemesi, Müşteri cevap bekliyor (ekibe sorulan soru 20 dakikadır cevapsız) | ⚠️ Önemli: sesli uyarı + tarayıcı bildirimi |
 | İade/değişim isteği, İade durumu sorusu, Doğrulanamayan sipariş sorusu, Sipariş sorusu | Kayıt (sessiz) |
 
 Lina'nın cevabı WhatsApp'a gönderilemediyse bildirim her durumda önemlidir ve `replyFailed` işaretlidir (müşteri cevap almadı).

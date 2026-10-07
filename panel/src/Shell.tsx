@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { api, WAITING_CHANGED, type Me, type Membership } from "./api";
-import { ChartIcon, ChatIcon, FlaskIcon, InboxIcon, SettingsIcon, ShieldIcon } from "./icons";
+import { alertNewWork, alertsOn, askNotificationPermission, playBeep, setAlerts } from "./alerts";
+import { BellIcon, BellOffIcon, ChartIcon, ChatIcon, FlaskIcon, InboxIcon, SettingsIcon, ShieldIcon } from "./icons";
 import { Link, navigate } from "./router";
 import { rememberStore, useSession } from "./session";
 
@@ -30,18 +31,32 @@ function useWaitingCount(store: Membership | null): number {
     setCount(0);
     if (!tenantId) return;
     let cancelled = false;
+    // İlk yüklemede uyarı yok; sayı sonradan artarsa (yeni devir, bildirim, ekibe soru) ses ve bildirim.
+    let previous: number | null = null;
     const load = () =>
       api<{ total: number }>(`/tenants/${tenantId}/waiting-count`).then(
-        (r) => !cancelled && setCount(r.total),
+        (r) => {
+          if (cancelled) return;
+          if (previous !== null && r.total > previous) alertNewWork(r.total - previous, r.total);
+          previous = r.total;
+          setCount(r.total);
+        },
         () => {}, // sayı yüklenemezse rozet olduğu gibi kalır; sayfaların kendi hata yazısı var
       );
     void load();
     const timer = setInterval(load, WAITING_REFRESH_MS);
     window.addEventListener("focus", load);
     window.addEventListener(WAITING_CHANGED, load);
+    // Sunucu canlı olay gönderince sayı hemen yenilenir (20 sn beklenmez); bağlantı koparsa tarayıcı kendisi yeniden bağlanır.
+    let stream: EventSource | null = null;
+    if (typeof EventSource !== "undefined") {
+      stream = new EventSource(`/api/tenants/${tenantId}/events`);
+      for (const type of ["handoff", "notification", "team_question", "conversation", "notification_update"]) stream.addEventListener(type, load);
+    }
     return () => {
       cancelled = true;
       clearInterval(timer);
+      stream?.close();
       window.removeEventListener("focus", load);
       window.removeEventListener(WAITING_CHANGED, load);
     };
@@ -59,8 +74,9 @@ export function Shell({ me, store, active, children }: { me: Me; store: Membersh
 
   useEffect(() => {
     if (store) rememberStore(store.slug);
-    document.title = [title, store?.name, "Lina Panel"].filter(Boolean).join(" · ");
-  }, [store, title]);
+    // Sekme arka plandayken de bekleyen iş sayısı başlıkta görünür.
+    document.title = (waiting > 0 ? `(${waiting}) ` : "") + [title, store?.name, "Lina Panel"].filter(Boolean).join(" · ");
+  }, [store, title, waiting]);
 
   return (
     <div className="shell">
@@ -105,6 +121,7 @@ export function Shell({ me, store, active, children }: { me: Me; store: Membersh
             <span className="role-tag">{me.user.isSuperAdmin ? "Yönetici" : store.role === "owner" ? "Sahip" : "Çalışan"}</span>
           )}
           <span style={{ flexGrow: 1 }} />
+          {store && <AlertToggle />}
           <div className="mobile-only">
             <UserMenu me={me} />
           </div>
@@ -217,5 +234,31 @@ function UserMenu({ me }: { me: Me }) {
         </div>
       )}
     </div>
+  );
+}
+
+/** Zil: yeni iş gelince sesli ve tarayıcı uyarısı açık/kapalı. Açarken bir deneme sesi çalar ve bildirim izni istenir. */
+function AlertToggle() {
+  const [on, setOn] = useState(alertsOn);
+  const toggle = () => {
+    const next = !on;
+    setAlerts(next);
+    setOn(next);
+    if (next) {
+      playBeep();
+      askNotificationPermission();
+    }
+  };
+  return (
+    <button
+      type="button"
+      className="bell-btn"
+      onClick={toggle}
+      aria-pressed={on}
+      aria-label={on ? "Yeni iş uyarısı açık (kapatmak için tıklayın)" : "Yeni iş uyarısı kapalı (açmak için tıklayın)"}
+      title={on ? "Yeni iş gelince ses ve bildirim: açık" : "Yeni iş uyarısı kapalı"}
+    >
+      {on ? <BellIcon /> : <BellOffIcon />}
+    </button>
   );
 }

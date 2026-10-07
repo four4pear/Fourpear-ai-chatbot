@@ -3,6 +3,10 @@ import { cleanup, fireEvent, render, screen, within } from "@testing-library/rea
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Me, TokenInfo } from "./api";
 import { App } from "./App";
+import * as alerts from "./alerts";
+
+// Uyarı sesi ve bildirimi gerçek tarayıcıda çalar; burada yalnızca ne zaman tetiklendiği denenir.
+vi.mock("./alerts", async (original) => ({ ...(await original<typeof import("./alerts")>()), alertNewWork: vi.fn(), playBeep: vi.fn() }));
 import { safeReturnPath } from "./router";
 
 const OWNER: Me = {
@@ -171,6 +175,43 @@ describe("menü ve oturum", () => {
     const link = await within(menu).findByRole("link", { name: "Bekleyenler (3 iş bekliyor)" });
     expect(link.textContent).toBe("Bekleyenler3"); // simge altındaki ad + sayı rozeti
     expect(requests.some((r) => r.path === "/tenants/t1/waiting-count")).toBe(true);
+  });
+
+  it("bekleyen iş sayısı artınca uyarı çalar; ilk yüklemede ve azalınca çalmaz; başlıkta sayı görünür", async () => {
+    vi.mocked(alerts.alertNewWork).mockClear();
+    session = OWNER;
+    waiting = 1;
+    open("/m/maius/istatistik");
+    const menu = await screen.findByRole("navigation", { name: "Ana menü" });
+    await within(menu).findByRole("link", { name: "Bekleyenler (1 iş bekliyor)" });
+    expect(alerts.alertNewWork).not.toHaveBeenCalled(); // açılışta sayı zaten vardı
+    expect(document.title.startsWith("(1) ")).toBe(true);
+
+    waiting = 3; // yeni devir ve yeni bildirim geldi
+    fireEvent(window, new Event("lina:waiting-changed"));
+    await within(menu).findByRole("link", { name: "Bekleyenler (3 iş bekliyor)" });
+    expect(alerts.alertNewWork).toHaveBeenCalledTimes(1);
+    expect(alerts.alertNewWork).toHaveBeenCalledWith(2, 3);
+
+    waiting = 2; // biri tamamlandı
+    fireEvent(window, new Event("lina:waiting-changed"));
+    await within(menu).findByRole("link", { name: "Bekleyenler (2 iş bekliyor)" });
+    expect(alerts.alertNewWork).toHaveBeenCalledTimes(1);
+  });
+
+  it("zil düğmesi uyarıyı kapatır ve açar; açarken deneme sesi çalar", async () => {
+    vi.mocked(alerts.playBeep).mockClear();
+    localStorage.removeItem("lina:alerts");
+    session = OWNER;
+    open("/m/maius/bekleyenler");
+    await screen.findByRole("heading", { name: "Bekleyenler" });
+    const bell = await screen.findByRole("button", { name: /Yeni iş uyarısı açık/ });
+    fireEvent.click(bell);
+    expect(screen.getByRole("button", { name: /Yeni iş uyarısı kapalı/ })).toBeTruthy();
+    expect(localStorage.getItem("lina:alerts")).toBe("off");
+    fireEvent.click(screen.getByRole("button", { name: /Yeni iş uyarısı kapalı/ }));
+    expect(localStorage.getItem("lina:alerts")).toBe("on");
+    expect(alerts.playBeep).toHaveBeenCalledTimes(1);
   });
 
   it("çalışırken oturum düşerse sayfa hata yazısıyla kalmaz, girişe döner", async () => {
