@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, type Membership } from "../api";
+import { initials } from "./inbox-shared";
 
 type Member = { id: string; name: string; email: string; role: "owner" | "agent"; lastLoginAt: string | null };
 type Invite = { id: string; email: string; role: "owner" | "agent"; expiresAt: string };
@@ -56,12 +57,13 @@ export function TeamSection({ store, userId }: { store: Membership; userId: stri
     catch { setError("Kopyalanamadı; linki seçip elle kopyalayın."); }
   }
 
-  return <section className="panel-card settings-card" aria-labelledby="team">
-    <h2 id="team">Ekip</h2>
+  return <section id="team" className="panel-card settings-card" aria-labelledby="team-title">
+    <h2 id="team-title">Ekip</h2>
     {error && <p role="alert" className="test-error">{error}</p>}
     {members === null && !error && <p className="hint" role="status">Yükleniyor…</p>}
     {members && <ul className="team-list">{members.map((m) => <li key={m.id}>
-      <span><strong>{m.name}</strong> <span className="hint">{m.email} · {ROLE[m.role]}{m.lastLoginAt ? ` · son giriş ${day(m.lastLoginAt)}` : " · henüz giriş yapmadı"}</span></span>
+      <span className="avatar-md" aria-hidden="true">{initials(m.name)}</span>
+      <span className="team-who"><strong>{m.name}</strong> <span className="hint">{m.email} · {ROLE[m.role]}{m.lastLoginAt ? ` · son giriş ${day(m.lastLoginAt)}` : " · henüz giriş yapmadı"}</span></span>
       <span className="team-actions">
         <button className="btn btn-secondary" disabled={busy} aria-label={`Şifre linki: ${m.name}`} onClick={() => void resetLink(m)}>Şifre linki</button>
         {m.id !== userId && <button className="btn btn-secondary" disabled={busy} aria-label={`Ekipten çıkar: ${m.name}`} onClick={() => void remove(m)}>Çıkar</button>}
@@ -70,7 +72,7 @@ export function TeamSection({ store, userId }: { store: Membership; userId: stri
     {invites.length > 0 && <>
       <h3>Bekleyen davetler</h3>
       <ul className="team-list">{invites.map((i) => <li key={i.id}>
-        <span>{i.email} <span className="hint">· {ROLE[i.role ?? "agent"]} · {day(i.expiresAt)} tarihine kadar</span></span>
+        <span className="team-who">{i.email} <span className="hint">· {ROLE[i.role ?? "agent"]} · {day(i.expiresAt)} tarihine kadar</span></span>
         <button className="btn btn-secondary" disabled={busy} aria-label={`Daveti iptal et: ${i.email}`} onClick={() => void cancelInvite(i)}>İptal et</button>
       </li>)}</ul>
     </>}

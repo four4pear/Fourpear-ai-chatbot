@@ -23,9 +23,12 @@ it("Lina açıkken kapatılır (onayla), kapalıyken tek tıkla açılır", asyn
   const patched = server();
   render(<SettingsPage store={store} />);
   await screen.findByText("Lina açık: müşterilere cevap veriyor.");
-  fireEvent.click(screen.getByRole("button", { name: "Lina'yı kapat" }));
+  const bot = screen.getByRole("switch", { name: "Lina" });
+  expect(bot.getAttribute("aria-checked")).toBe("true");
+  fireEvent.click(bot);
   await screen.findByText("Lina kapalı: hiçbir müşteriye cevap vermiyor.");
-  fireEvent.click(screen.getByRole("button", { name: "Lina'yı aç" }));
+  expect(screen.getByRole("switch", { name: "Lina" }).getAttribute("aria-checked")).toBe("false");
+  fireEvent.click(screen.getByRole("switch", { name: "Lina" }));
   await screen.findByText("Lina açık: müşterilere cevap veriyor.");
   expect(patched).toEqual([{ botEnabled: false }, { botEnabled: true }]);
 });
@@ -34,7 +37,7 @@ it("kapatma onaylanmazsa hiçbir şey değişmez", async () => {
   vi.stubGlobal("confirm", () => false);
   const patched = server();
   render(<SettingsPage store={store} />);
-  fireEvent.click(await screen.findByRole("button", { name: "Lina'yı kapat" }));
+  fireEvent.click(await screen.findByRole("switch", { name: "Lina" }));
   expect(patched).toEqual([]);
 });
 
@@ -44,12 +47,17 @@ it("mesai saatleri düzenlenip kaydedilir; 'yalnızca mesai saatlerinde' ayrıca
   const save = await screen.findByRole("button", { name: "Mesai saatlerini kaydet" });
   expect((save as HTMLButtonElement).disabled).toBe(true); // değişiklik yok
   fireEvent.change(screen.getByLabelText("Bitiş"), { target: { value: "18:00" } });
-  fireEvent.click(screen.getByLabelText("Paz")); // pazar açılır
+  const sunday = screen.getByRole("button", { name: "Paz" });
+  expect(sunday.getAttribute("aria-pressed")).toBe("false");
+  expect(sunday.textContent).toContain("Kapalı");
+  fireEvent.click(sunday); // pazar açılır
+  expect(sunday.getAttribute("aria-pressed")).toBe("true");
+  expect(screen.getByRole("button", { name: "Pzt" }).textContent).toContain("10:00–18:00");
   fireEvent.click(save);
   await screen.findByText("Mesai saatleri kaydedildi.");
   expect(patched).toEqual([{ businessHours: { days: [1, 2, 3, 4, 5, 6, 0], start: "10:00", end: "18:00" } }]);
 
-  fireEvent.click(screen.getByLabelText("Lina yalnızca mesai saatlerinde cevap versin"));
+  fireEvent.click(screen.getByRole("switch", { name: "Lina yalnızca mesai saatlerinde cevap versin" }));
   await screen.findByText("Lina artık yalnızca mesai saatlerinde cevap verecek.");
   expect(patched.at(-1)).toEqual({ botHoursOnly: true });
   expect(screen.getByText(/mesai başlayınca Lina bekleyen mesajlara cevap verir/)).toBeTruthy();
