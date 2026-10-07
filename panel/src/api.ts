@@ -29,6 +29,10 @@ export class ApiError extends Error {
 export const WAITING_CHANGED = "lina:waiting-changed";
 export const waitingChanged = () => window.dispatchEvent(new Event(WAITING_CHANGED));
 
+/** Sunucudan canlı olay geldi (yeni devir, bildirim, mesaj…): açık listeler ve konuşma yenilensin. */
+export const LIVE_EVENT = "lina:live";
+export const liveChanged = () => window.dispatchEvent(new Event(LIVE_EVENT));
+
 let onUnauthorized: (() => void) | null = null;
 /** Oturum düştüğünde (herhangi bir istekte 401) çağrılır; SessionProvider girişe döndürür. */
 export function setUnauthorizedHandler(handler: (() => void) | null) {

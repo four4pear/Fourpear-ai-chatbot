@@ -309,7 +309,8 @@ describe("panel: ekibe bildirimler", () => {
       expect(after[0]).toMatchObject({ id: stale.id, updatedAt: at(0).toISOString() });
       // Menüdeki rozet: açık önemli talepler sayılır.
       const counted = (await call("GET", `/api/tenants/${tenantA}/waiting-count`)).body;
-      expect(counted).toMatchObject({ forwarded: after.length, questions: 0, handoffs: 0, total: after.length });
+      // Rozet müşteri sayısıdır: aynı konuşmadaki iki talep tek müşteridir.
+      expect(counted).toMatchObject({ forwarded: after.length, questions: 0, handoffs: 0, total: new Set(after.map((n: any) => n.conversationId)).size });
 
       // Ekranında eski hâli duran ekip üyesi: görülmemiş istek kapanmasın.
       const refused = await call("POST", `/api/tenants/${tenantA}/notifications/${stale.id}/done`, { seenUpdatedAt: null });

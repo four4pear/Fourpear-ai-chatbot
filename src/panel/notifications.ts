@@ -1,5 +1,5 @@
 import type { NextFunction, Request, Response, Router } from "express";
-import { and, asc, count, countDistinct, desc, eq, isNull } from "drizzle-orm";
+import { and, asc, count, desc, eq, isNull } from "drizzle-orm";
 import type { DB } from "../db/client.js";
 import { conversations, customers, handoffs, notifications, teamQuestions, users, type MemberRole, type Notification } from "../db/schema.js";
 import type { EventBus } from "../core/events.js";
@@ -154,20 +154,22 @@ export function registerNotificationRoutes(
    */
   api.get("/tenants/:tenantId/waiting-count", ...member, async (req, res) => {
     const tenantId = param(req, "tenantId");
-    const [[questions], [forwarded], [handedOff], pending] = await Promise.all([
-      db.select({ n: count() }).from(teamQuestions).where(and(eq(teamQuestions.tenantId, tenantId), eq(teamQuestions.status, "open"))),
+    const [questions, forwarded, handedOff, pending] = await Promise.all([
+      db.select({ id: teamQuestions.conversationId }).from(teamQuestions).where(and(eq(teamQuestions.tenantId, tenantId), eq(teamQuestions.status, "open"))),
       db
-        .select({ n: count() })
+        .select({ id: notifications.conversationId })
         .from(notifications)
         .where(and(eq(notifications.tenantId, tenantId), eq(notifications.status, "open"), eq(notifications.important, true))),
       db
-        .select({ n: countDistinct(handoffs.conversationId) })
+        .selectDistinct({ id: handoffs.conversationId })
         .from(handoffs)
         .innerJoin(conversations, eq(conversations.id, handoffs.conversationId))
         .where(and(eq(handoffs.tenantId, tenantId), eq(handoffs.status, "open"), isNull(conversations.assignedUserId))),
       awaitingReplyInHuman(db, tenantId),
     ]);
-    const counts = { questions: questions?.n ?? 0, forwarded: forwarded?.n ?? 0, handoffs: (handedOff?.n ?? 0) + pending.length };
-    res.json({ ...counts, total: counts.questions + counts.forwarded + counts.handoffs });
+    // Liste müşteriye göre birleşir (aynı müşterinin sorusu, talebi ve devri tek satırdır); rozet de aynı sayıyı gösterir.
+    const handoffIds = new Set([...handedOff.map((h) => h.id), ...pending.map((p) => p.id)]);
+    const everyone = new Set([...questions.map((q) => q.id), ...forwarded.map((n) => n.id), ...handoffIds]);
+    res.json({ questions: questions.length, forwarded: forwarded.length, handoffs: handoffIds.size, total: everyone.size });
   });
 }

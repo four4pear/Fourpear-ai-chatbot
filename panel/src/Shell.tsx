@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
-import { api, WAITING_CHANGED, type Me, type Membership } from "./api";
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { api, liveChanged, WAITING_CHANGED, type Me, type Membership } from "./api";
 import { alertNewWork, alertsOn, askNotificationPermission, playBeep, setAlerts } from "./alerts";
 import { BellIcon, BellOffIcon, ChartIcon, ChatIcon, FlaskIcon, InboxIcon, SettingsIcon, ShieldIcon } from "./icons";
 import { Link, navigate } from "./router";
@@ -51,7 +51,12 @@ function useWaitingCount(store: Membership | null): number {
     let stream: EventSource | null = null;
     if (typeof EventSource !== "undefined") {
       stream = new EventSource(`/api/tenants/${tenantId}/events`);
-      for (const type of ["handoff", "notification", "team_question", "conversation", "notification_update"]) stream.addEventListener(type, load);
+      for (const type of ["handoff", "notification", "team_question", "conversation", "notification_update", "message"]) {
+        stream.addEventListener(type, () => {
+          void load();
+          liveChanged(); // açık liste ve konuşma da hemen yenilensin
+        });
+      }
     }
     return () => {
       cancelled = true;
@@ -64,7 +69,11 @@ function useWaitingCount(store: Membership | null): number {
   return count;
 }
 
-export function Shell({ me, store, active, children }: { me: Me; store: Membership | null; active: Active; children: ReactNode }) {
+/** Tam ekran sayfalar (gelen kutusu) kendi üst çubuğunu çizer: mağaza seçici, zil ve hesap menüsü buradan gelir. */
+const ChromeContext = createContext<ReactNode>(null);
+export const ChromeBar = () => <>{useContext(ChromeContext)}</>;
+
+export function Shell({ me, store, active, bare = false, children }: { me: Me; store: Membership | null; active: Active; bare?: boolean; children: ReactNode }) {
   const sections = store ? visibleSections(store) : [];
   const title = active === "yonetici" ? "Tüm mağazalar" : SECTIONS.find((s) => s.key === active)?.label;
   const waiting = useWaitingCount(store);
@@ -77,6 +86,18 @@ export function Shell({ me, store, active, children }: { me: Me; store: Membersh
     // Sekme arka plandayken de bekleyen iş sayısı başlıkta görünür.
     document.title = (waiting > 0 ? `(${waiting}) ` : "") + [title, store?.name, "Lina Panel"].filter(Boolean).join(" · ");
   }, [store, title, waiting]);
+
+  const chrome = (
+    <>
+      <StoreSwitcher me={me} store={store} active={active} />
+      {store && <span className="role-tag">{me.user.isSuperAdmin ? "Yönetici" : store.role === "owner" ? "Sahip" : "Çalışan"}</span>}
+      <span style={{ flexGrow: 1 }} />
+      {store && <AlertToggle />}
+      <div className="mobile-only">
+        <UserMenu me={me} />
+      </div>
+    </>
+  );
 
   return (
     <div className="shell">
@@ -114,20 +135,12 @@ export function Shell({ me, store, active, children }: { me: Me; store: Membersh
         <UserMenu me={me} />
       </nav>
 
-      <div className="main">
-        <header className="topbar">
-          <StoreSwitcher me={me} store={store} active={active} />
-          {store && (
-            <span className="role-tag">{me.user.isSuperAdmin ? "Yönetici" : store.role === "owner" ? "Sahip" : "Çalışan"}</span>
-          )}
-          <span style={{ flexGrow: 1 }} />
-          {store && <AlertToggle />}
-          <div className="mobile-only">
-            <UserMenu me={me} />
-          </div>
-        </header>
-        {children}
-      </div>
+      <ChromeContext.Provider value={chrome}>
+        <div className={bare ? "main main-bare" : "main"}>
+          {!bare && <header className="topbar">{chrome}</header>}
+          {children}
+        </div>
+      </ChromeContext.Provider>
 
       {sections.length > 0 && (
         <nav className="bottom-nav" aria-label="Alt menü">

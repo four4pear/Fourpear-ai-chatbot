@@ -5,3 +5,8 @@ dist
 *.db-*
 data
 panel/dist
+
+# Yerel araç çıktıları ve işletim sistemi dosyaları
+.DS_Store
+.playwright-mcp/
+*.xlsx

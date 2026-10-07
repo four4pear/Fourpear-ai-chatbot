@@ -238,7 +238,7 @@ export function registerConversationRoutes(
         .limit(20),
       // Lina'nın ekibe sorduğu, cevabı beklenen sorular: konuşmayı okuyan kişi Lina'nın beklediğini görsün.
       db
-        .select({ id: teamQuestions.id, question: teamQuestions.question, createdAt: teamQuestions.createdAt })
+        .select({ id: teamQuestions.id, question: teamQuestions.question, context: teamQuestions.context, customerMessage: teamQuestions.customerMessage, createdAt: teamQuestions.createdAt })
         .from(teamQuestions)
         .where(and(eq(teamQuestions.conversationId, c.id), eq(teamQuestions.status, "open")))
         .orderBy(asc(teamQuestions.createdAt)),

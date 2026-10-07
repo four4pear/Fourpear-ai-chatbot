@@ -1,6 +1,5 @@
 import { TestPage } from "./pages/TestPage";
-import { WaitingPage } from "./pages/WaitingPage";
-import { ConversationPage, ConversationsPage } from "./pages/ConversationsPage";
+import { InboxPage } from "./pages/Inbox";
 import { UsagePage } from "./pages/UsagePage";
 import { SettingsPage } from "./pages/SettingsPage";
 import type { Me } from "./api";
@@ -62,13 +61,14 @@ function Routes() {
     );
   }
 
-  const chat = matchPath("/m/:slug/sohbetler/:conversationId", path);
-  if (chat) {
-    const store = me.memberships.find((s) => s.slug === chat.slug);
+  // Gelen kutusu: bekleyenler ve sohbetler aynı üç bölmeli ekrandır (liste | konuşma | müşteri kartı).
+  const inbox = matchPath("/m/:slug/:section/:conversationId", path);
+  if (inbox && (inbox.section === "bekleyenler" || inbox.section === "sohbetler")) {
+    const store = me.memberships.find((s) => s.slug === inbox.slug);
     if (!store) return <NotFound />;
     return (
-      <Shell me={me} store={store} active="sohbetler">
-        <ConversationPage key={chat.conversationId} store={store} conversationId={chat.conversationId!} userId={me.user.id} />
+      <Shell me={me} store={store} active={inbox.section} bare>
+        <InboxPage key={store.tenantId} store={store} userId={me.user.id} section={inbox.section} conversationId={inbox.conversationId} />
       </Shell>
     );
   }
@@ -79,20 +79,23 @@ function Routes() {
     const section = SECTIONS.find((s) => s.key === (m.section ?? "bekleyenler"));
     if (!store || !section) return <NotFound />;
     if (!m.section) return <Redirect to={`/m/${store.slug}/bekleyenler`} />;
+    if (section.key === "bekleyenler" || section.key === "sohbetler") {
+      return (
+        <Shell me={me} store={store} active={section.key} bare>
+          <InboxPage key={store.tenantId} store={store} userId={me.user.id} section={section.key} />
+        </Shell>
+      );
+    }
     return (
       <Shell me={me} store={store} active={section.key}>
         {section.ownerOnly && store.role !== "owner" ? (
           <Forbidden />
         ) : section.key === "test" ? (
           <TestPage key={store.tenantId} store={store} />
-        ) : section.key === "bekleyenler" ? (
-          <WaitingPage key={store.tenantId} store={store} />
         ) : section.key === "istatistik" ? (
           <UsagePage key={store.tenantId} store={store} />
         ) : section.key === "ayarlar" ? (
           <SettingsPage key={store.tenantId} store={store} />
-        ) : section.key === "sohbetler" ? (
-          <ConversationsPage key={store.tenantId} store={store} />
         ) : (
           <ComingSoon section={section.key as SectionKey} />
         )}
