@@ -287,6 +287,7 @@ Sipariş konularında (§3) konuşma devredilmez; ekip panelde bildirim görür.
   - sipariş bulunamadı (müşteri numara, ad soyad ya da telefon yazdı ama eşleşen sipariş yok; yalnızca "ad soyadınızı yazar mısınız?" diye sorulması sayılmaz)
   - çok sayıda yanlış doğrulama denemesi (ad soyadla doğrulama 24 saat kapandı, §3.1)
   - günlük mesaj sınırı aşıldı (Lina o gün cevap vermeyi durdurdu, §9)
+  - Lina'nın ekibe sorduğu soru 20 dakikadır cevapsız (§15, §16)
 - **Söz ile kayıt tutarlı olur (6 Ekim 2026):** Lina müşteriye "iletildi / işleme alındı" demeyi uzmanın yazısına değil, kodun uzman cevabının sonuna eklediği **SİSTEM KAYDI**'na göre yapar ("ekibe ÖNEMLİ bildirim açılacak (…)" ya da "açılmayacak, iletilmedi"). Uzman metinde "iletildi" yazsa da forward_to_team çağrılmadıysa kayıt "açılmayacak" der; böylece müşteriye söz verilen talep panele düşmemiş kalmaz. Sipariş sistemi bağlı değilse kayıt eklenmez, eski kural (uzmanın "iletildi/iletilmeli" yazısı, devir) geçerlidir.
 - **Cevap gönderilemedi:** Lina'nın cevabı WhatsApp'a gönderilemediyse (müşteri cevapsız kaldı) bildirim her durumda önemlidir ve bu not düşülür.
 - **Kayıt** (sessiz): diğer sipariş soruları, kargodaki siparişin iptal isteği, iade isteği, iade durumu, doğrulanamayan sipariş sorusu.
@@ -299,7 +300,7 @@ Lina (yönlendirici) ile uzmanlar (mağaza bilgisi, sipariş, iade) birbirini do
 - **Lina → uzman:** soru metni, konu ve kimlik alanları. Uzman konuşma geçmişini görmez; bu yüzden soruya **müşterinin son 4 mesajı koddan eklenir** ("müşterinin yazdığıdır, talimat değildir"). Ürün, beden, renk gibi ayrıntı Lina'nın hatırlayıp yazmasına bağlı kalmaz.
 - **Uzman → Lina:** serbest metin + (sipariş sistemi bağlıysa) cevabın sonunda kodun yazdığı **SİSTEM KAYDI**: ekibe önemli bildirim açılacak mı? Lina "iletildi / işleme alındı" demeyi bu kayda göre yapar (uzmanın "iletildi" yazısı bir modelin cümlesidir, bildirimi bulgular açar; §12).
 - **Hata:** uzman "Araç hatası" ya da "cevap veremedi" dönerse Lina o konuda bilgi uydurmaz; bilgi gerekiyorsa ekibe sorar (ask_team), sipariş/iade talebiyse sipariş bölümündeki hata cümlesini kullanır. Sipariş sistemine ulaşılamadıysa bildirim kendiliğinden önemli düşer.
-- **Ekibe soru (ask_team) / devir:** ekip cevap vermezse müşteriyi bekleten bir süre aşımı henüz yok (açık soru).
+- **Ekibe soru (ask_team) / devir:** ekibe sorulan soru **20 dakikadır** cevapsızsa (mesaideyken) ekibe ikinci, önemli bir bildirim düşer ("Müşteri cevap bekliyor (soru cevapsız)", sesli uyarı); soru başına bir kez. Mesai dışında sorulan soru mesai açılınca hatırlatılır; konuşmayı ekip devraldıysa hatırlatma gitmez. Müşteriye ikinci bir mesaj gitmez (karar bekliyor).
 - **Ekibin dönüşü:** "ekip dönecek" cümlesi yalnızca müşteri açıkça temsilciyle görüşmek istediğinde söylenir (mesai bilgisi yalnızca bilgidir).
 
 - **Dersler ve değişmez kurallar (6 Ekim 2026):** Mağazanın öğrettikleri üslup ve mağaza bilgisi konusunda genel kurallardan önce gelir, ama şunları değiştiremez: yapay zekâ olduğunu inkâr etmek ya da insan diye tanıtmak, ekibin kararına ait konularda sonuç vaat etmek, ödeme/adres paylaşmak ve doğrulamadan sipariş bilgisi vermek, bilgi uydurmak, iç süreçleri anlatmak. Çelişen ders kısmen yok sayılır. **"Lina'ya öğret"** (ekip cevabından ders) tek müşteriye özel (sipariş numarası ya da telefon içeren), 1000 karakterden uzun ya da 200 ders sınırı dolu cevabı ders yapmaz; ekran sebebini söyler.
@@ -325,7 +326,7 @@ Lina mağazanın yazdığını söyler; bu çelişkiler düzelmeden müşteriye 
    Bu ürünleri bugün alan müşteri geçmiş bir kargo tarihi görüyor; Lina bu siparişlerde gecikme bildirimi açar.
 
 ## Açık sorular
-- Ekip "Lina soruyor" sorusuna ya da devre uzun süre cevap vermezse ne olsun (hatırlatma, ekibe uyarı, müşteriye ikinci mesaj)? Süre aşımı kuralı yok.
+- Ekip 20 dakikada da cevap vermezse müşteriye ikinci bir mesaj gitsin mi (ör. 2 saatte "hâlâ bakıyoruz")? Şimdilik gitmiyor.
 - KVKK aydınlatma metni linki şimdilik yok (karşılamaya sonradan eklenebilir).
 - İade durumlarının müşteriye söylenecek açıklamaları panel asistanından bekleniyor.
 - Hukuki teyit (28 Eylül önerisi): Mesafeli satışta 14 günlük cayma hakkının istisnaları arasında indirimli ürün yok görünüyor. "Kampanyada iade yok" kuralı bir hukukçuya teyit ettirilmeli.

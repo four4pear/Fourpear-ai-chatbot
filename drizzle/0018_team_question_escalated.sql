@@ -1,0 +1,1 @@
+ALTER TABLE "team_questions" ADD COLUMN "escalated_at" timestamp with time zone;

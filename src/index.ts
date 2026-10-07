@@ -13,6 +13,7 @@ import { returnsProviderFor } from "./returns/provider.js";
 import { shopifyApps } from "./shopify/apps.js";
 import { createShopifyApi } from "./shopify/client.js";
 import { createWhatsAppClient } from "./whatsapp/client.js";
+import { escalateOverdueQuestions } from "./core/team-questions.js";
 import { createRoutingSender } from "./whatsapp/routing.js";
 import { createZernioClient } from "./whatsapp/zernio.js";
 import { EventBus } from "./core/events.js";
@@ -193,7 +194,17 @@ async function openPendingByHours() {
     if (waiting.length) console.log(`Mesai başladı (${t.slug}): ${waiting.length} bekleyen konuşma cevaplanıyor.`);
   }
 }
-const hoursTimer = setInterval(() => void openPendingByHours().catch((err) => console.error("Mesai kontrolü", err)), 60 * 1000);
+// Ekibe sorulan ve 20 dakikadır cevapsız kalan sorular ekibe tekrar hatırlatılır (mesaideyken).
+async function escalateOverdue() {
+  for (const t of await db.select().from(tenants)) {
+    const raised = await escalateOverdueQuestions({ db, events }, t, config.TZ);
+    if (raised) console.log(`Cevapsız ekip sorusu (${t.slug}): ${raised} soru için ekibe uyarı düştü.`);
+  }
+}
+const hoursTimer = setInterval(() => {
+  void openPendingByHours().catch((err) => console.error("Mesai kontrolü", err));
+  void escalateOverdue().catch((err) => console.error("Cevapsız soru kontrolü", err));
+}, 60 * 1000);
 void openPendingByHours().catch((err) => console.error("Mesai kontrolü", err));
 
 const server = app.listen(config.PORT, () => {

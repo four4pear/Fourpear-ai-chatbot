@@ -21,6 +21,7 @@ export const NOTIFICATION_LABELS: Record<Notification["kind"], string> = {
   daily_limit: "Günlük mesaj sınırı aşıldı",
   verify_locked: "Çok sayıda yanlış doğrulama denemesi",
   order_not_found: "Sipariş bulunamadı",
+  team_overdue: "Müşteri cevap bekliyor (soru cevapsız)",
   return_request: "İade/değişim isteği",
   return_status: "İade durumu sorusu",
   unverified: "Doğrulanamayan sipariş sorusu",

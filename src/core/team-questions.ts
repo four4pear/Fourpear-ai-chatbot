@@ -1,7 +1,9 @@
 import { MAX_LESSON_LENGTH, MAX_LESSONS } from "./lessons.js";
-import { and, asc, count, desc, eq, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, isNull, lte, sql } from "drizzle-orm";
 import type { DB } from "../db/client.js";
-import { lessons, messages, teamQuestions } from "../db/schema.js";
+import { conversations, lessons, messages, notifications, resolveSettings, teamQuestions, type Tenant } from "../db/schema.js";
+import { businessStatus } from "./business-hours.js";
+import type { EventBus } from "./events.js";
 
 /**
  * Lina soruyor (docs/lina-davranis.md "Lina soruyor"): Lina bilmediği konuyu arka planda ekibe sorar,
@@ -91,4 +93,57 @@ export async function answerTeamQuestion(
     const windowClosed = !last || Date.now() - last.at.getTime() > 24 * 60 * 60 * 1000;
     return { conversationId: question.conversationId, windowClosed, teach: teachResult };
   });
+}
+
+/** Ekibe sorulan soru bu kadar dakikadır cevapsızsa (mesaidayken) ekibe ısrarlı uyarı düşer. */
+export const OVERDUE_MINUTES = 20;
+
+/**
+ * Cevapsız kalan "Lina soruyor" sorularını ekibe önemli bildirim olarak tekrar hatırlatır (soru başına bir kez).
+ * Yalnızca mesaideyken çalışır: gece sorulan soru sabah açılışta hatırlatılır. Konuşmayı ekip devraldıysa
+ * hatırlatma gitmez (zaten ilgileniliyor). Müşteriye ikinci bir mesaj gitmez. Kaç soru için uyarı düştüğünü döner.
+ */
+export async function escalateOverdueQuestions(
+  deps: { db: DB; events?: EventBus },
+  tenant: Tenant,
+  timeZone: string,
+  now: Date = new Date(),
+): Promise<number> {
+  const settings = resolveSettings(tenant.settings);
+  if (!businessStatus(settings.businessHours, timeZone, now).open) return 0;
+  const overdue = await deps.db
+    .select({ q: teamQuestions, status: conversations.status })
+    .from(teamQuestions)
+    .innerJoin(conversations, eq(conversations.id, teamQuestions.conversationId))
+    .where(
+      and(
+        eq(teamQuestions.tenantId, tenant.id),
+        eq(teamQuestions.status, "open"),
+        isNull(teamQuestions.escalatedAt),
+        lte(teamQuestions.createdAt, new Date(now.getTime() - OVERDUE_MINUTES * 60_000)),
+      ),
+    )
+    .orderBy(asc(teamQuestions.createdAt));
+  let raised = 0;
+  for (const { q, status } of overdue) {
+    await deps.db.update(teamQuestions).set({ escalatedAt: now }).where(eq(teamQuestions.id, q.id));
+    if (status === "human") continue;
+    const minutes = Math.max(OVERDUE_MINUTES, Math.round((now.getTime() - q.createdAt.getTime()) / 60_000));
+    await deps.db.insert(notifications).values({
+      tenantId: tenant.id,
+      conversationId: q.conversationId,
+      kind: "team_overdue",
+      important: true,
+      orderNames: [],
+      question: q.customerMessage || q.question,
+      answer: "Lina müşteriye kontrol ettiğini söyledi; ekibin cevabı bekleniyor.",
+      details: {
+        kinds: ["team_overdue"],
+        issues: [`Lina'nın ekibe sorduğu soru ${minutes} dakikadır cevapsız: "${q.question}". Müşteri bekliyor: soruyu cevaplayın ya da konuşmayı devralıp müşteriye yazın.`],
+      },
+    });
+    deps.events?.publish(tenant.id, { type: "notification", conversationId: q.conversationId, important: true });
+    raised++;
+  }
+  return raised;
 }

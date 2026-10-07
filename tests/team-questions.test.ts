@@ -18,6 +18,7 @@ import {
   lessons,
   memberships,
   messages,
+  notifications,
   teamQuestions,
   tenants,
   users,
@@ -290,6 +291,66 @@ describe("Bekleyenler: ekip cevaplar, Lina müşteriye iletir", () => {
     expect(await teach("Kapıda ödeme var mı?", "Hayır.")).toMatchObject({ taught: true });
     expect(await database.db.select().from(lessons)).toHaveLength(1);
     await database.db.delete(lessons);
+  });
+
+  describe("cevapsız soru 20 dakikada ekibe tekrar hatırlatılır", () => {
+    const OPEN = new Date("2026-09-25T09:00:00Z"); // Cuma 12:00 İstanbul: mesai içi
+    const CLOSED = new Date("2026-09-26T09:00:00Z"); // Cumartesi: mesai dışı
+    const minutesAgo = (n: number, from = OPEN) => new Date(from.getTime() - n * 60_000);
+    const notifs = () => database.db.select().from(notifications);
+    async function askAt(question: string, createdAt: Date) {
+      const id = await ask(question);
+      await database.db.update(teamQuestions).set({ createdAt }).where(eq(teamQuestions.id, id));
+      return id;
+    }
+    async function escalate(now: Date) {
+      const { escalateOverdueQuestions } = await import("../src/core/team-questions.js");
+      const [t] = await database.db.select().from(tenants).where(eq(tenants.id, tenant.id));
+      const localBus = new EventBus();
+      localBus.subscribe(tenant.id, (e) => events.push(e));
+      return escalateOverdueQuestions({ db: database.db, events: localBus }, t!, "Europe/Istanbul", now);
+    }
+
+    it("20 dakikayı geçince önemli bildirim düşer (bir kez); erken ve cevaplanmış soru için düşmez", async () => {
+      await database.db.delete(notifications);
+      events.length = 0;
+      await askAt("Henüz erken", minutesAgo(10));
+      const late = await askAt("Hediye paketi var mı?", minutesAgo(25));
+      const answered = await askAt("Cevaplanan soru", minutesAgo(40));
+      await database.db.update(teamQuestions).set({ status: "answered", answer: "x" }).where(eq(teamQuestions.id, answered));
+
+      expect(await escalate(OPEN)).toBe(1);
+      const [n] = await notifs();
+      expect(n).toMatchObject({ kind: "team_overdue", important: true, conversationId, status: "open" });
+      expect(n!.details.issues![0]).toContain("Hediye paketi var mı?");
+      expect(events.some((e) => e.type === "notification" && e.important)).toBe(true);
+      const [row] = await database.db.select().from(teamQuestions).where(eq(teamQuestions.id, late));
+      expect(row!.escalatedAt).not.toBeNull();
+
+      // Aynı soru için ikinci kez uyarı düşmez.
+      expect(await escalate(new Date(OPEN.getTime() + 5 * 60_000))).toBe(0);
+      expect(await notifs()).toHaveLength(1);
+    });
+
+    it("mesai dışında bekler; mesai açılınca hatırlatır", async () => {
+      await database.db.delete(notifications);
+      await database.db.delete(teamQuestions);
+      await askAt("Gece sorulan soru", minutesAgo(60, CLOSED));
+      expect(await escalate(CLOSED)).toBe(0);
+      expect(await notifs()).toHaveLength(0);
+      expect(await escalate(new Date(OPEN.getTime() + 3 * 24 * 60 * 60_000))).toBe(1); // Pazartesi 12:00
+    });
+
+    it("konuşmayı ekip devraldıysa bildirim düşmez ama soru bir daha taranmaz", async () => {
+      await database.db.delete(notifications);
+      await database.db.delete(teamQuestions);
+      await database.db.update(conversations).set({ status: "human" }).where(eq(conversations.id, conversationId));
+      await askAt("Devralınmış konuşmada soru", minutesAgo(30));
+      expect(await escalate(OPEN)).toBe(0);
+      expect(await notifs()).toHaveLength(0);
+      await database.db.update(conversations).set({ status: "bot" }).where(eq(conversations.id, conversationId));
+      expect(await escalate(OPEN)).toBe(0);
+    });
   });
 
   it("boş cevap ve başka mağazanın sorusu reddedilir", async () => {

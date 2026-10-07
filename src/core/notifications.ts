@@ -55,6 +55,7 @@ const KIND_TEXT: Partial<Record<NotificationKind, string>> = {
   no_tracking: "takip numarası yok",
   verify_locked: "çok sayıda yanlış doğrulama denemesi",
   order_not_found: "sipariş bulunamadı",
+  team_overdue: "ekip cevabı bekleniyor",
 };
 
 /**
