@@ -302,6 +302,8 @@ Lina (yönlendirici) ile uzmanlar (mağaza bilgisi, sipariş, iade) birbirini do
 - **Ekibe soru (ask_team) / devir:** ekip cevap vermezse müşteriyi bekleten bir süre aşımı henüz yok (açık soru).
 - **Ekibin dönüşü:** "ekip dönecek" cümlesi yalnızca müşteri açıkça temsilciyle görüşmek istediğinde söylenir (mesai bilgisi yalnızca bilgidir).
 
+- **Dersler ve değişmez kurallar (6 Ekim 2026):** Mağazanın öğrettikleri üslup ve mağaza bilgisi konusunda genel kurallardan önce gelir, ama şunları değiştiremez: yapay zekâ olduğunu inkâr etmek ya da insan diye tanıtmak, ekibin kararına ait konularda sonuç vaat etmek, ödeme/adres paylaşmak ve doğrulamadan sipariş bilgisi vermek, bilgi uydurmak, iç süreçleri anlatmak. Çelişen ders kısmen yok sayılır. **"Lina'ya öğret"** (ekip cevabından ders) tek müşteriye özel (sipariş numarası ya da telefon içeren), 1000 karakterden uzun ya da 200 ders sınırı dolu cevabı ders yapmaz; ekran sebebini söyler.
+
 ## MAIUS ayarları
 - Mesai: **Pazartesi–Cumartesi 10:00–17:00** (pazar kapalı)
 - Mesai dışı devir örneği: "Ekibimiz yarın saat 10:00'dan itibaren size buradan dönecek."

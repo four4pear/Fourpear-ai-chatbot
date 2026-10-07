@@ -165,3 +165,19 @@ it("adı olmayan müşteride telefon iki kez yazılmaz", async () => {
   await screen.findByText("İade: ekip kararı gerekiyor (#MO-9013)");
   expect(screen.getAllByText("+90 532 999 88 77")).toHaveLength(1);
 });
+
+it("öğret işaretliydi ama ders kaydedilmediyse ekran sebebini söyler", async () => {
+  vi.stubGlobal("fetch", vi.fn(async (url: string, init: RequestInit = {}) => {
+    if (init.method === "POST") return json({ ok: true, taught: false, teachSkipped: "specific", windowClosed: false, relay: "lina" });
+    if (url.includes("/conversations")) return json({ conversations: [] });
+    if (url.includes("/notifications")) return json({ notifications: [] });
+    return json({ questions: [question] });
+  }));
+  render(<WaitingPage store={{ tenantId: "t", slug: "s", name: "Betül Saday", role: "owner" }} />);
+  await screen.findByText("Hediye paketi yapıyor musunuz?");
+  fireEvent.change(screen.getByLabelText("Cevabınız"), { target: { value: "MO-9013 yattı." } });
+  fireEvent.click(screen.getByLabelText(/Lina’ya öğret/));
+  fireEvent.click(screen.getByRole("button", { name: "Cevabı gönder" }));
+  await screen.findByText(/Lina'ya öğretilmedi: soru ya da cevapta sipariş numarası ya da telefon var/);
+  expect(screen.queryByText(/Bu bilgi Lina'ya da öğretildi/)).toBeNull();
+});

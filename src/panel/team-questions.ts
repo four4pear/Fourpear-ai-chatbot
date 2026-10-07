@@ -70,6 +70,13 @@ export function registerTeamQuestionRoutes(
       .innerJoin(tenants, eq(tenants.id, conversations.tenantId))
       .where(eq(conversations.id, result.conversationId));
     const relay = !row ? "lina" : !resolveSettings(row.settings).botEnabled ? "bot_off" : row.status === "human" ? "in_team" : "lina";
-    res.json({ ok: true, taught: teach, windowClosed: result.windowClosed, relay });
+    res.json({
+      ok: true,
+      taught: result.teach === "taught",
+      // Öğret işaretliydi ama ders kaydedilmedi: sebebi (specific | long | limit).
+      teachSkipped: result.teach && result.teach !== "taught" ? result.teach : undefined,
+      windowClosed: result.windowClosed,
+      relay,
+    });
   });
 }

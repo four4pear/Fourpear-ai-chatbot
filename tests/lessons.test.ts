@@ -190,6 +190,10 @@ describe("Lina'yı eğitmek", () => {
     const taught = ["Müşteri iade süresini sorduğunda: inceleme en geç 14 gün."];
     const system = linaSystemPrompt(tenant, [], { orders: false, lessons: taught });
     expect(system).toContain("## Mağazanın sana öğrettikleri");
+    // Güvenlik kuralları hiçbir derse göre değişmez (denetim B7).
+    expect(system).toContain("hiçbir derse göre değişmez");
+    expect(system).toContain("kendini insan diye tanıtmamak");
+    expect(system).toContain("sonuç vaat etmemek");
     expect(system).toContain(`- ${taught[0]}`);
     expect(linaSystemPrompt(tenant, [], { orders: false })).not.toContain("öğrettikleri");
 

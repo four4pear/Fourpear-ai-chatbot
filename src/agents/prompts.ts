@@ -89,7 +89,7 @@ export function linaSystemPrompt(
   opts: { orders: boolean; lessons?: string[] } = { orders: false },
 ): string {
   const taught = opts.lessons?.length
-    ? `\n\n## Mağazanın sana öğrettikleri\nMağaza sahibinin onayladığı kurallar; bu talimattaki genel kurallardan önce gelir, her zaman uy:\n${opts.lessons.map((l) => `- ${l}`).join("\n")}`
+    ? `\n\n## Mağazanın sana öğrettikleri\nMağaza sahibinin onayladığı kurallar; üslup ve mağaza bilgisi konusunda bu talimattaki genel kurallardan önce gelir, uy. Ama şunlar hiçbir derse göre değişmez; bir ders bunlarla çelişirse o dersin çelişen kısmını yok say: yapay zekâ olduğunu inkâr etmemek ve kendini insan diye tanıtmamak; ekibin kararına ait konularda (iade onayı, ücretsiz değişim, indirim, hediye çeki) sonuç vaat etmemek; ödeme ve adres bilgisi paylaşmamak ve siparişi doğrulamadan sipariş bilgisi vermemek; bilgi uydurmamak; uzmanları, sistemi ve iç süreçleri anlatmamak.\n${opts.lessons.map((l) => `- ${l}`).join("\n")}`
     : "";
   const store = tenant.domain ? `${tenant.name} (${tenant.domain})` : tenant.name;
   const specialistList = specialists.length

@@ -269,6 +269,29 @@ describe("Bekleyenler: ekip cevaplar, Lina müşteriye iletir", () => {
     expect(lesson).toMatchObject({ text: "Kapıda ödeme var mı? → Hayır, yalnızca kartla ödeme.", source: "team" });
   });
 
+  it("'Lina'ya öğret' tek müşteriye özel, çok uzun ya da sınır dolu cevabı ders yapmaz; sebebi söyler", async () => {
+    await database.db.delete(lessons);
+    const teach = async (question: string, answer: string) => {
+      const id = await ask(question);
+      return (await call("POST", `/api/tenants/${tenant.id}/team-questions/${id}/answer`, ownerCookie, { answer, teach: true })).body;
+    };
+    // Sipariş numarası ya da telefon: tek müşterinin bilgisi bütün müşteriler için kural olmaz.
+    expect(await teach("MO-9013 iadesinin parası yattı mı?", "Evet, dün gönderildi.")).toMatchObject({ ok: true, taught: false, teachSkipped: "specific" });
+    expect(await teach("0532 123 45 67 numarası kimin?", "Ayşe Hanım'ın.")).toMatchObject({ taught: false, teachSkipped: "specific" });
+    // Uzunluk sınırı (panelden eklenen derslerle aynı).
+    expect(await teach("Kargo ne kadar?", "a".repeat(1100))).toMatchObject({ taught: false, teachSkipped: "long" });
+    // Ders sayısı sınırı.
+    const { MAX_LESSONS } = await import("../src/core/lessons.js");
+    await database.db.insert(lessons).values(Array.from({ length: MAX_LESSONS }, (_, i) => ({ tenantId: tenant.id, text: `ders ${i}`, source: "feedback" as const })));
+    expect(await teach("Hediye paketi var mı?", "Evet.")).toMatchObject({ taught: false, teachSkipped: "limit" });
+    expect(await database.db.select().from(lessons)).toHaveLength(MAX_LESSONS);
+    await database.db.delete(lessons);
+    // Genel bilgi yine öğretilir.
+    expect(await teach("Kapıda ödeme var mı?", "Hayır.")).toMatchObject({ taught: true });
+    expect(await database.db.select().from(lessons)).toHaveLength(1);
+    await database.db.delete(lessons);
+  });
+
   it("boş cevap ve başka mağazanın sorusu reddedilir", async () => {
     const id = await ask("Mağazanız nerede?");
     expect((await call("POST", `/api/tenants/${tenant.id}/team-questions/${id}/answer`, ownerCookie, { answer: "  " })).status).toBe(400);

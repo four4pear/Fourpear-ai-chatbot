@@ -1,4 +1,5 @@
-import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { MAX_LESSON_LENGTH, MAX_LESSONS } from "./lessons.js";
+import { and, asc, count, desc, eq, sql } from "drizzle-orm";
 import type { DB } from "../db/client.js";
 import { lessons, messages, teamQuestions } from "../db/schema.js";
 
@@ -39,6 +40,11 @@ export async function openTeamQuestions(db: DB, conversationId: string): Promise
   return rows.map((r) => r.question);
 }
 
+/** taught: ders kaydedildi · specific: tek müşteriye özel · long: çok uzun · limit: ders sınırı doldu. */
+export type TeachResult = "taught" | "specific" | "long" | "limit";
+/** Sipariş numarası ya da telefon içeren soru/cevap tek bir müşteriye özeldir. */
+const CUSTOMER_SPECIFIC = /(?:#|\bMO-?)\d{3,}|\b(?:\+?90)?\s?0?5\d{2}[\s-]?\d{3}[\s-]?\d{2}[\s-]?\d{2}\b/i;
+
 /** Konuşmaya eklenen iç bilginin metni (Lina görür, müşteri görmez). */
 export const teamAnswerText = (question: string, answer: string) => `Soru: ${question}\nEkibin cevabı: ${answer}`;
 
@@ -64,13 +70,16 @@ export async function answerTeamQuestion(
       type: TEAM_ANSWER_TYPE,
       text: teamAnswerText(question.question, input.answer),
     });
+    // Ders bütün müşteriler için kural olur: tek bir müşteriye özel bilgi (sipariş no, telefon) ders yapılmaz,
+    // uzunluk ve sayı sınırları panelden eklenen derslerdekiyle aynıdır. Kayıt edilmediyse sebebi döner.
+    let teachResult: TeachResult | null = null;
     if (input.teach) {
-      await tx.insert(lessons).values({
-        tenantId: input.tenantId,
-        text: `${question.question} → ${input.answer}`,
-        source: "team",
-        createdBy: input.userId,
-      });
+      const text = `${question.question} → ${input.answer}`;
+      const [{ n }] = (await tx.select({ n: count() }).from(lessons).where(eq(lessons.tenantId, input.tenantId))) as [{ n: number }];
+      teachResult = CUSTOMER_SPECIFIC.test(text) ? "specific" : text.length > MAX_LESSON_LENGTH ? "long" : n >= MAX_LESSONS ? "limit" : "taught";
+      if (teachResult === "taught") {
+        await tx.insert(lessons).values({ tenantId: input.tenantId, text, source: "team", createdBy: input.userId });
+      }
     }
     // Müşterinin son mesajı 24 saatten eskiyse WhatsApp serbest mesaja izin vermez.
     const [last] = await tx
@@ -80,6 +89,6 @@ export async function answerTeamQuestion(
       .orderBy(desc(messages.createdAt), desc(messages.seq))
       .limit(1);
     const windowClosed = !last || Date.now() - last.at.getTime() > 24 * 60 * 60 * 1000;
-    return { conversationId: question.conversationId, windowClosed };
+    return { conversationId: question.conversationId, windowClosed, teach: teachResult };
   });
 }
