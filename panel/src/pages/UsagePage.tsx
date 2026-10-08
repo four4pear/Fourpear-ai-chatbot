@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, type Membership } from "../api";
 import { Segmented } from "../ui";
+import { StatsSection } from "./StatsSection";
 
 type Row = {
   agent: string;
@@ -36,7 +37,7 @@ export const usd = (n: number | null) => (n === null ? "—" : `$${n < 0.1 ? n.t
 const num = (n: number) => n.toLocaleString("tr-TR");
 const pct = (n: number | null) => (n === null ? "—" : `%${Math.round(n * 100)}`);
 
-/** İstatistik: yapay zekâ kullanımı ve tahmini maliyet; canlı konuşmalar ve test ekranı ayrı. */
+/** İstatistik: konuşma sayıları ve dağılımı, altında yapay zekâ kullanımı ve tahmini maliyet (canlı konuşmalar ve test ekranı ayrı). */
 export function UsagePage({ store }: { store: Membership }) {
   const [days, setDays] = useState(7);
   const [source, setSource] = useState<"live" | "test">("live");
@@ -54,9 +55,10 @@ export function UsagePage({ store }: { store: Membership }) {
       <div><p className="hint">{store.name}</p><h1>İstatistik</h1></div>
       <Segmented label="Dönem" value={days} options={PERIODS.map((p) => ({ value: p.days, label: p.label }))} onChange={setDays} />
     </div>
+    <StatsSection store={store} days={days} />
     <div className="usage-sub">
+      <div><h2 className="usage-title">Yapay zekâ kullanımı</h2><p className="hint">Tahmini maliyet. Tutarlar Anthropic liste fiyatlarıyla hesaplanır; kesin tutar Anthropic faturasındadır.</p></div>
       <Segmented label="Kaynak" value={source} options={[{ value: "live", label: "Müşteri konuşmaları" }, { value: "test", label: "Test ekranı" }]} onChange={setSource} />
-      <p className="hint">Yapay zekâ kullanımı ve tahmini maliyet. Tutarlar Anthropic liste fiyatlarıyla hesaplanır; kesin tutar Anthropic faturasındadır.</p>
     </div>
     {error && <p role="alert" className="test-error">{error}</p>}
     {!usage && !error && <p className="hint" role="status">Yükleniyor…</p>}

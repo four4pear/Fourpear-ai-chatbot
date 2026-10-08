@@ -66,7 +66,19 @@ Lina'nın cevabı WhatsApp'a gönderilemediyse bildirim her durumda önemlidir v
 ## Ayarlar
 Yalnızca mağaza sahibi. Ekran: üstte **Lina açık/kapalı anahtarı**, solda bölüm bağlantıları (Lina, Mesai saatleri, Ekip), sağda kartlar. **Lina'yı aç/kapat** (acil durdurma): kapalıyken Lina hiçbir müşteriye cevap vermez, mesajlar panelde görünür, ekip konuşmaları devralıp yazabilir; açılınca yalnızca yeni mesajlara cevap verilir. **Mesai saatleri:** gün kutuları (açık günler yeşil çerçeveli, saatler üzerinde yazar), başlangıç ve bitiş; "Lina yalnızca mesai saatlerinde cevap versin" anahtarı. Bu anahtar açıkken mesai dışında gelen mesajlar kaydedilir, müşteriye hiçbir şey yazılmaz ve "yazıyor…" gösterilmez; mesai başlayınca (dakikada bir kontrol) Lina bekleyen mesajlara cevap verir. **Ekip:** üyeleri listele (baş harfli simge, rol, son giriş), davet linki oluştur, şifre linki üret, bekleyen daveti iptal et, ekipten çıkar. API: `GET/PATCH /api/tenants/:id/settings`. Lina'ya notlar, sabit metinler ve günlük sınır sonraki adımlarda.
 
-## İstatistik
-Yalnızca mağaza sahibi. Üstte dönem sekmeleri (Son 24 saat / Son 7 gün / Son 30 gün), altında kaynak sekmeleri (Müşteri konuşmaları / Test ekranı), özet kartları (tahmini tutar, Lina'nın cevapları, cevap başına tutar, önbellekten okunan) ve **Ajanlara göre kullanım** tablosu. Şu an yapay zekâ kullanımı ve tahmini maliyet gösterilir; taslaktaki konuşma/devir sayıları, günlük grafik, devir sebepleri, sık sorulan konular ve paket kullanımı için veri henüz toplanmıyor (sonraki adım).
-
 **Ekip kuralları:** davet ve şifre linki e-postayla gitmez; sahip linki kopyalayıp kişiye kendisi iletir (tek kullanımlık; davet 7 gün, şifre linki 24 saat). Kendini ve mağazanın son sahibini çıkaramazsın. Ekipten çıkarılan kişinin bu mağazaya erişimi hemen kapanır; başka mağazası yoksa oturumları da silinir. API: `GET /members` (bekleyen davetlerle), `DELETE /members/:id`, `DELETE /invites/:id`.
+
+## İstatistik
+Yalnızca mağaza sahibi. Üstte dönem sekmeleri (Son 24 saat / Son 7 gün / Son 30 gün; kayan pencere) ve altında iki bölüm.
+
+**Konuşmalar** (`GET /api/tenants/:id/stats?days=1|7|30`, `src/panel/stats.ts`):
+- **Konuşma:** dönemde müşterinin yazdığı konuşma sayısı (bir müşteri bir kez sayılır).
+- **Lina'nın tek başına çözdüğü:** ekip devreye girmeden biten konuşmalar (yüzdesiyle). **Ekibe giden:** dönemde şunlardan biri olan konuşmalar: devir, *önemli* bildirim, Lina'nın ekibe sorusu ya da ekibin yazdığı mesaj. Sessiz kayıtlar ekip işi sayılmaz. İkisinin toplamı konuşma sayısını verir.
+- **Ekibin ortalama dönüş süresi:** devirden ekibin o konuşmadaki ilk mesajına geçen süre; ekip henüz yazmadıysa "—".
+- **Mesai dışı gelen:** mesai saatleri (Ayarlar) dışında yazan konuşma sayısı.
+- **Grafik:** 24 saatte saatlik, diğerlerinde günlük; her konuşma yazdığı kovada "Lina çözdü" ya da (ekip o kovada devreye girdiyse) "Ekibe gitti" olarak sayılır. Saat dilimi sunucunun `TZ` ayarıdır.
+- **Ekibe giden işlerin sebepleri:** devir sebepleri, önemli bildirim türleri ve "Lina ekibe soru sordu"; iş sayısıdır (bir konuşma birden çok sebep taşıyabilir).
+
+**Yapay zekâ kullanımı** (`GET …/usage`): kaynak sekmeleri (Müşteri konuşmaları / Test ekranı), özet kartları (tahmini tutar, Lina'nın cevapları, cevap başına tutar, önbellekten okunan) ve ajanlara göre tablo.
+
+Taslaktaki "en çok sorulan konular" ve "paket kullanımı" henüz yok: konu etiketi ve paket/kota bilgisi toplanmıyor.

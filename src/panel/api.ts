@@ -12,6 +12,7 @@ import { registerConversationRoutes } from "./conversations.js";
 import { NOTIFICATION_LABELS, registerNotificationRoutes } from "./notifications.js";
 import { registerLessonRoutes } from "./lessons.js";
 import { registerTeamQuestionRoutes } from "./team-questions.js";
+import { registerStatsRoutes } from "./stats.js";
 import { registerUsageRoutes } from "./usage.js";
 import { registerSettingsRoutes } from "./settings.js";
 import {
@@ -368,6 +369,7 @@ export function registerPanelApi(app: Express, deps: PanelApiDeps) {
   registerLessonRoutes(api, deps, { requireUser, requireTenant });
   registerTeamQuestionRoutes(api, deps, { requireUser, requireTenant });
   registerUsageRoutes(api, deps, { requireUser, requireTenant });
+  registerStatsRoutes(api, { db: deps.db, timeZone: deps.simulatorDeps?.timeZone ?? "Europe/Istanbul", now: deps.now }, { requireUser, requireTenant });
   registerSettingsRoutes(api, deps, { requireUser, requireTenant });
 
   api.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
