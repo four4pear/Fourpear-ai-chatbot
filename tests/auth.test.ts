@@ -136,6 +136,38 @@ describe("giriş ve oturum", () => {
     expect((await login("eskihash@maius.test")).status).toBe(200);
   });
 
+  it("şifre değiştirme: mevcut şifre ister, yenisi kısa ya da aynıysa reddeder; değişince diğer oturumlar kapanır, bu oturum kalır; yanlış denemeler hesabı kilitler", async () => {
+    const own = startApp();
+    try {
+      await createUser("degistir@maius.test", { memberOf: [[tenantA, "agent"]] });
+      const login = async (password = PASSWORD) => own.call("POST", "/api/auth/login", { body: { email: "degistir@maius.test", password } });
+      const change = (cookie: string | undefined, currentPassword: unknown, newPassword: unknown) =>
+        own.call("POST", "/api/auth/password", { cookie, body: { currentPassword, newPassword } });
+
+      const here = await login(); // bu oturum
+      const elsewhere = await login(); // başka cihaz
+      expect((await change(undefined, PASSWORD, "yeni-sifre-12345")).status).toBe(401); // oturumsuz
+      expect((await change(here.cookie, PASSWORD, undefined)).status).toBe(400);
+      expect((await change(here.cookie, PASSWORD, "kisa")).status).toBe(400);
+      expect((await change(here.cookie, PASSWORD, PASSWORD)).status).toBe(400);
+      expect((await change(here.cookie, "yanlis-sifre-000", "yeni-sifre-12345")).status).toBe(401);
+
+      expect((await change(here.cookie, PASSWORD, "yeni-sifre-12345")).body).toEqual({ ok: true });
+      expect((await own.call("GET", "/api/me", { cookie: here.cookie })).status).toBe(200); // bu oturum açık
+      expect((await own.call("GET", "/api/me", { cookie: elsewhere.cookie })).status).toBe(401); // diğeri kapandı
+      expect((await login(PASSWORD)).status).toBe(401); // eski şifre geçmez
+      expect((await login("yeni-sifre-12345")).status).toBe(200);
+
+      // 5 yanlış mevcut şifre denemesinden sonra doğrusu da 15 dk kabul edilmez.
+      const fresh = await login("yeni-sifre-12345");
+      for (let i = 0; i < 4; i++) expect((await change(fresh.cookie, "yanlis-" + i, "baska-sifre-12345")).status).toBe(401);
+      expect((await change(fresh.cookie, "yanlis-5", "baska-sifre-12345")).status).toBe(401);
+      expect((await change(fresh.cookie, "yeni-sifre-12345", "baska-sifre-12345")).status).toBe(429);
+    } finally {
+      own.server.close();
+    }
+  });
+
   it("panel API cevapları önbelleğe alınmaz", async () => {
     expect((await app.call("GET", "/api/me")).cacheControl).toBe("no-store");
     const owner = await login("sahip@maius.test");

@@ -180,6 +180,16 @@ describe("menü ve oturum", () => {
     expect(requests.some((r) => r.path === "/tenants/t1/waiting-count")).toBe(true);
   });
 
+  it("hesap menüsünde 'Şifremi değiştir' vardır ve Hesabım sayfasını açar", async () => {
+    session = OWNER;
+    open("/m/maius/istatistik");
+    await screen.findByRole("heading", { name: "İstatistik" });
+    fireEvent.click(screen.getAllByRole("button", { name: /^Hesap:/ })[0]!);
+    fireEvent.click(await screen.findByRole("link", { name: "Şifremi değiştir" }));
+    await screen.findByRole("heading", { name: "Hesabım" });
+    expect(window.location.pathname).toBe("/hesap");
+  });
+
   it("Lina kapalıysa ya da mesai dışındaysa üst çubukta uyarı görünür; açıkken görünmez", async () => {
     session = OWNER;
     open("/m/maius/istatistik");

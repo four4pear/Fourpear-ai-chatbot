@@ -5,6 +5,7 @@ import express, { type Express, type NextFunction, type Request, type Response }
 import { and, count, eq, gt, isNull, ne } from "drizzle-orm";
 import type { DB } from "../db/client.js";
 import { agentRuns, authTokens, memberships, sessions, tenants, users, type MemberRole, type User } from "../db/schema.js";
+import { hashPassword, MIN_PASSWORD_LENGTH, tokenHash, verifyPassword } from "../auth/password.js";
 import { FailureLimiter } from "../auth/rate-limit.js";
 import type { EventBus } from "../core/events.js";
 import type { WhatsAppSender } from "../whatsapp/client.js";
@@ -12,6 +13,7 @@ import { registerConversationRoutes } from "./conversations.js";
 import { NOTIFICATION_LABELS, registerNotificationRoutes } from "./notifications.js";
 import { registerLessonRoutes } from "./lessons.js";
 import { registerTeamQuestionRoutes } from "./team-questions.js";
+import { registerKnowledgeAlertRoutes } from "./knowledge-alerts.js";
 import { registerStatsRoutes } from "./stats.js";
 import { registerUsageRoutes } from "./usage.js";
 import { registerSettingsRoutes } from "./settings.js";
@@ -184,6 +186,42 @@ export function registerPanelApi(app: Express, deps: PanelApiDeps) {
     emailFailures.reset(emailKey);
     setSessionCookie(res, await createSession(db, user.id, req.get("user-agent")));
     res.json(await me(user));
+  });
+
+  /**
+   * Kendi şifresini değiştirir (oturum açık olmalı). Mevcut şifre girilir; yanlış denemeler girişle aynı hesap
+   * sayacına yazılır (5 hata → 15 dk kilit). Değişince bu oturum dışındaki bütün oturumlar kapanır.
+   */
+  api.post("/auth/password", requireUser, async (req, res) => {
+    const { user, sessionToken } = res.locals as Locals;
+    const { currentPassword, newPassword } = req.body ?? {};
+    if (typeof currentPassword !== "string" || typeof newPassword !== "string") {
+      res.status(400).json({ error: "Mevcut ve yeni şifre gerekli" });
+      return;
+    }
+    const key = normalizeEmail(user!.email);
+    if (emailFailures.isBlocked(key)) {
+      res.status(429).json({ error: "Çok fazla hatalı deneme. 15 dakika sonra tekrar deneyin." });
+      return;
+    }
+    if (!user!.passwordHash || !(await verifyPassword(currentPassword, user!.passwordHash))) {
+      emailFailures.fail(key);
+      res.status(401).json({ error: "Mevcut şifre hatalı" });
+      return;
+    }
+    if (newPassword.length < MIN_PASSWORD_LENGTH) {
+      res.status(400).json({ error: `Yeni şifre en az ${MIN_PASSWORD_LENGTH} karakter olmalı` });
+      return;
+    }
+    if (newPassword === currentPassword) {
+      res.status(400).json({ error: "Yeni şifre eskisinden farklı olmalı" });
+      return;
+    }
+    emailFailures.reset(key);
+    await db.update(users).set({ passwordHash: await hashPassword(newPassword) }).where(eq(users.id, user!.id));
+    // Başka cihazlardaki oturumlar kapanır; bu oturum açık kalır.
+    await db.delete(sessions).where(and(eq(sessions.userId, user!.id), ne(sessions.tokenHash, tokenHash(sessionToken ?? ""))));
+    res.json({ ok: true });
   });
 
   api.post("/auth/logout", async (_req, res) => {
@@ -383,6 +421,7 @@ export function registerPanelApi(app: Express, deps: PanelApiDeps) {
   registerLessonRoutes(api, deps, { requireUser, requireTenant });
   registerTeamQuestionRoutes(api, deps, { requireUser, requireTenant });
   registerUsageRoutes(api, deps, { requireUser, requireTenant });
+  registerKnowledgeAlertRoutes(api, deps, { requireUser, requireTenant });
   registerStatsRoutes(api, { db: deps.db, timeZone: deps.simulatorDeps?.timeZone ?? "Europe/Istanbul", now: deps.now }, { requireUser, requireTenant });
   registerSettingsRoutes(api, deps, { requireUser, requireTenant });
 

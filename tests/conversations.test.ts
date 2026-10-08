@@ -7,7 +7,7 @@ import { createApp } from "../src/app.js";
 import { EventBus, type PanelEvent } from "../src/core/events.js";
 import type { Deps } from "../src/core/conversation.js";
 import { openDatabase, type Database } from "../src/db/client.js";
-import { agentRuns, conversations, customerMemories, customers, handoffs, media, memberships, messages, notifications, teamQuestions, tenants, users, whatsappAccounts } from "../src/db/schema.js";
+import { agentRuns, conversations, customerMemories, customers, handoffs, knowledgeAlerts, media, memberships, messages, notifications, teamQuestions, tenants, users, whatsappAccounts } from "../src/db/schema.js";
 import { hashPassword } from "../src/auth/password.js";
 import { encryptSecret } from "../src/lib/crypto.js";
 
@@ -299,6 +299,50 @@ describe("panel: konuşmayı devralma, yazma, Lina'ya geri verme", () => {
     expect((await call("sahip", "PATCH", url, { botHoursOnly: true })).body).toMatchObject({ botHoursOnly: true, businessHours: { start: "10:00" } });
   });
 
+  it("ayarlar: notlar, sabit metinler, cevap hızı, sınırlar ve iade el kitabı doğrulanır ve kaydedilir; boş metin hazır metne döner", async () => {
+    const url = `/api/tenants/${tenantA}/settings`;
+    const patch = (body: unknown) => call("sahip", "PATCH", url, body);
+    expect((await call("zeynep", "PATCH", url, { notes: "x" })).status).toBe(403);
+
+    const first = await patch({
+      notes: "  Bu hafta kargoda gecikme var.  ",
+      texts: { failure: "  Şu an cevap veremiyorum, ekip dönecek.  " },
+      returnsPlaybook: "Önce dinle.",
+      replyDelaySeconds: 20, maxReplyWaitSeconds: 120, dailyMessageLimit: 100, dailyStoreMessageLimit: 1500,
+    });
+    expect(first.status).toBe(200);
+    expect(first.body).toMatchObject({
+      notes: "Bu hafta kargoda gecikme var.",
+      texts: { unsupported: "", failure: "Şu an cevap veremiyorum, ekip dönecek." },
+      returnsPlaybook: "Önce dinle.",
+      limits: { replyDelaySeconds: 20, maxReplyWaitSeconds: 120, dailyMessageLimit: 100, dailyStoreMessageLimit: 1500 },
+    });
+    expect(first.body.defaultTexts.failure).toContain("Üzgünüm");
+    // Kalıcı: tenants.notes sütununda ve ayarlarda; Lina bunları okur.
+    const [t] = await database.db.select().from(tenants).where(eq(tenants.id, tenantA));
+    expect(t!.notes).toBe("Bu hafta kargoda gecikme var.");
+    expect(t!.settings).toMatchObject({ dailyMessageLimit: 100, replyDelaySeconds: 20, texts: { failure: "Şu an cevap veremiyorum, ekip dönecek." }, botEnabled: true });
+
+    // Boş metin hazır metne döner; diğer metin korunur.
+    expect((await patch({ texts: { unsupported: "Yazar mısınız?" } })).body.texts).toEqual({ unsupported: "Yazar mısınız?", failure: "Şu an cevap veremiyorum, ekip dönecek." });
+    expect((await patch({ texts: { failure: "  " } })).body.texts).toEqual({ unsupported: "Yazar mısınız?", failure: "" });
+
+    // Geçersizler reddedilir ve hiçbir şey değişmez.
+    for (const bad of [
+      { dailyMessageLimit: 5 }, { dailyMessageLimit: 2.5 }, { dailyMessageLimit: "100" }, { dailyStoreMessageLimit: 10 },
+      { replyDelaySeconds: -1 }, { replyDelaySeconds: 500 }, { maxReplyWaitSeconds: 5 },
+      { replyDelaySeconds: 100, maxReplyWaitSeconds: 50 }, // bekleme, en fazla beklemeden uzun olamaz
+      { notes: "x".repeat(8001) }, { returnsPlaybook: "x".repeat(20_001) }, { notes: 5 },
+      { texts: { failure: "x".repeat(501) } }, { texts: { baska: "x" } }, { texts: ["x"] },
+    ]) expect((await patch(bad)).status).toBe(400);
+    const [after] = await database.db.select().from(tenants).where(eq(tenants.id, tenantA));
+    expect(after!.settings).toMatchObject({ dailyMessageLimit: 100, replyDelaySeconds: 20, maxReplyWaitSeconds: 120 });
+    expect(after!.notes).toBe("Bu hafta kargoda gecikme var.");
+
+    // Sonraki testler varsayılan ayarlarla çalışsın.
+    await patch({ notes: "", texts: { unsupported: "", failure: "" }, returnsPlaybook: "", replyDelaySeconds: 30, maxReplyWaitSeconds: 180, dailyMessageLimit: 200, dailyStoreMessageLimit: 3000 });
+  });
+
   it("bekleyen sayısı Lina'nın şu anki durumunu da söyler: açık, kapalı, mesai dışı", async () => {
     const settings = `/api/tenants/${tenantA}/settings`;
     const state = async () => (await call("zeynep", "GET", `/api/tenants/${tenantA}/waiting-count`)).body.bot;
@@ -331,6 +375,26 @@ describe("panel: konuşmayı devralma, yazma, Lina'ya geri verme", () => {
     expect(questions.body.more).toBe(true);
     await db.delete(teamQuestions).where(eq(teamQuestions.tenantId, tenantA));
     expect((await call("zeynep", "GET", `/api/tenants/${tenantA}/team-questions`)).body.more).toBe(false);
+  });
+
+  it("kaynak çelişkisi uyarıları: yalnızca sahip görür ve çözer; başka mağazanınki görünmez, kapanan listeden düşer", async () => {
+    const { db } = database;
+    const [mine] = await db.insert(knowledgeAlerts).values({ tenantId: tenantA, topic: "İade süresi", description: "Politika 14 gün, SSS 30 gün diyor." }).returning();
+    const [theirs] = await db.insert(knowledgeAlerts).values({ tenantId: tenantB, topic: "Kargo", description: "Başka mağaza" }).returning();
+    const url = `/api/tenants/${tenantA}/knowledge-alerts`;
+    expect((await call("zeynep", "GET", url)).status).toBe(403);
+    const list = await call("sahip", "GET", url);
+    expect(list.body.alerts.map((a: { topic: string }) => a.topic)).toEqual(["İade süresi"]);
+
+    expect((await call("zeynep", "POST", `${url}/${mine!.id}/resolve`)).status).toBe(403);
+    expect((await call("sahip", "POST", `${url}/${theirs!.id}/resolve`)).status).toBe(404); // başka mağazanın uyarısı
+    expect((await call("sahip", "POST", `${url}/degil/resolve`)).status).toBe(404);
+    expect((await call("sahip", "POST", `${url}/${mine!.id}/resolve`)).body).toEqual({ ok: true });
+    expect((await call("sahip", "GET", url)).body.alerts).toEqual([]);
+    expect((await call("sahip", "POST", `${url}/${mine!.id}/resolve`)).status).toBe(404); // zaten çözülmüş
+    const [other] = await db.select().from(knowledgeAlerts).where(eq(knowledgeAlerts.id, theirs!.id));
+    expect(other!.status).toBe("open");
+    await db.delete(knowledgeAlerts);
   });
 
   it("ekip: bekleyen davetler listelenir ve iptal edilir; çıkarılan kişinin erişimi hemen kapanır", async () => {

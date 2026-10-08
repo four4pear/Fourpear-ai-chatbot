@@ -68,9 +68,20 @@ Lina'nın cevabı WhatsApp'a gönderilemediyse bildirim her durumda önemlidir v
 - Canlı olaylar: `notification` (yeni; `important` alanıyla, sesli uyarı buna göre), `notification_update` (tamamlandı ya da açık bildirim güncellendi).
 
 ## Ayarlar
-Yalnızca mağaza sahibi. Ekran: üstte **Lina açık/kapalı anahtarı**, solda bölüm bağlantıları (Lina, Mesai saatleri, Ekip), sağda kartlar. **Lina'yı aç/kapat** (acil durdurma): kapalıyken Lina hiçbir müşteriye cevap vermez, mesajlar panelde görünür, ekip konuşmaları devralıp yazabilir; açılınca yalnızca yeni mesajlara cevap verilir. **Mesai saatleri:** gün kutuları (açık günler yeşil çerçeveli, saatler üzerinde yazar), başlangıç ve bitiş; "Lina yalnızca mesai saatlerinde cevap versin" anahtarı. Bu anahtar açıkken mesai dışında gelen mesajlar kaydedilir, müşteriye hiçbir şey yazılmaz ve "yazıyor…" gösterilmez; mesai başlayınca (dakikada bir kontrol) Lina bekleyen mesajlara cevap verir. **Ekip:** üyeleri listele (baş harfli simge, rol, son giriş), davet linki oluştur, şifre linki üret, bekleyen daveti iptal et, ekipten çıkar. API: `GET/PATCH /api/tenants/:id/settings`. Lina'ya notlar, sabit metinler ve günlük sınır sonraki adımlarda.
+Yalnızca mağaza sahibi. Ekran: üstte **Lina açık/kapalı anahtarı**, solda bölüm bağlantıları, sağda kartlar. API: `GET/PATCH /api/tenants/:id/settings` (kısmi güncelleme; geçersiz değer 400 ve hiçbir şey değişmez).
+- **Lina'yı aç/kapat** (acil durdurma): kapalıyken Lina hiçbir müşteriye cevap vermez, mesajlar panelde görünür, ekip konuşmaları devralıp yazabilir; açılınca yalnızca yeni mesajlara cevap verilir.
+- **Mesai saatleri:** gün kutuları (açık günler yeşil çerçeveli, saatler üzerinde yazar), başlangıç ve bitiş; "Lina yalnızca mesai saatlerinde cevap versin" anahtarı. Açıkken mesai dışında gelen mesajlar kaydedilir, müşteriye hiçbir şey yazılmaz ve "yazıyor…" gösterilmez; mesai başlayınca (dakikada bir kontrol) Lina bekleyen mesajlara cevap verir.
+- **Mağaza bilgilerinde çelişki** (yalnızca açık uyarı varsa görünür): sayfalar ya da politikalar aynı konuda farklı şey söylüyorsa bilgi uzmanı uyarı açar; sahip siteyi ya da "Lina'ya notlar"ı düzeltip "Çözüldü" der. API: `GET …/knowledge-alerts`, `POST …/knowledge-alerts/:id/resolve`.
+- **Lina'ya notlar** (en fazla 8000 karakter): sitede olmayan geçici bilgiler; Lina her soruda okur, siteyle çelişirse notlar geçerlidir.
+- **Müşteriye giden metinler:** yapay zekâ olmadan gönderilen iki hazır metin (sesli mesaj/video/belge geldiğinde; teknik hata olunca). Boşsa hazır metin gider (müşteri açıkça İngilizce yazdıysa İngilizcesi); mağaza kendi metnini yazarsa her dilde o gider ([lina-davranis.md §8](lina-davranis.md)). Her biri en fazla 500 karakter.
+- **Cevap hızı ve sınırlar:** cevap bekleme süresi (0–120 sn, varsayılan 30), en fazla bekleme (10–600 sn, varsayılan 180; bekleme süresinden kısa olamaz), bir müşteri günde en fazla (10–2000 mesaj, varsayılan 200) ve mağaza günde en fazla (100–50000 müşteri mesajı, varsayılan 3000; [lina-davranis.md §9](lina-davranis.md)).
+- **İade el kitabı** (en fazla 20.000 karakter): iade uzmanının mağazaya özel talimatları. İade sistemine (iade paneli) ve iade formu adresine bu ekrandan dokunulmaz.
+- **Ekip:** üyeleri listele (baş harfli simge, rol, son giriş), davet linki oluştur, şifre linki üret, bekleyen daveti iptal et, ekipten çıkar.
 
 **Ekip kuralları:** davet ve şifre linki e-postayla gitmez; sahip linki kopyalayıp kişiye kendisi iletir (tek kullanımlık; davet 7 gün, şifre linki 24 saat). Kendini ve mağazanın son sahibini çıkaramazsın. Ekipten çıkarılan kişinin bu mağazaya erişimi hemen kapanır; başka mağazası yoksa oturumları da silinir. API: `GET /members` (bekleyen davetlerle), `DELETE /members/:id`, `DELETE /invites/:id`.
+
+## Hesabım
+Herkes (çalışan, sahip, yönetici): hesap menüsünden **Şifremi değiştir** (`/hesap`). Mevcut şifre istenir; yanlış denemeler girişle aynı hesap sayacına yazılır (5 hata → 15 dk kilit). Değişince bu oturum açık kalır, diğer cihazlardaki oturumlar kapanır. Şifre en az 10 karakter ve eskisinden farklı olmalı. API: `POST /api/auth/password`.
 
 ## İstatistik
 Yalnızca mağaza sahibi. Üstte dönem sekmeleri (Son 24 saat / Son 7 gün / Son 30 gün; kayan pencere) ve altında iki bölüm.

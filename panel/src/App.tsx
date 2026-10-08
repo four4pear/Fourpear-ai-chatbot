@@ -4,6 +4,7 @@ import { UsagePage } from "./pages/UsagePage";
 import { SettingsPage } from "./pages/SettingsPage";
 import type { Me } from "./api";
 import { AdminPage, ComingSoon, Forbidden, NoStore, NotFound } from "./pages/SimplePages";
+import { AccountPage } from "./pages/AccountPage";
 import { LoginPage } from "./pages/LoginPage";
 import { TokenPage } from "./pages/TokenPage";
 import { matchPath, Redirect, useLocation } from "./router";
@@ -50,6 +51,16 @@ function Routes() {
   if (path === "/") {
     const home = homePath(me);
     return home ? <Redirect to={home} /> : <NoStore me={me} />;
+  }
+
+  // Hesabım: kendi şifresini değiştir. Menü için son açılan mağaza gösterilir.
+  if (path === "/hesap") {
+    const store = me.memberships.find((m) => m.slug === lastStore()) ?? me.memberships[0] ?? null;
+    return (
+      <Shell me={me} store={store} active={null}>
+        <AccountPage />
+      </Shell>
+    );
   }
 
   if (path === "/yonetici") {

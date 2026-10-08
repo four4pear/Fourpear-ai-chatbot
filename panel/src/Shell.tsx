@@ -242,6 +242,9 @@ function UserMenu({ me }: { me: Me }) {
             <span>{me.user.name}</span>
             <span>{me.user.email}</span>
           </div>
+          <Link to="/hesap" className="btn btn-secondary btn-block" onClick={() => setOpen(false)}>
+            Şifremi değiştir
+          </Link>
           <button
             type="button"
             className="btn btn-secondary btn-block"
