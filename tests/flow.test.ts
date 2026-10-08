@@ -7,6 +7,9 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import { createApp } from "../src/app.js";
 import { findUnansweredConversations, type Deps } from "../src/core/conversation.js";
 import { DEFAULT_TEXTS } from "../src/core/texts.js";
+
+/** İlk temasta sabit metnin başına eklenen tanıtım. */
+const INTRO = "Merhaba, ben Lina. ";
 import { openDatabase, type Database } from "../src/db/client.js";
 import {
   agentRuns,
@@ -416,7 +419,7 @@ describe("devir", () => {
   it("Claude hata verirse özür diler ve devreder", async () => {
     llmMode = "throw";
     await post(text("merhaba"));
-    expect(sent.map((s) => s.text)).toEqual([DEFAULT_TEXTS.failure]);
+    expect(sent.map((s) => s.text)).toEqual([INTRO + DEFAULT_TEXTS.failure]);
     const [conv] = await database.db.select().from(conversations);
     expect(conv!.status).toBe("waiting");
   });
@@ -424,7 +427,7 @@ describe("devir", () => {
   it("model reddederse özür diler ve devreder", async () => {
     llmMode = "refusal";
     await post(text("merhaba"));
-    expect(sent.map((s) => s.text)).toEqual([DEFAULT_TEXTS.failure]);
+    expect(sent.map((s) => s.text)).toEqual([INTRO + DEFAULT_TEXTS.failure]);
   });
 });
 
@@ -470,9 +473,45 @@ describe("fotoğraf", () => {
 });
 
 describe("sabit metinler ve ayarlar", () => {
+  it("hata metni müşterinin diliyle gider: İngilizce yazana İngilizce, ASCII Türkçe yazana Türkçe; mağazanın kendi metni her dilde geçerli", async () => {
+    llmMode = "throw";
+    await post(text("Hello, where is my order please?"));
+    expect(sent.map((s) => s.text)).toEqual(["Hello, I'm Lina. Sorry, I can't answer your question right now. I'm checking it and will get back to you here shortly."]);
+
+    sent.length = 0;
+    await database.db.delete(customers);
+    await post(text("merhaba siparisim nerede")); // Türkçe harf yok ama Türkçe
+    expect(sent.map((s) => s.text)).toEqual([INTRO + DEFAULT_TEXTS.failure]);
+
+    sent.length = 0;
+    await database.db.delete(customers);
+    await setSettings({ texts: { failure: "Şu an cevap veremiyorum, ekip dönecek." } });
+    await post(text("Hello, where is my order?"));
+    expect(sent.map((s) => s.text)).toEqual(["Merhaba, ben Lina. Şu an cevap veremiyorum, ekip dönecek."]);
+  });
+
+  it("mesai dışında hata metni 'kısa süre içinde' demez; ekibin ne zaman döneceğini söyler; devir özetine söz not edilir", async () => {
+    llmMode = "throw";
+    now = new Date("2026-09-25T16:00:00Z"); // Cuma 19:00 (mesai dışı); MAIUS: cumartesi açık
+    await post(text("merhaba"));
+    expect(sent).toHaveLength(1);
+    expect(sent[0]!.text).toContain("Ekibimiz yarın saat 10:00'dan itibaren size buradan dönecek.");
+    expect(sent[0]!.text).not.toContain("kısa süre içinde");
+    const [handoff] = await database.db.select().from(handoffs);
+    expect(handoff!.summary).toContain("Müşteriye dönüleceği söylendi.");
+  });
+
+  it("ilk temas değilse hata ve sabit metinlere tanıtım eklenmez", async () => {
+    await post(text("merhaba")); // Lina cevaplar ve kendini tanıtır
+    sent.length = 0;
+    llmMode = "throw";
+    await post(text("siparişim nerede"));
+    expect(sent.map((s) => s.text)).toEqual([DEFAULT_TEXTS.failure]);
+  });
+
   it("ses mesajına varsayılan metni gönderir", async () => {
     await post(payload({ type: "audio", audio: { id: "a1" } }));
-    expect(sent.map((s) => s.text)).toEqual([DEFAULT_TEXTS.unsupported]);
+    expect(sent.map((s) => s.text)).toEqual([INTRO + DEFAULT_TEXTS.unsupported]);
   });
 
   it("sesli mesaj yazıya çevrilir ve normal mesaj gibi cevaplanır; ses kaydı saklanmaz", async () => {
@@ -494,20 +533,20 @@ describe("sabit metinler ve ayarlar", () => {
     appDeps.transcribe = async () => { throw new Error("servis kapalı"); };
     try {
       await post(payload({ type: "audio", audio: { id: "a6" } }));
-      expect(sent.map((s) => s.text)).toEqual([DEFAULT_TEXTS.unsupported]);
+      expect(sent.map((s) => s.text)).toEqual([INTRO + DEFAULT_TEXTS.unsupported]);
     } finally { delete appDeps.transcribe; }
     sent.length = 0;
     appDeps.transcribe = async () => null; // sessiz kayıt
     try {
       await post(payload({ type: "audio", audio: { id: "a7" } }));
-      expect(sent.map((s) => s.text)).toEqual([DEFAULT_TEXTS.unsupported]);
+      expect(sent.map((s) => s.text)).toEqual([INTRO + DEFAULT_TEXTS.unsupported]);
     } finally { delete appDeps.transcribe; }
   });
 
   it("mağazanın kendi metnini kullanır", async () => {
     await setSettings({ texts: { unsupported: "Sesli mesaj dinleyemiyorum, yazar mısınız?" } });
     await post(payload({ type: "audio", audio: { id: "a2" } }));
-    expect(sent.map((s) => s.text)).toEqual(["Sesli mesaj dinleyemiyorum, yazar mısınız?"]);
+    expect(sent.map((s) => s.text)).toEqual(["Merhaba, ben Lina. Sesli mesaj dinleyemiyorum, yazar mısınız?"]);
   });
 
   it("emoji tepkisine ve sistem bildirimine cevap vermez ama kaydeder", async () => {
@@ -746,7 +785,7 @@ describe("art arda mesajlar (gerçek zamanlayıcı)", () => {
     await post2(payload({ type: "audio", audio: { id: "a2" } }));
     await app2.scheduler.idle();
     expect(calls2).toHaveLength(0);
-    expect(sent.map((s) => s.text)).toEqual([DEFAULT_TEXTS.unsupported]);
+    expect(sent.map((s) => s.text)).toEqual([INTRO + DEFAULT_TEXTS.unsupported]);
 
     sent.length = 0;
     await post2(text("fiyatı ne"));

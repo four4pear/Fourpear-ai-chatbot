@@ -65,8 +65,12 @@ export const TYPE_LABELS: Record<string, string> = {
   reaction: "Tepki", sticker: "Çıkartma", button: "Buton yanıtı", interactive: "Etkileşimli mesaj",
 };
 
-export const statusLabel = (c: { status: Status; assignedTo: Person | null }) =>
-  c.status === "human" ? `Ekipte${c.assignedTo ? `: ${c.assignedTo.name}` : ""}` : c.status === "waiting" ? "Ekibi bekliyor" : "Lina cevaplıyor";
+export type BotState = "on" | "off" | "hours";
+/** Lina'nın cevap vermediği durumlarda "Lina cevaplıyor" yazılmaz (kapalı ya da mesai dışı). */
+export const botLabel = (bot: BotState) => (bot === "off" ? "Lina kapalı" : bot === "hours" ? "Mesai dışı: Lina cevap vermiyor" : "Lina cevaplıyor");
+
+export const statusLabel = (c: { status: Status; assignedTo: Person | null }, bot: BotState = "on") =>
+  c.status === "human" ? `Ekipte${c.assignedTo ? `: ${c.assignedTo.name}` : ""}` : c.status === "waiting" ? "Ekibi bekliyor" : botLabel(bot);
 
 export const preview = (m: ConversationRow["lastMessage"]) => {
   if (!m) return "";

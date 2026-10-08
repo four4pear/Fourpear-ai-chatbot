@@ -274,7 +274,12 @@ export async function respond(deps: Deps, conversationId: string, ctl: RespondCo
   // Toplu mesajda Lina'nın okuyabileceği bir şey yoksa (sadece ses/video…) sabit metin bir kez.
   if (!batch.some((m) => UNDERSTOOD_TYPES.has(m.type) || (m.type === "audio" && m.text))) {
     if (!(await stillOurs())) return "cancelled";
-    await sendAndStore(deps, tenant, conversation, wa, fixedText(settings, "unsupported"), "system", answeredThroughOf(batch));
+    const text = fixedText(settings, "unsupported", {
+      customerText: customerTextOf(batch),
+      firstContact: await isFirstContact(db, conversationId),
+      botName: tenant.botName,
+    });
+    await sendAndStore(deps, tenant, conversation, wa, text, "system", answeredThroughOf(batch));
     return "unsupported_type";
   }
 
@@ -321,6 +326,8 @@ export async function respond(deps: Deps, conversationId: string, ctl: RespondCo
     .map((m) => m.text ?? `[${MEDIA_LABELS[m.type] ?? m.type}]`)
     .join(" / ");
 
+  // Hata metni müşterinin diliyle ve mesaiye göre gider; ilk temassa kendini tanıtır.
+  const failureContext = { customerText: customerTextOf(batch), firstContact: turn.firstContact, botName: tenant.botName, business: turn.business };
   let reply: string;
   let handoff: HandoffRequest | null;
   let orderFindings: OrderFindings | null = null;
@@ -328,8 +335,8 @@ export async function respond(deps: Deps, conversationId: string, ctl: RespondCo
   try {
     const result = await runLina(ctx, tenant, history, turn, withLessons(storeKnowledge, lessons), orders, lessons, productSource ? { source: productSource } : null);
     if (result.kind === "failed") {
-      reply = fixedText(settings, "failure");
-      handoff = { reason: "other", summary: `Asistan cevap üretemedi (stop_reason: ${result.stopReason}). Mesajlar: "${lastText}"` };
+      reply = fixedText(settings, "failure", failureContext);
+      handoff = { reason: "other", summary: `Asistan cevap üretemedi (stop_reason: ${result.stopReason}). Müşteriye dönüleceği söylendi. Mesajlar: "${lastText}"` };
     } else {
       reply = turn.firstContact ? ensureIntro(result.text, tenant.botName) : result.text;
       handoff = result.handoff;
@@ -342,8 +349,8 @@ export async function respond(deps: Deps, conversationId: string, ctl: RespondCo
     // Sebep panelde devir notunda da görünür (ör. kredi bittiyse ekip bunu hemen anlar).
     const reason = describeLlmError(err);
     deps.log.error(`Lina çalışırken hata (tenant=${tenant.slug}): ${reason}`, err);
-    reply = fixedText(settings, "failure");
-    handoff = { reason: "other", summary: `Cevap verilemedi (${reason}). Mesajlar: "${lastText}"` };
+    reply = fixedText(settings, "failure", failureContext);
+    handoff = { reason: "other", summary: `Cevap verilemedi (${reason}). Müşteriye dönüleceği söylendi. Mesajlar: "${lastText}"` };
   }
 
   if (!(await stillOurs())) return "cancelled";
@@ -380,6 +387,11 @@ export async function respond(deps: Deps, conversationId: string, ctl: RespondCo
     }).catch((err: unknown) => deps.log.error(`Bildirim kaydedilemedi (tenant=${tenant.slug})`, err));
   }
   return handoff ? "handed_off" : "replied";
+}
+
+/** Cevap bekleyen müşteri mesajlarının yazıları (dil tespiti için); ekibin iç cevabı sayılmaz. */
+function customerTextOf(batch: { type: string; text: string | null }[]): string {
+  return batch.filter((m) => m.type !== TEAM_ANSWER_TYPE && m.text).map((m) => m.text).join(" ");
 }
 
 /** Ekibin Lina'ya son cevapları, yeniden eskiye (cevapsız olanlar en başta). */

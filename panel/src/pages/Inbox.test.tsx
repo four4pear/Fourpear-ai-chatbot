@@ -77,7 +77,7 @@ it("yardımcılar: bekleme süresi ve baş harfler", () => {
 });
 
 /** Sahte sunucu: üç bekleyen kaynağı, "bende" ve "tümü" listelerini ve geri alma isteğini karşılar. */
-function server(o: { questions?: Question[]; forwarded?: Forwarded[]; waiting?: ConversationRow[]; mine?: ConversationRow[]; all?: ConversationRow[]; done?: Forwarded[]; fail?: string } = {}) {
+function server(o: { questions?: Question[]; forwarded?: Forwarded[]; waiting?: ConversationRow[]; mine?: ConversationRow[]; all?: ConversationRow[]; done?: Forwarded[]; fail?: string; more?: boolean } = {}) {
   const urls: string[] = [];
   const posted: string[] = [];
   vi.stubGlobal("fetch", vi.fn(async (url: string, init: RequestInit = {}) => {
@@ -85,7 +85,7 @@ function server(o: { questions?: Question[]; forwarded?: Forwarded[]; waiting?: 
     urls.push(url);
     if (o.fail && url.includes(o.fail)) return json({ error: "Sunucu hatası" }, 500);
     if (url.includes("/team-questions")) return json({ questions: url.includes("answered") ? [] : (o.questions ?? []) });
-    if (url.includes("/notifications")) return json({ notifications: url.includes("status=done") ? (o.done ?? []) : (o.forwarded ?? []) });
+    if (url.includes("/notifications")) return json({ notifications: url.includes("status=done") ? (o.done ?? []) : (o.forwarded ?? []), more: o.more });
     if (url.includes("view=waiting")) return json({ conversations: o.waiting ?? [] });
     if (url.includes("view=mine")) return json({ conversations: o.mine ?? [] });
     return json({ conversations: url.includes("q=") ? [] : (o.all ?? []) });
@@ -231,3 +231,18 @@ it("konuşma yokken bunu söyler", async () => {
   open({ section: "sohbetler" });
   await screen.findByText(/Henüz WhatsApp konuşması yok/);
 });
+
+describe("liste sınırı", () => {
+  it("bir liste 100 işte kesildiyse ekran bunu söyler; kesilmediyse söylemez", async () => {
+    server({ forwarded: [forwarded()], more: true });
+    render(<InboxPage store={store()} userId="u1" section="bekleyenler" />);
+    expect(await screen.findByText(/her listede en eski 100 iş gösteriliyor/)).toBeTruthy();
+    cleanup();
+
+    server({ forwarded: [forwarded()], more: false });
+    render(<InboxPage store={store()} userId="u1" section="bekleyenler" />);
+    await screen.findByText("Elif");
+    expect(screen.queryByText(/en eski 100 iş/)).toBeNull();
+  });
+});
+

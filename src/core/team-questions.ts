@@ -18,10 +18,25 @@ export async function recordTeamQuestions(
   input: { tenantId: string; conversationId: string; customerMessage: string; items: AskedQuestion[] },
 ) {
   if (!input.items.length) return [];
+  // Aynı soru bu konuşmada zaten cevap bekliyorsa (müşteri tekrar sordu, Lina yeniden sordu) ikincisi açılmaz:
+  // ekip aynı soruyu iki kez görmesin. Aynı turdaki özdeş sorular da tek sayılır.
+  const key = (q: string) => q.toLocaleLowerCase("tr-TR").replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+  const open = await db
+    .select({ question: teamQuestions.question })
+    .from(teamQuestions)
+    .where(and(eq(teamQuestions.conversationId, input.conversationId), eq(teamQuestions.status, "open")));
+  const seen = new Set(open.map((q) => key(q.question)));
+  const fresh = input.items.filter((q) => {
+    const k = key(q.question);
+    if (!k || seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+  if (!fresh.length) return [];
   return db
     .insert(teamQuestions)
     .values(
-      input.items.map((q) => ({
+      fresh.map((q) => ({
         tenantId: input.tenantId,
         conversationId: input.conversationId,
         question: q.question.slice(0, 2000),

@@ -6,6 +6,7 @@ import type { DB } from "../db/client.js";
 import { conversations, customers, resolveSettings, teamQuestions, tenants, users, type MemberRole } from "../db/schema.js";
 import { formatPhone } from "../lib/phone.js";
 import { isUuid, param, type Locals } from "./api.js";
+import { LIST_LIMIT } from "./notifications.js";
 
 type Middleware = (req: Request, res: Response, next: NextFunction) => unknown;
 
@@ -32,8 +33,12 @@ export function registerTeamQuestionRoutes(
       .leftJoin(users, eq(users.id, teamQuestions.answeredBy))
       .where(and(eq(teamQuestions.tenantId, param(req, "tenantId")), eq(teamQuestions.status, status)))
       .orderBy(status === "open" ? teamQuestions.createdAt : desc(teamQuestions.answeredAt))
-      .limit(100);
+      .limit(LIST_LIMIT + 1);
+    // Liste sınırı aşıldıysa ekran "daha fazlası var" diyebilsin (sessizce kırpılmaz).
+    const more = rows.length > LIST_LIMIT;
+    rows.splice(LIST_LIMIT);
     res.json({
+      more,
       questions: rows.map(({ q, customer, answeredBy }) => ({
         id: q.id,
         conversationId: q.conversationId,

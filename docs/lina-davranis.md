@@ -79,7 +79,7 @@ Bu konularda Lina konuşmayı ekibe **devretmez**; kendisi cevaplar ve ekibe bil
 - Müşteri sipariş numarası verirse (#MO-1271, MO-1271, 1271) o sipariş okunur.
 - Numara vermezse müşterinin WhatsApp numarasıyla eşleşen siparişler bulunur. Birden fazlaysa Lina sorar: "#MO-1271 (12 Eylül) mi, #MO-1250 (3 Eylül) mi?"
 - **Doğrulama** (üç yol; hiçbiri tutmazsa bilgi paylaşılmaz ve siparişin var olup olmadığı söylenmez → Kayıt):
-  1. **WhatsApp numarası:** Siparişte kayıtlı telefon (sipariş, müşteri, teslimat ya da fatura telefonu) müşterinin WhatsApp numarasıyla eşleşirse Lina doğrudan bakar. Shopify'da ülke kodu olmadan yazılmış numaralar mağazanın ülke koduyla tamamlanır (mağaza ayarı, varsayılan 90).
+  1. **WhatsApp numarası:** Siparişte kayıtlı telefon (sipariş, müşteri, teslimat ya da fatura telefonu) müşterinin WhatsApp numarasıyla eşleşirse Lina doğrudan bakar. Shopify'da ülke kodu olmadan yazılmış numaralar mağazanın ülke koduyla tamamlanır (mağaza ayarı, varsayılan 90). Önce Shopify müşteri kaydındaki telefon aranır; kayıtta telefon yoksa (misafir ödemesi, telefon yalnızca siparişte ya da teslimat adresinde) siparişlerin kendi alanlarında aranır (önce ulusal, sonra ülke kodlu biçim). Bulunan sipariş yine de kodda telefon eşleşmesiyle doğrulanır; eşleşmeyen gösterilmez.
   2. **Sipariş numarası + ad soyad:** Numara tutmazsa Lina siparişte kayıtlı adı soyadı ister: "Siparişinizi hemen kontrol edeyim. Siparişte kayıtlı adınızı ve soyadınızı yazar mısınız?" Sipariş numarası ve ad soyad birlikte tutmalıdır.
   3. **Siparişteki telefon + ad soyad:** Müşteri sipariş numarasını bilmiyorsa Lina siparişte kayıtlı telefon numarasını ve adı soyadı ister; o numaranın siparişleri arasından ad soyadı tutanlar gösterilir.
   - Ad soyad eşleşmesinde büyük/küçük ve Türkçe harf farkı önemsizdir, ikinci ad yazılmasa da olur; yalnızca ad ya da yalnızca soyad yetmez. Karşılaştırma kodda yapılır; siparişteki ad soyad ve telefonlar yapay zekâya hiç gösterilmez.
@@ -111,7 +111,7 @@ Bu konularda Lina konuşmayı ekibe **devretmez**; kendisi cevaplar ve ekibe bil
 | İade / değişim isteği | İade uzmanıyla (§3.5): önce dinler ve sakinleştirir, eksik bilgiyi sorar, ürünün iade kuralını söyler (§11), başvuru sürecini adım adım anlatır ve mağazanın iade formu linkini verir (MAIUS: Kolay İade, https://iade.betulsaday.com). Müşteri talebi formdan kendisi açar. Siparişte zaten açık bir iade talebi varsa yeni link yerine talebin durumunu söyler. Kendi çözebildiğini ekibe iletmez. | Kayıt |
 | Kural dışı iade isteği (süresi geçmiş, iadesi olmayan kampanyalı ürün, kullanılmış ürün) ya da iade sürecinde sorun (kargo kayboldu, para iadesi gecikti) | Kuralı nazikçe açıklar; müşteri yine de istiyorsa iade uzmanı ekibe iletir ve Lina talebin işleme alındığını söyler. Sonuç vaat etmez. | ⚠️ İade: ekip kararı gerekiyor |
 | Hasarlı, hatalı ya da yanlış ürün | Önce içtenlikle özür diler ve sakinleştirir, çözüm vaat etmez. "Kolay İade formundan fotoğraf veya video ekleyerek talep açabilirsiniz; 1 gün içinde incelenir, onaylanırsa ücretsiz iade kodu verilir." Müşteri fotoğrafı WhatsApp'tan gönderirse Lina görür, kısaca teyit eder ve fotoğrafı forma da eklemesini rica eder. | ⚠️ Şikayet |
-| "İadem ne oldu?" | İade sistemi bağlıysa talebin durumunu ve tarihlerini söyler: "Talebiniz 12 Eylül'de alındı, ürün 15 Eylül'de depomuza ulaştı." Tutar söylemez. | Kayıt |
+| "İadem ne oldu?" | İade sistemi bağlıysa talebin durumunu ve tarihlerini söyler: "Talebiniz 12 Eylül'de alındı, ürün 15 Eylül'de depomuza ulaştı." Tutar söylemez. | Kayıt | **İade sistemi bağlı değilse** durum söylenmez ('inceleniyor' gibi bir şey uydurulmaz): uzmana sorulmaz, Lina müşteriye kontrol ettiğini söyler ve ekibe sorar (§15).
 | Sipariş sistemine ulaşılamadı (ör. Shopify hatası) | "Şu an sipariş bilgilerinize ulaşamıyorum; talebiniz işleme alındı." Tahmin yürütmez. | ⚠️ Sipariş bilgisine ulaşılamadı |
 
 - Tablodaki tarihler örnektir; Lina her zaman siparişin gerçek tarihlerini söyler.
@@ -199,6 +199,11 @@ Mağaza mesai saatlerini panelden girer.
 | `unsupported` | Ses, video, belge vb. | "Şu an yazılı mesajları ve fotoğrafları anlayabiliyorum. Sorunuzu yazarak iletebilir misiniz?" |
 | `failure` | Teknik hata / cevap üretilemedi (+ otomatik devir) | "Üzgünüm, şu an sorunuza cevap veremiyorum. Hemen kontrol ediyorum, kısa süre içinde size buradan bilgi vereceğim." |
 
+Kurallar (8 Ekim 2026):
+- **Dil:** Mağaza kendi metnini yazmadıysa müşteri açıkça İngilizce yazmışsa İngilizce varsayılan gider; Türkçe (ASCII yazılmış Türkçe dahil), belirsiz ya da yalnızca sesli mesajda Türkçe gider. Mağazanın kendi metni her dilde olduğu gibi gönderilir.
+- **İlk temas:** Müşteriye giden ilk mesaj sabit metinse başına kısa tanıtım eklenir ("Merhaba, ben Lina." / "Hello, I'm Lina."); sonraki cevaplarda yeniden tanıtım yapılmaz.
+- **Mesai:** `failure` varsayılan metni mağaza kapalıyken "kısa süre içinde" demez; "Ekibimiz yarın saat 10:00'dan itibaren size buradan dönecek." der. Devir özetine "Müşteriye dönüleceği söylendi" yazılır; devri kimse 20 dakikada devralmazsa (mesaideyken) ekibe hatırlatma düşer (§12 "Müşteri ekibin dönüşünü bekliyor").
+
 ## 9. Diğer
 - Bot kapalıyken hiç cevap verilmez (mesajlar panelde görünür).
 - **Yalnızca mesai saatlerinde** (mağaza ayarı, varsayılan kapalı): mesai dışında Lina susar; mesaj kaydedilir, "yazıyor…" gösterilmez, müşteriye bir şey yazılmaz. Mesai başlayınca bekleyen mesajlara cevap verir (son 72 saat). Mesai günleri ve saatleri panel Ayarlar'dan değişir (§6).
@@ -284,6 +289,7 @@ Lina bilmediği bir bilgiyi uydurmaz ve konuşmayı devretmez; **arka planda eki
 - **24 saat kuralı:** Müşterinin son mesajı 24 saatten eskiyse WhatsApp serbest mesaja izin vermez; panel cevabı kaydeder ve bunu uyarır.
 - **Devir ne zaman:** Yalnızca müşteri ısrarla temsilci isterse ya da öfkesi sürerse (§4.2); o zaman ekip konuşmayı üstlenir.
 - **Test ekranı:** Lina ekibe sorarsa sohbette "Lina ekibe sordu" kartı çıkar; ekip yerine cevaplayıp akışı deneyebilirsiniz.
+- **Aynı soru iki kez açılmaz:** konuşmada aynı soru (büyük/küçük harf ve noktalama farkı yok sayılır) zaten cevap bekliyorsa Lina yeniden sorsa da ikincisi açılmaz. Aynı konuşmada bir iade/şikâyet bildirimi ve bir Lina sorusu birlikte açık olabilir; Bekleyenler listesinde aynı müşteri tek satırdır, etiketler yan yana gelir.
 
 ## 12. Ekibe bildirimler
 Sipariş konularında (§3) konuşma devredilmez; ekip panelde bildirim görür.

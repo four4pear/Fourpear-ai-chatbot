@@ -2,8 +2,9 @@ import { useEffect, useRef, useState } from "react";
 import { api, waitingChanged, type Membership } from "../api";
 import { UserIcon } from "../icons";
 import { Link, navigate } from "../router";
+import { useBotState } from "../Shell";
 import {
-  ago, clock, dateTime, dayOf, HANDOFF_REASONS, initials, statusLabel, TYPE_LABELS, useLive,
+  ago, botLabel, clock, dateTime, dayOf, HANDOFF_REASONS, initials, statusLabel, TYPE_LABELS, useLive,
   type Customer, type Handoff, type Person, type Status,
 } from "./inbox-shared";
 
@@ -60,6 +61,7 @@ export function ConversationPane({ store, conversationId, userId, backTo }: { st
   const [sending, setSending] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [showCard, setShowCard] = useState(false);
+  const bot = useBotState();
   const tenant = `/tenants/${store.tenantId}`;
   const base = `${tenant}/conversations/${conversationId}`;
   const thread = useRef<HTMLElement>(null);
@@ -168,7 +170,7 @@ export function ConversationPane({ store, conversationId, userId, backTo }: { st
   const left = windowLeft(c?.windowOpenUntil ?? null);
 
   const state = !c ? "" : [
-    c.status === "human" ? (mine ? "Sizde · Lina susuyor" : `${statusLabel(c)} · Lina susuyor`) : c.status === "waiting" ? "Ekibi bekliyor · henüz kimse devralmadı" : "Lina cevaplıyor",
+    c.status === "human" ? (mine ? "Sizde · Lina susuyor" : `${statusLabel(c)} · Lina susuyor`) : c.status === "waiting" ? "Ekibi bekliyor · henüz kimse devralmadı" : botLabel(bot),
     left ? `24 saat penceresinde ${left} kaldı` : c.windowOpenUntil ? "WhatsApp yazma süresi doldu" : "",
   ].filter(Boolean).join(" · ");
 

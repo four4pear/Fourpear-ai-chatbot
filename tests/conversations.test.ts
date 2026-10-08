@@ -299,6 +299,40 @@ describe("panel: konuşmayı devralma, yazma, Lina'ya geri verme", () => {
     expect((await call("sahip", "PATCH", url, { botHoursOnly: true })).body).toMatchObject({ botHoursOnly: true, businessHours: { start: "10:00" } });
   });
 
+  it("bekleyen sayısı Lina'nın şu anki durumunu da söyler: açık, kapalı, mesai dışı", async () => {
+    const settings = `/api/tenants/${tenantA}/settings`;
+    const state = async () => (await call("zeynep", "GET", `/api/tenants/${tenantA}/waiting-count`)).body.bot;
+    await call("sahip", "PATCH", settings, { botEnabled: true, botHoursOnly: false });
+    expect(await state()).toBe("on");
+    await call("sahip", "PATCH", settings, { botEnabled: false });
+    expect(await state()).toBe("off");
+    // Açık ama "yalnızca mesai saatlerinde" ve şu an (cumartesi) mesai dışı.
+    await call("sahip", "PATCH", settings, { botEnabled: true, botHoursOnly: true, businessHours: { days: [1], start: "10:00", end: "18:00" } });
+    expect(await state()).toBe("hours");
+    await call("sahip", "PATCH", settings, { botHoursOnly: false, businessHours: { days: [1, 2, 3, 4, 5, 6], start: "10:00", end: "18:00" } });
+    expect(await state()).toBe("on");
+  });
+
+  it("listeler 100 işte kesilir ama sessizce değil: 'more' gelir", async () => {
+    const { db } = database;
+    const rows = Array.from({ length: 101 }, (_, i) => ({ tenantId: tenantA, conversationId: ids.conv!, kind: "complaint" as const, important: true, question: `q${i}`, answer: "a" }));
+    await db.insert(notifications).values(rows);
+    const list = await call("zeynep", "GET", `/api/tenants/${tenantA}/notifications?filter=important`);
+    expect(list.body.notifications).toHaveLength(100);
+    expect(list.body.more).toBe(true);
+    // 100'e düşünce daha fazlası yok.
+    await db.delete(notifications).where(eq(notifications.question, "q100"));
+    expect((await call("zeynep", "GET", `/api/tenants/${tenantA}/notifications?filter=important`)).body.more).toBe(false);
+    await db.delete(notifications).where(eq(notifications.tenantId, tenantA));
+
+    await db.insert(teamQuestions).values(Array.from({ length: 101 }, (_, i) => ({ tenantId: tenantA, conversationId: ids.conv!, question: `soru ${i}` })));
+    const questions = await call("zeynep", "GET", `/api/tenants/${tenantA}/team-questions`);
+    expect(questions.body.questions).toHaveLength(100);
+    expect(questions.body.more).toBe(true);
+    await db.delete(teamQuestions).where(eq(teamQuestions.tenantId, tenantA));
+    expect((await call("zeynep", "GET", `/api/tenants/${tenantA}/team-questions`)).body.more).toBe(false);
+  });
+
   it("ekip: bekleyen davetler listelenir ve iptal edilir; çıkarılan kişinin erişimi hemen kapanır", async () => {
     const url = `/api/tenants/${tenantA}`;
     expect((await call("zeynep", "GET", `${url}/members`)).status).toBe(403); // çalışan ekibi göremez

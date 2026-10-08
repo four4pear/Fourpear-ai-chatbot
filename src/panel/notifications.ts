@@ -1,7 +1,8 @@
 import type { NextFunction, Request, Response, Router } from "express";
 import { and, asc, count, desc, eq, isNull } from "drizzle-orm";
 import type { DB } from "../db/client.js";
-import { conversations, customers, handoffs, notifications, teamQuestions, users, type MemberRole, type Notification } from "../db/schema.js";
+import { conversations, customers, handoffs, notifications, resolveSettings, teamQuestions, tenants, users, type MemberRole, type Notification } from "../db/schema.js";
+import { botClosedByHours } from "../core/conversation.js";
 import type { EventBus } from "../core/events.js";
 import { formatPhone } from "../lib/phone.js";
 import { isUuid, param, type Locals } from "./api.js";
@@ -55,9 +56,12 @@ export function toNotificationView(n: Notification, doneByName: string | null = 
  * Ekibe bildirimler (docs/lina-davranis.md "Ekibe bildirimler"): sipariş konularında konuşma
  * devredilmez; her soru burada listelenir, önemliler ayrıca işaretlidir. Mağazanın bütün ekibi görür.
  */
+/** Bir listede en fazla bu kadar iş döner; fazlası varsa `more: true` gelir. */
+export const LIST_LIMIT = 100;
+
 export function registerNotificationRoutes(
   api: Router,
-  deps: { db: DB; events: EventBus; now?: () => Date },
+  deps: { db: DB; events: EventBus; now?: () => Date; timeZone?: string },
   guards: { requireUser: Middleware; requireTenant: (need: MemberRole) => Middleware },
 ) {
   const { db } = deps;
@@ -84,7 +88,10 @@ export function registerNotificationRoutes(
       // Açıklar: en uzun bekleyen üstte (diğer bekleyen listeleri gibi; güncellenen eski bildirim de yerinde kalır).
       // Tamamlananlar: en son tamamlanan üstte.
       .orderBy(status === "open" ? asc(notifications.createdAt) : desc(notifications.doneAt))
-      .limit(100);
+      .limit(LIST_LIMIT + 1);
+    // Liste sınırı aşıldıysa ekran "daha fazlası var" diyebilsin (sessizce kırpılmaz).
+    const more = rows.length > LIST_LIMIT;
+    rows.splice(LIST_LIMIT);
 
     const [[open], [important]] = await Promise.all([
       db.select({ n: count() }).from(notifications).where(and(eq(notifications.tenantId, tenantId), eq(notifications.status, "open"))),
@@ -98,6 +105,7 @@ export function registerNotificationRoutes(
       status,
       filter: onlyImportant ? "important" : "all",
       counts: { open: open?.n ?? 0, important: important?.n ?? 0 },
+      more,
       notifications: rows.map(({ n, customer, doneByName }) => ({
         ...toNotificationView(n, doneByName),
         customer: { name: customer.name?.trim() || formatPhone(customer.waId), phone: formatPhone(customer.waId) },
@@ -155,7 +163,7 @@ export function registerNotificationRoutes(
    */
   api.get("/tenants/:tenantId/waiting-count", ...member, async (req, res) => {
     const tenantId = param(req, "tenantId");
-    const [questions, forwarded, handedOff, pending] = await Promise.all([
+    const [questions, forwarded, handedOff, pending, [tenant]] = await Promise.all([
       db.select({ id: teamQuestions.conversationId }).from(teamQuestions).where(and(eq(teamQuestions.tenantId, tenantId), eq(teamQuestions.status, "open"))),
       db
         .select({ id: notifications.conversationId })
@@ -167,10 +175,14 @@ export function registerNotificationRoutes(
         .innerJoin(conversations, eq(conversations.id, handoffs.conversationId))
         .where(and(eq(handoffs.tenantId, tenantId), eq(handoffs.status, "open"), isNull(conversations.assignedUserId))),
       awaitingReplyInHuman(db, tenantId),
+      db.select({ settings: tenants.settings }).from(tenants).where(eq(tenants.id, tenantId)),
     ]);
+    // Lina şu an müşterilere cevap veriyor mu? Panel konuşma etiketlerini ve üst uyarıyı buna göre yazar.
+    const settings = resolveSettings(tenant?.settings);
+    const bot = !settings.botEnabled ? "off" : botClosedByHours(settings, deps.timeZone ?? "Europe/Istanbul", deps.now?.() ?? new Date()) ? "hours" : "on";
     // Liste müşteriye göre birleşir (aynı müşterinin sorusu, talebi ve devri tek satırdır); rozet de aynı sayıyı gösterir.
     const handoffIds = new Set([...handedOff.map((h) => h.id), ...pending.map((p) => p.id)]);
     const everyone = new Set([...questions.map((q) => q.id), ...forwarded.map((n) => n.id), ...handoffIds]);
-    res.json({ questions: questions.length, forwarded: forwarded.length, handoffs: handoffIds.size, total: everyone.size });
+    res.json({ questions: questions.length, forwarded: forwarded.length, handoffs: handoffIds.size, total: everyone.size, bot });
   });
 }

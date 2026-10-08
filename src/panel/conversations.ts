@@ -15,7 +15,7 @@ import {
   type Customer,
   type MemberRole,
 } from "../db/schema.js";
-import { toNotificationView } from "./notifications.js";
+import { LIST_LIMIT, toNotificationView } from "./notifications.js";
 import { roleIn, userForSession } from "../auth/service.js";
 import { deliverText, waTargetFor } from "../core/conversation.js";
 import { eraseCustomerData } from "../core/customer-data.js";
@@ -89,6 +89,7 @@ export function registerConversationRoutes(
       assignee: { id: string; name: string } | null;
     };
     let rows: Row[];
+    let more = false;
     if (view === "waiting") {
       // Ekibi bekleyenler: açık devri olan konuşmalar ve ekipteyken müşterinin yeniden yazdığı konuşmalar.
       // Kimsenin devralmadığı en uzun bekleyen üstte; sonra cevap bekleyen müşteriler; devralınmış devirler altta.
@@ -101,9 +102,12 @@ export function registerConversationRoutes(
           .leftJoin(users, eq(users.id, conversations.assignedUserId))
           .where(and(eq(handoffs.tenantId, tenantId), eq(handoffs.status, "open")))
           .orderBy(asc(handoffs.createdAt))
-          .limit(100),
+          .limit(LIST_LIMIT + 1),
         awaitingReplyInHuman(db, tenantId),
       ]);
+      // Sınır aşıldıysa ekran "daha fazlası var" diyebilsin (sessizce kırpılmaz).
+      more = handedOff.length > LIST_LIMIT;
+      handedOff.splice(LIST_LIMIT);
       const pendingIds = pending.map((p) => p.id);
       const pendingRows = pendingIds.length
         ? await db
@@ -184,6 +188,7 @@ export function registerConversationRoutes(
 
     res.json({
       view,
+      more,
       counts: { waiting: waiting?.n ?? 0, mine: mine?.n ?? 0 },
       conversations: rows.map(({ c, customer, assignee }) => {
         const h = openHandoffs.find((x) => x.conversationId === c.id);

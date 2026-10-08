@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, waitingChanged, type Membership } from "../api";
 import { Link } from "../router";
-import { ChromeBar } from "../Shell";
+import { ChromeBar, useBotState } from "../Shell";
 import { ConversationPane } from "./ConversationPane";
 import {
   ago, buildQueue, initials, LATE_MINUTES, preview, statusLabel, useLive, waitLabel, waitMinutes,
@@ -60,6 +60,10 @@ function QueuePane({ store, section, tab, setTab, selectedId }: { store: Members
   /** İlk yükleme bitti (başarılı ya da değil): yüklenemeyen kaynak boş sayılır, diğerleri görünür. */
   const [ready, setReady] = useState(false);
   const [now, setNow] = useState(() => Date.now());
+  const bot = useBotState();
+  /** Listelerden biri sınıra takıldı (en fazla 100 iş döner): ekran sessizce kırpmaz, söyler. */
+  const capped = useRef<Record<string, boolean>>({});
+  const [cappedAny, setCappedAny] = useState(false);
   const allBase = `${tenant}/conversations?view=all${query ? `&q=${encodeURIComponent(query)}` : ""}`;
 
   // Yazarken her tuşta sunucuya gitmesin.
@@ -84,9 +88,9 @@ function QueuePane({ store, section, tab, setTab, selectedId }: { store: Members
   /** Kaynaklar birbirinden bağımsız yüklenir: biri başarısız olsa da diğerleri görünür. */
   async function load() {
     const results = await Promise.allSettled([
-      api<{ questions: Question[] }>(`${tenant}/team-questions`).then((r) => setQuestions(r.questions)),
-      api<{ notifications: Forwarded[] }>(`${tenant}/notifications?filter=important`).then((r) => setForwarded(r.notifications)),
-      api<{ conversations: ConversationRow[] }>(`${tenant}/conversations?view=waiting`).then((r) => setHandedOff(r.conversations)),
+      api<{ questions: Question[]; more?: boolean }>(`${tenant}/team-questions`).then((r) => { setQuestions(r.questions); capped.current.questions = Boolean(r.more); }),
+      api<{ notifications: Forwarded[]; more?: boolean }>(`${tenant}/notifications?filter=important`).then((r) => { setForwarded(r.notifications); capped.current.forwarded = Boolean(r.more); }),
+      api<{ conversations: ConversationRow[]; more?: boolean }>(`${tenant}/conversations?view=waiting`).then((r) => { setHandedOff(r.conversations); capped.current.handedOff = Boolean(r.more); }),
       api<{ conversations: ConversationRow[] }>(`${tenant}/conversations?view=mine`).then((r) => setMine(r.conversations)),
       tab === "all"
         ? api<{ conversations: ConversationRow[] }>(allBase).then((r) => {
@@ -98,6 +102,7 @@ function QueuePane({ store, section, tab, setTab, selectedId }: { store: Members
       showDone ? api<{ questions: Question[] }>(`${tenant}/team-questions?status=answered`).then((r) => setAnswered(r.questions)) : null,
     ]);
     waitingChanged();
+    setCappedAny(Object.values(capped.current).some(Boolean));
     setReady(true);
     const failed = results.find((r): r is PromiseRejectedResult => r.status === "rejected");
     setError(failed ? (failed.reason instanceof Error ? failed.reason.message : "Liste yüklenemedi") : "");
@@ -154,7 +159,8 @@ function QueuePane({ store, section, tab, setTab, selectedId }: { store: Members
     <div className="q-body">
       {tab === "waiting" && <>
         {queue === null && !error && loading}
-        {queue?.length === 0 && <p className="hint q-note">Şu an ekibi bekleyen iş yok. Lina müşterilere cevap veriyor.</p>}
+        {queue?.length === 0 && <p className="hint q-note">Şu an ekibi bekleyen iş yok. {bot === "off" ? "Lina şu an kapalı: müşterilere cevap vermiyor." : bot === "hours" ? "Şu an mesai dışı: Lina cevap vermiyor." : "Lina müşterilere cevap veriyor."}</p>}
+        {cappedAny && <p className="q-note q-capped" role="status">Çok sayıda bekleyen iş var: her listede en eski 100 iş gösteriliyor. Bazılarını tamamlayınca diğerleri görünür.</p>}
         <ul className="q-list">
           {queue?.map((item) => {
             const late = waitMinutes(item.since, now) >= LATE_MINUTES;
@@ -210,6 +216,7 @@ function QueuePane({ store, section, tab, setTab, selectedId }: { store: Members
 }
 
 function ConversationList({ rows, open, selectedId, now }: { rows: ConversationRow[] | null; open: (id: string) => string; selectedId?: string; now: number }) {
+  const bot = useBotState();
   return <ul className="q-list">
     {rows?.map((c) => <li key={c.id}>
       <Link className="q-item" to={open(c.id)} aria-current={c.id === selectedId ? "true" : undefined}>
@@ -218,7 +225,7 @@ function ConversationList({ rows, open, selectedId, now }: { rows: ConversationR
           <span className="q-name">{c.customer.name}</span>
           <span className="q-wait">{waitLabel(c.lastMessage?.createdAt ?? c.updatedAt, now)}</span>
         </span>
-        <span className="q-chips"><span className={`chip ${c.status === "waiting" ? "chip-red" : c.status === "human" ? "chip-green" : "chip-grey"}`}>{statusLabel(c)}</span></span>
+        <span className="q-chips"><span className={`chip ${c.status === "waiting" ? "chip-red" : c.status === "human" ? "chip-green" : "chip-grey"}`}>{statusLabel(c, bot)}</span></span>
         <span className="q-summary">{preview(c.lastMessage)}</span>
       </Link>
     </li>)}

@@ -379,7 +379,7 @@ export function registerPanelApi(app: Express, deps: PanelApiDeps) {
   });
 
   registerConversationRoutes(api, deps, { requireUser, requireTenant });
-  registerNotificationRoutes(api, deps, { requireUser, requireTenant });
+  registerNotificationRoutes(api, { ...deps, timeZone: deps.simulatorDeps?.timeZone }, { requireUser, requireTenant });
   registerLessonRoutes(api, deps, { requireUser, requireTenant });
   registerTeamQuestionRoutes(api, deps, { requireUser, requireTenant });
   registerUsageRoutes(api, deps, { requireUser, requireTenant });

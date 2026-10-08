@@ -890,3 +890,8 @@ textarea {
   .chart { height: 180px; }
   .chart-bars { gap: 3px; }
 }
+
+/* --- Lina kapalıyken üst çubukta uyarı --- */
+.bot-tag { padding: 4px 10px; border-radius: 999px; background: var(--chip-red); color: var(--chip-red-text); font-size: 12px; font-weight: 600; white-space: nowrap; }
+@media (max-width: 600px) { .bot-tag { max-width: 150px; white-space: normal; line-height: 1.25; } }
+.q-capped { padding: 8px 12px; border-radius: 8px; background: var(--chip-amber); color: var(--chip-amber-text); font-size: 13px; }

@@ -175,10 +175,20 @@ export type TurnInfo = {
  * bazen empatiyle başlayıp atlıyor. Cevap tanıtımı ilk cümlelerinde içermiyorsa ve Türkçeyse kod başına
  * ekler. Başka dildeki cevaba Türkçe tanıtım eklenmez (model onu müşterinin dilinde yazar).
  */
+/** Metin Türkçe mi? (Türkçe harfler ya da yaygın Türkçe sözcükler.) */
+export const looksTurkish = (text: string) => /[ığşöüçİĞŞÖÜÇ]|\b(ve|bir|için|ile|siz|biz|bu|çok|size|merhaba|selam|nasıl)\b/i.test(text);
+
+/**
+ * Metin açıkça İngilizce mi? Türkçe harf ya da sözcük yoksa ve yaygın İngilizce sözcükler varsa. ASCII ile yazılmış
+ * Türkçe ("kargo kac gunde gelir") İngilizce sayılmaz: emin değilsek Türkçe varsayılır.
+ */
+export const looksEnglish = (text: string) =>
+  !looksTurkish(text) && /\b(the|is|are|my|order|where|hello|hi|please|can|could|you|what|when|how|do|does|i|want|need|thanks|thank|have|has|with|this|that)\b/i.test(text);
+
 export function ensureIntro(text: string, botName: string): string {
   const head = text.slice(0, 120).toLowerCase();
   if (head.includes(botName.toLowerCase())) return text;
-  const turkish = /[ığşöüçİĞŞÖÜÇ]|\b(ve|bir|için|ile|siz|biz|bu|çok|size|merhaba|selam|nasıl)\b/i.test(text);
+  const turkish = looksTurkish(text);
   if (!turkish) return text;
   // Cevap zaten selamla başlıyorsa selam iki kez edilmez: "Merhaba, nasıl…" → "Merhaba, ben Lina. Nasıl…".
   const rest = text.replace(/^(merhaba|selam|iyi günler|günaydın|iyi akşamlar)[,!.\s]*/i, "");

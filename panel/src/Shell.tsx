@@ -1,3 +1,4 @@
+import type { BotState } from "./pages/inbox-shared";
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { api, liveChanged, WAITING_CHANGED, type Me, type Membership } from "./api";
 import { alertNewWork, alertsOn, askNotificationPermission, playBeep, setAlerts } from "./alerts";
@@ -20,26 +21,30 @@ export const visibleSections = (store: Membership) => SECTIONS.filter((s) => !s.
 
 type Active = SectionKey | "yonetici" | null;
 
+/** Lina şu an cevap veriyor mu: açık, kapatılmış ya da "yalnızca mesai saatlerinde" açıkken mesai dışı. */
+const BotStateContext = createContext<BotState>("on");
+export const useBotState = () => useContext(BotStateContext);
+
 /** Menüdeki bekleyen iş sayısı bu sıklıkla yenilenir (hangi sayfa açık olursa olsun). */
 const WAITING_REFRESH_MS = 20_000;
 
-/** Ekibi bekleyen iş sayısı: Lina'nın soruları + ekibe iletilenler + kimsenin devralmadığı konuşmalar. */
-function useWaitingCount(store: Membership | null): number {
-  const [count, setCount] = useState(0);
+/** Ekibi bekleyen iş sayısı (Lina'nın soruları + ekibe iletilenler + kimsenin devralmadığı konuşmalar) ve Lina'nın şu anki durumu. */
+function useWaitingCount(store: Membership | null): { count: number; bot: BotState } {
+  const [state, setState] = useState<{ count: number; bot: BotState }>({ count: 0, bot: "on" });
   const tenantId = store?.tenantId;
   useEffect(() => {
-    setCount(0);
+    setState({ count: 0, bot: "on" });
     if (!tenantId) return;
     let cancelled = false;
     // İlk yüklemede uyarı yok; sayı sonradan artarsa (yeni devir, bildirim, ekibe soru) ses ve bildirim.
     let previous: number | null = null;
     const load = () =>
-      api<{ total: number }>(`/tenants/${tenantId}/waiting-count`).then(
+      api<{ total: number; bot?: BotState }>(`/tenants/${tenantId}/waiting-count`).then(
         (r) => {
           if (cancelled) return;
           if (previous !== null && r.total > previous) alertNewWork(r.total - previous, r.total);
           previous = r.total;
-          setCount(r.total);
+          setState({ count: r.total, bot: r.bot ?? "on" });
         },
         () => {}, // sayı yüklenemezse rozet olduğu gibi kalır; sayfaların kendi hata yazısı var
       );
@@ -66,7 +71,7 @@ function useWaitingCount(store: Membership | null): number {
       window.removeEventListener(WAITING_CHANGED, load);
     };
   }, [tenantId]);
-  return count;
+  return state;
 }
 
 /** Tam ekran sayfalar (gelen kutusu) kendi üst çubuğunu çizer: mağaza seçici, zil ve hesap menüsü buradan gelir. */
@@ -76,7 +81,7 @@ export const ChromeBar = () => <>{useContext(ChromeContext)}</>;
 export function Shell({ me, store, active, bare = false, children }: { me: Me; store: Membership | null; active: Active; bare?: boolean; children: ReactNode }) {
   const sections = store ? visibleSections(store) : [];
   const title = active === "yonetici" ? "Tüm mağazalar" : SECTIONS.find((s) => s.key === active)?.label;
-  const waiting = useWaitingCount(store);
+  const { count: waiting, bot } = useWaitingCount(store);
   const badge = (key: SectionKey) =>
     key === "bekleyenler" && waiting > 0 ? <span className="nav-badge" aria-hidden="true">{waiting > 99 ? "99+" : waiting}</span> : null;
   const navLabel = (key: SectionKey, label: string) => (key === "bekleyenler" && waiting > 0 ? `${label} (${waiting} iş bekliyor)` : label);
@@ -91,6 +96,7 @@ export function Shell({ me, store, active, bare = false, children }: { me: Me; s
     <>
       <StoreSwitcher me={me} store={store} active={active} />
       {store && <span className="role-tag">{me.user.isSuperAdmin ? "Yönetici" : store.role === "owner" ? "Sahip" : "Çalışan"}</span>}
+      {store && bot !== "on" && <span className="bot-tag" role="status">{bot === "off" ? "Lina kapalı: müşterilere cevap vermiyor" : "Mesai dışı: Lina cevap vermiyor"}</span>}
       <span style={{ flexGrow: 1 }} />
       {store && <AlertToggle />}
       <div className="mobile-only">
@@ -136,10 +142,12 @@ export function Shell({ me, store, active, bare = false, children }: { me: Me; s
       </nav>
 
       <ChromeContext.Provider value={chrome}>
-        <div className={bare ? "main main-bare" : "main"}>
-          {!bare && <header className="topbar">{chrome}</header>}
-          {children}
-        </div>
+        <BotStateContext.Provider value={bot}>
+          <div className={bare ? "main main-bare" : "main"}>
+            {!bare && <header className="topbar">{chrome}</header>}
+            {children}
+          </div>
+        </BotStateContext.Provider>
       </ChromeContext.Provider>
 
       {sections.length > 0 && (

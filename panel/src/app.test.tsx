@@ -31,6 +31,8 @@ let session: Me | null;
 let requests: { method: string; path: string; body?: unknown }[];
 /** Bekleyen iş sayısı (menü rozeti) ve oturumun sunucuda düşmüş olması. */
 let waiting: number;
+/** Lina'nın durumu (sahte sunucu waiting-count ile gönderir). */
+let bot: "on" | "off" | "hours" = "on";
 let expired: boolean;
 
 const json = (status: number, body: unknown) =>
@@ -62,7 +64,7 @@ function fakeServer(url: string, init?: RequestInit) {
   }
   if (path.startsWith("/tenants/")) {
     if (expired) return json(401, { error: "Oturum açın" });
-    if (path.endsWith("/waiting-count")) return json(200, { questions: waiting, forwarded: 0, handoffs: 0, total: waiting });
+    if (path.endsWith("/waiting-count")) return json(200, { questions: waiting, forwarded: 0, handoffs: 0, total: waiting, bot });
   }
   return json(404, { error: "Bulunamadı" });
 }
@@ -76,6 +78,7 @@ beforeEach(() => {
   session = null;
   requests = [];
   waiting = 0;
+  bot = "on";
   expired = false;
   localStorage.clear();
   vi.stubGlobal("fetch", vi.fn(fakeServer));
@@ -175,6 +178,24 @@ describe("menü ve oturum", () => {
     const link = await within(menu).findByRole("link", { name: "Bekleyenler (3 iş bekliyor)" });
     expect(link.textContent).toBe("Bekleyenler3"); // simge altındaki ad + sayı rozeti
     expect(requests.some((r) => r.path === "/tenants/t1/waiting-count")).toBe(true);
+  });
+
+  it("Lina kapalıysa ya da mesai dışındaysa üst çubukta uyarı görünür; açıkken görünmez", async () => {
+    session = OWNER;
+    open("/m/maius/istatistik");
+    await screen.findByRole("heading", { name: "İstatistik" });
+    await within(screen.getByRole("navigation", { name: "Ana menü" })).findByRole("link", { name: "Bekleyenler" });
+    expect(screen.queryByText(/Lina kapalı/)).toBeNull();
+    cleanup();
+
+    bot = "off";
+    open("/m/maius/istatistik");
+    expect((await screen.findAllByText("Lina kapalı: müşterilere cevap vermiyor")).length).toBeGreaterThan(0);
+    cleanup();
+
+    bot = "hours";
+    open("/m/maius/istatistik");
+    expect((await screen.findAllByText("Mesai dışı: Lina cevap vermiyor")).length).toBeGreaterThan(0);
   });
 
   it("bekleyen iş sayısı artınca uyarı çalar; ilk yüklemede ve azalınca çalmaz; başlıkta sayı görünür", async () => {

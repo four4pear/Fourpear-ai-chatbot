@@ -131,7 +131,8 @@ export function toOrderFacts(o: GqlOrder, countryCode = "90"): OrderFacts {
 /**
  * Shopify siparişleri. Sipariş numarası "name:" filtresiyle aranır (#MO-1270, MO-1270 ve 1270
  * aynı siparişi bulur); serbest arama başka siparişleri de getirdiği için kullanılmaz.
- * Telefonla arama müşteri kaydı üzerinden yapılır. Sahiplik her durumda ayrıca doğrulanır.
+ * Telefonla arama önce müşteri kaydı üzerinden yapılır; kayıtta telefon yoksa siparişlerin kendi alanlarında aranır.
+ * Sahiplik her durumda ayrıca doğrulanır.
  */
 export function shopifyOrderSource(shopify: ShopifyApi, store: ShopifyStore, opts: { countryCode?: string } = {}): OrderSource {
   const countryCode = opts.countryCode ?? "90";
@@ -163,6 +164,17 @@ export function shopifyOrderSource(shopify: ShopifyApi, store: ShopifyStore, opt
       const found = new Map<string, GqlOrder>();
       for (const c of customers.nodes) {
         for (const o of await orders(`customer_id:${c.legacyResourceId}`, 10)) found.set(o.name, o);
+      }
+      // Müşteri kaydında telefonu olmayan sipariş (misafir ödemesi, telefon yalnızca siparişte ya da teslimat adresinde):
+      // siparişlerin kendi alanlarında aranır. Telefon ayrı bir arama filtresi olmadığı için serbest aramayla (önce
+      // ulusal biçim, sonra ülke kodlu) denenir; bulunanların gerçekten bu telefona ait olduğu çağıranda ayrıca doğrulanır.
+      if (!found.size) {
+        const digits = normalizePhone(phone);
+        const national = digits.startsWith(countryCode) ? digits.slice(countryCode.length) : digits;
+        for (const term of [...new Set([national, digits])]) {
+          for (const o of await orders(term, 10)) found.set(o.name, o);
+          if (found.size) break;
+        }
       }
       return [...found.values()]
         .map((o) => toOrderFacts(o, countryCode))

@@ -412,6 +412,53 @@ describe("Shopify sipariş kaynağı", () => {
   });
 });
 
+describe("telefonla sipariş arama: müşteri kaydında telefon yoksa", () => {
+  const orderWithPhone = (name: string, phone: string) => ({
+    name, createdAt: "2026-09-12T08:20:00Z", cancelledAt: null, phone, customer: null, shippingAddress: null, billingAddress: null,
+    lineItems: { nodes: [] }, fulfillments: [],
+  });
+
+  it("siparişin kendi alanlarında aranır: önce ulusal, sonra ülke kodlu biçim; yalnızca bulunamazsa", async () => {
+    const queries: string[] = [];
+    const api: ShopifyApi = {
+      async graphql<T>(_s: unknown, query: string, variables?: Record<string, unknown>) {
+        queries.push(String(variables?.query));
+        if (query.includes("LinaCustomersByPhone")) return { customers: { nodes: [] } } as T;
+        if (variables?.query === "5321234567") return { orders: { nodes: [orderWithPhone("#MO-2001", "+90 532 123 45 67")] } } as T;
+        return { orders: { nodes: [] } } as T;
+      },
+    };
+    const found = await shopifyOrderSource(api, {} as never).byPhone(CUSTOMER);
+    expect(found.map((o) => o.name)).toEqual(["#MO-2001"]);
+    expect(belongsTo(found[0]!, CUSTOMER)).toBe(true);
+    // Ulusal biçimle bulununca ikinci aramaya geçilmez.
+    expect(queries).toEqual(["phone:+905321234567", "5321234567"]);
+  });
+
+  it("bulunamazsa ülke kodlu biçim de denenir; müşteri kaydından sipariş bulunduysa hiç denenmez", async () => {
+    const queries: string[] = [];
+    const empty: ShopifyApi = {
+      async graphql<T>(_s: unknown, query: string, variables?: Record<string, unknown>) {
+        queries.push(String(variables?.query));
+        return (query.includes("LinaCustomersByPhone") ? { customers: { nodes: [] } } : { orders: { nodes: [] } }) as T;
+      },
+    };
+    expect(await shopifyOrderSource(empty, {} as never).byPhone(CUSTOMER)).toEqual([]);
+    expect(queries).toEqual(["phone:+905321234567", "5321234567", "905321234567"]);
+  });
+
+  it("serbest arama başkasının siparişini getirse de sahibi değilse çağıranda elenir", async () => {
+    const api: ShopifyApi = {
+      async graphql<T>(_s: unknown, query: string) {
+        if (query.includes("LinaCustomersByPhone")) return { customers: { nodes: [] } } as T;
+        return { orders: { nodes: [orderWithPhone("#MO-2002", "+90 555 000 00 00")] } } as T;
+      },
+    };
+    const found = await shopifyOrderSource(api, {} as never).byPhone(CUSTOMER);
+    expect(found.filter((o) => belongsTo(o, CUSTOMER))).toEqual([]);
+  });
+});
+
 describe("bildirim türü", () => {
   const f = (patch: Partial<OrderFindings>): OrderFindings => ({ ...newFindings(), ...patch });
   const verified = (unshipped: boolean) => new Map([["#MO-1", { unshipped, cancelled: false }]]);
