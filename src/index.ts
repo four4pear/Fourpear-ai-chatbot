@@ -15,6 +15,7 @@ import { createShopifyApi } from "./shopify/client.js";
 import { createWhatsAppClient } from "./whatsapp/client.js";
 import { escalateOverdueQuestions } from "./core/team-questions.js";
 import { escalateWaitingCustomers } from "./core/waiting.js";
+import { shopifyProductSource } from "./products/shopify.js";
 import { createRoutingSender } from "./whatsapp/routing.js";
 import { createZernioClient } from "./whatsapp/zernio.js";
 import { EventBus } from "./core/events.js";
@@ -105,6 +106,11 @@ if (config.APP_URL) {
       .innerJoin(tenants, eq(tenants.id, shopifyStores.tenantId))
       .where(and(eq(shopifyStores.tenantId, tenantId), isNull(shopifyStores.uninstalledAt)));
     return row ? shopifyOrderSource(shopify, row.store, { countryCode: resolveSettings(row.settings).phoneCountryCode }) : null;
+  };
+  // Ürün uzmanı: aynı Shopify kurulumundan ürün, fiyat ve stok durumu anlık okunur.
+  deps.productSourceFor = async (tenantId) => {
+    const [store] = await db.select().from(shopifyStores).where(and(eq(shopifyStores.tenantId, tenantId), isNull(shopifyStores.uninstalledAt)));
+    return store ? shopifyProductSource(shopify, store) : null;
   };
   // Shopify sayfa/politika değişikliği için bildirim göndermiyor: düzenli kontrol.
   const runSync = exclusive(() => syncAllStores(db, shopify, console).catch((err) => console.error("Bilgi senkronu", err)));

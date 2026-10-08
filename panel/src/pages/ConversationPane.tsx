@@ -33,7 +33,7 @@ type Detail = {
   teamQuestions: OpenQuestion[];
 };
 
-const AGENT_LABELS: Record<string, string> = { order: "Sipariş uzmanı", returns: "İade uzmanı", knowledge: "Mağaza bilgi uzmanı" };
+const AGENT_LABELS: Record<string, string> = { order: "Sipariş uzmanı", returns: "İade uzmanı", knowledge: "Mağaza bilgi uzmanı", product: "Ürün uzmanı" };
 
 /** WhatsApp, müşterinin son mesajından 24 saat sonra serbest mesaja izin vermez: kalan süre. */
 function windowLeft(until: string | null, now = Date.now()) {

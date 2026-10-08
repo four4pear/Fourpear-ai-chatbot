@@ -4,7 +4,7 @@ Bu belge Lina'nın müşteriye ne diyeceğini ve hangi durumda ne yapacağını 
 Kod bu belgeye göre yazılır; değişiklikler önce burada yapılır.
 Kurallar bütün mağazalar için geçerlidir; mağazaya özel değerler "MAIUS ayarları" gibi mağaza bölümlerindedir.
 
-> **Müşteri hizmetleri ekibi (30 Eylül 2026):** Lina ön büro temsilcisidir; arkasında uzmanlar çalışır. Şu an: mağaza bilgi uzmanı, sipariş ve kargo uzmanı, iade ve değişim uzmanı (§3.5). Eklenecekler: şikayet ve çözüm uzmanı, ürün ve beden danışmanı, kalite kontrol (her cevabı göndermeden önce denetler). Uzmanların mağazaya özel el kitabıyla eğitilmesi ekip sayfasıyla birlikte konuşulacak.
+> **Müşteri hizmetleri ekibi (30 Eylül 2026):** Lina ön büro temsilcisidir; arkasında uzmanlar çalışır. Şu an: mağaza bilgi uzmanı, sipariş ve kargo uzmanı, iade ve değişim uzmanı (§3.5), ürün uzmanı (§3.6). Eklenecekler: şikayet ve çözüm uzmanı, kalite kontrol (her cevabı göndermeden önce denetler). Uzmanların mağazaya özel el kitabıyla eğitilmesi ekip sayfasıyla birlikte konuşulacak.
 >
 > **Kodlama durumu (28 Eylül 2026):** §3 (siparişler, iade, iptal, şikayet), §11 (kampanya yazıları) ve §12 (ekibe bildirimler) kodlandı ve testli.
 > - Sipariş uzmanı, mağazada Shopify uygulaması kuruluyken devreye girer. Kurulu değilken Lina iade, iptal ve şikayette eski davranışla konuşmayı ekibe devreder. MAIUS'ta uygulama henüz kurulu değil; deneme için: `npm run chat -- --demo-siparis`.
@@ -29,9 +29,10 @@ Kurallar bütün mağazalar için geçerlidir; mağazaya özel değerler "MAIUS 
 Lina yalnızca uzmanlardan gelen bilgiyi söyler. Uzmanlar:
 - mağaza bilgisi uzmanı,
 - sipariş uzmanı (Shopify siparişleri ve ürün açıklamaları),
-- mağazanın iade sistemi bağlıysa iade durumu.
+- mağazanın iade sistemi bağlıysa iade durumu,
+- Shopify bağlıysa ürün uzmanı (§3.6): ürün var mı, hangi beden ve renk stokta, fiyat ve indirim.
 
-Ürün uzmanı (stok, fiyat, beden önerisi) sonraki aşamada gelecek. Lina bilmiyorsa uydurmaz.
+Lina bilmiyorsa uydurmaz.
 
 ## 2a. Bilgi kaynakları (elle yazılmış dosya yok; her şey mağazadan)
 Mağaza bilgi uzmanı ("SSS uzmanı"nın yerini alır) şu kaynakları kullanır:
@@ -145,6 +146,17 @@ Müşteri hizmetleri ekibinin ilk uzmanı. İade, değişim, hasarlı/hatalı/ya
 - Lina mağazanın iade sistemine yalnızca **okumak** için bağlanır (MAIUS: Kolay İade paneli, iade talebini arama ve talep durumu). Kupon, e-posta, durum değiştirme, ayar ve SQL gibi yazma ve yönetim araçları hiçbir zaman kullanılmaz.
 - Araya sunucu girer. Önce siparişin müşteriye ait olduğu doğrulanır (§3.1) ve sadece o mağazanın talepleri okunur. Müşteri adı, adresi, IBAN/ödeme bilgisi ve ekibin iç notları Lina'ya hiç gitmez.
 - Lina'nın ayrı ve kısıtlı bir anahtarı olur. Anahtar sohbete yazılmaz, veritabanında şifreli saklanır.
+
+### 3.6 Ürün uzmanı (8 Ekim 2026)
+Shopify bağlı mağazada Lina ürün, fiyat ve stok sorularını ürün uzmanına sorar (araç: `ask_product_agent`); ekibe sormaz. Uzman mağazanın **aktif ürünlerini Shopify'dan anlık** okur (`search_products`: ada göre arama, en fazla 5 ürün): fiyat, indirim (karşılaştırma fiyatı), beden/renk seçenekleri, stok durumu, etiketler, mağazanın ürün yazısı ve ürün linki.
+- **Stok durumu sözcükle söylenir, adet söylenmez:** "stokta var" · "az sayıda kaldı" (3 ve altı) · "tükendi" · "stokta yok, ön sipariş/üretim süreciyle sipariş alınıyor" (satılabilir ama adet sıfır). Müşteri "kaç adet kaldı" derse adedi paylaşamadığımız, yalnızca durumu söyleyebildiğimiz anlatılır ("sistemde tutulmuyor" denmez). Stok adedi kod katmanında durumla değiştirilir; uzmana ve Lina'ya adet gitmez.
+- **Tükenen ürün:** ne zaman geleceği ya da yeniden stoğa girip girmeyeceği bilinmiyorsa Lina söz vermez; müşteri sorarsa ekibe sorulur ("Lina soruyor", §15).
+- **Ürün yazısındaki koşullar bağlayıcıdır:** kampanya ("indirimli üründe iade yok") ve ön sipariş tarihi ürün yazısından aynen aktarılır (§11 ile aynı kural).
+- **Fiyat:** TL olarak aynen; indirimliyse güncel ve önceki fiyat.
+- **Bulunamayan ürün:** "bu adla aktif ürün bulunamadı" denir, müşteriden ürünün tam adı ya da linki istenir; benzer isimli ürün ya da "birkaç model olabilir" gibi tahmin yazılmaz.
+- **Beden önerisi:** ürün yazısındaki model ölçüleri ve beden tablosu (mağaza bilgi uzmanı) aktarılır; kişiye özel beden kararı verilmez, göğüs/bel ölçüsü istenir.
+- Shopify'a ulaşılamazsa uzman "Araç hatası" döner; Lina bilgi uydurmaz, ekibe sorar (Bilmediğin soru kuralı). Test ekranında "Deneme siparişlerini kullan" açıkken deneme ürünleri de gelir (Lavin Etek ön sipariş, Riva Takım tükenen beden, Mira Gömlek az kalan beden vb.).
+- Uzmanın çağrıları panelde müşteri kartında "Lina'nın uzmanlara sordukları" altında ve İstatistik tablosunda "Ürün uzmanı" olarak görünür.
 
 ## 4. Devir (insana aktarma)
 Devredilen konuşmayı ekip panelde devralır ve müşteriyle yazışır. Lina ne zaman dönüleceğini yalnızca müşteri açıkça temsilci istediyse söyler (§6).

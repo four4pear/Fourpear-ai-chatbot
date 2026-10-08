@@ -4,6 +4,7 @@ import type { Tenant } from "../db/schema.js";
 import type { KnowledgeBase } from "../knowledge/base.js";
 import { askKnowledgeAgent } from "./knowledge.js";
 import { askOrderAgent, newFindings, type OrderAgentDeps, type OrderFindings } from "./orders.js";
+import { askProductAgent, type ProductAgentDeps } from "./products.js";
 import { systemRecord } from "../core/notifications.js";
 import type { AskedQuestion } from "../core/team-questions.js";
 import { linaSystemPrompt, turnContext, type TurnInfo } from "./prompts.js";
@@ -103,6 +104,8 @@ export async function runLina(
   orders: OrderAgentDeps | null = null,
   /** Mağazanın öğrettikleri (core/lessons.ts); uzmanlara `knowledge` notlarıyla zaten gider. */
   lessons: string[] = [],
+  /** Ürün, fiyat ve stok kaynağı (Shopify bağlıysa); yoksa ürün uzmanı açılmaz. */
+  products: ProductAgentDeps | null = null,
 ): Promise<LinaResult> {
   const tools: AgentTool[] = [];
   const specialists: string[] = [];
@@ -116,6 +119,19 @@ export async function runLina(
         "ask_store_info_agent",
         "Mağaza bilgi uzmanına soru sorar (kargo, ödeme, beden, üretim, iletişim, kampanyalar, sözleşme/KVKK). İade ve değişim için değil.",
         (q) => askKnowledgeAgent(ctx, tenant, knowledge, withCustomerContext(q, history)),
+      ),
+    );
+  }
+
+  if (products) {
+    specialists.push(
+      "ask_product_agent (ürün uzmanı): bir ürün var mı, hangi beden ve renk stokta, fiyat ve indirim, ürün yazısındaki özellikler (kumaş, model ölçüleri). Mağazanın ürünlerini ve stok durumunu anlık okur; stok adedi söylemez. Beden tablosu ve kargo gibi genel bilgiler için değil.",
+    );
+    tools.push(
+      specialistTool(
+        "ask_product_agent",
+        "Ürün uzmanına sorar: ürün var mı, beden/renk stokta mı, fiyat ve indirim, ürün özellikleri. Soruya ürünün adını ve müşterinin sorduğu beden/rengi yaz.",
+        (q) => askProductAgent(ctx, tenant, products, withCustomerContext(q, history)),
       ),
     );
   }

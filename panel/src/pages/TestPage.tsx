@@ -22,7 +22,7 @@ type Entry =
   /** Lina soruyor: Lina'nın arka planda ekibe sorduğu soru; testte ekip yerine siz cevaplarsınız. */
   | { kind: "asked"; question: string; context: string; draft: string; teach: boolean; state: "open" | "answered"; answer?: string };
 
-const AGENT_LABELS: Record<string, string> = { order: "Sipariş uzmanı", returns: "İade uzmanı", knowledge: "Mağaza bilgi uzmanı" };
+const AGENT_LABELS: Record<string, string> = { order: "Sipariş uzmanı", returns: "İade uzmanı", knowledge: "Mağaza bilgi uzmanı", product: "Ürün uzmanı" };
 
 /** "geri bildirim: ..." ile başlayan mesaj müşteri mesajı değil, Lina için derstir. */
 const FEEDBACK_PREFIX = /^\s*ger[iı]?\s*b[iı]ld[iı]r[iı]?m\b[\s:：\-–—]*/i;
@@ -279,7 +279,7 @@ export function TestPage({ store, replyDelayMs = TEST_REPLY_DELAY_MS }: { store:
         <button className="btn btn-primary" disabled={!text.trim()}>Gönder</button></form>
     </section><aside className="panel-card test-details"><h2>Test ayarları</h2>
       <label><input type="checkbox" checked={demo} disabled={busy || entries.length > 0} onChange={e => setDemo(e.target.checked)} /> Deneme siparişlerini kullan</label>
-      <p className="hint">Siparişler örnektir. Bu seçimi değiştirmek için yeni sohbet açın.</p>
+      <p className="hint">Siparişler ve ürünler örnektir. Bu seçimi değiştirmek için yeni sohbet açın.</p>
       {demo && scenarios.length > 0 && <div className="test-scenarios">
         <h2>Deneme siparişleri</h2>
         <p className="hint">Hepsi test müşterisine (Ayşe Yılmaz) ait; MO-9005 başka bir numaranın. Tıklayınca örnek mesaj yazılır, isterseniz değiştirip gönderin.</p>

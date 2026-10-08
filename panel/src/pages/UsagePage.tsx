@@ -22,6 +22,7 @@ type Usage = { days: number; rows: Row[]; totals: Totals[] };
 const AGENT_LABELS: Record<string, string> = {
   lina: "Lina",
   knowledge: "Mağaza bilgi uzmanı",
+  product: "Ürün uzmanı",
   order: "Sipariş uzmanı",
   returns: "İade uzmanı",
   memory: "Kart yazarı",

@@ -22,6 +22,7 @@ import { costUsd, type TokenUsage } from "../core/pricing.js";
 import { ingestInbound, respond, type Deps } from "../core/conversation.js";
 import { encryptSecret } from "../lib/crypto.js";
 import { demoOrderSource, demoReturnsProvider, DEMO_ORDERS_HELP } from "../orders/demo.js";
+import { demoProductSource } from "../products/demo.js";
 
 /** team: ekibin "Lina soruyor" cevabı (test ekranında ekip yerine siz cevaplarsınız). */
 type Turn = { role: "user" | "assistant" | "team"; text: string; question?: string };
@@ -122,6 +123,7 @@ async function runTest(source: Deps, db: DB, tenantId: string, history: Turn[], 
     // Test numarası hiçbir siparişle eşleşmez; gerçek siparişlerde Lina doğrulama ister, bilgi paylaşmaz.
     orderSourceFor: demo ? async () => demoOrderSource(() => customerPhone) : source.orderSourceFor,
     returnsFor: demo ? async () => demoReturnsProvider() : source.returnsFor,
+    productSourceFor: demo ? async () => demoProductSource() : source.productSourceFor,
   };
   // Kart varsa test müşterisi önceden kayıtlı; kart, son cevaptan sonraki mesajlara kadar güncel sayılır.
   let customerId: string | undefined;

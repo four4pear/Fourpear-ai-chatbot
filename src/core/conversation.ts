@@ -22,6 +22,7 @@ import type { OrderFindings } from "../agents/orders.js";
 import { CancelledError, describeLlmError, type Llm } from "../agents/runner.js";
 import { decryptSecret } from "../lib/crypto.js";
 import type { OrderSource } from "../orders/types.js";
+import type { ProductSource } from "../products/types.js";
 import type { ReturnsProvider } from "../returns/provider.js";
 import type { WhatsAppSender } from "../whatsapp/client.js";
 import type { InboundEvent, WaIncomingMessage } from "../whatsapp/types.js";
@@ -51,6 +52,8 @@ export type Deps = {
   replyDelayOverrideMs?: number;
   /** Mağazanın siparişleri (Shopify uygulaması kuruluysa); yoksa sipariş uzmanı kapalıdır. */
   orderSourceFor?: (tenantId: string) => Promise<OrderSource | null>;
+  /** Ürün, fiyat ve stok kaynağı (Shopify bağlı mağazada ürün uzmanı açılır). */
+  productSourceFor?: (tenantId: string) => Promise<ProductSource | null>;
   /** Mağazanın iade sistemi bağlantısı (varsa, yalnızca okuma). */
   returnsFor?: (tenantId: string) => Promise<ReturnsProvider | null>;
   /**
@@ -281,7 +284,7 @@ export async function respond(deps: Deps, conversationId: string, ctl: RespondCo
       deps.log.error(`${what} alınamadı (tenant=${tenant.slug})`, err);
       return null;
     });
-  const [history, firstContact, openHandoff, storeKnowledge, lessons, memory, askedTeam, teamAnswers, locked, orderSource, returns] = await Promise.all([
+  const [history, firstContact, openHandoff, storeKnowledge, lessons, memory, askedTeam, teamAnswers, locked, orderSource, returns, productSource] = await Promise.all([
     loadHistory(db, conversationId, deps.historyLimit),
     isFirstContact(db, conversationId),
     findOpenHandoff(db, conversationId),
@@ -293,6 +296,7 @@ export async function respond(deps: Deps, conversationId: string, ctl: RespondCo
     identityLocked(db, conversationId, now),
     optional(deps.orderSourceFor?.(tenant.id), "Sipariş kaynağı"),
     optional(deps.returnsFor?.(tenant.id), "İade sistemi bağlantısı"),
+    optional(deps.productSourceFor?.(tenant.id), "Ürün kaynağı"),
   ]);
   const turn = {
     // Kartı olan müşteri daha önce yazmıştır (ör. eski mesajları silinmiş olsa da): yeniden tanıtım yok.
@@ -322,7 +326,7 @@ export async function respond(deps: Deps, conversationId: string, ctl: RespondCo
   let orderFindings: OrderFindings | null = null;
   let teamQuestions: AskedQuestion[] = [];
   try {
-    const result = await runLina(ctx, tenant, history, turn, withLessons(storeKnowledge, lessons), orders, lessons);
+    const result = await runLina(ctx, tenant, history, turn, withLessons(storeKnowledge, lessons), orders, lessons, productSource ? { source: productSource } : null);
     if (result.kind === "failed") {
       reply = fixedText(settings, "failure");
       handoff = { reason: "other", summary: `Asistan cevap üretemedi (stop_reason: ${result.stopReason}). Mesajlar: "${lastText}"` };
