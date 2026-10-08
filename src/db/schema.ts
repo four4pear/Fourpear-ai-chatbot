@@ -28,7 +28,10 @@ export type TenantSettings = {
   botEnabled: boolean;
   /** Açıksa Lina yalnızca mesai saatlerinde cevap verir; dışındaki mesajlar açılışta cevaplanır. */
   botHoursOnly: boolean;
+  /** Bir müşterinin günde en fazla kaç mesajına cevap verilir (spam ve bot döngüsü koruması). */
   dailyMessageLimit: number;
+  /** Bütün mağazanın bir günde alabileceği müşteri mesajı: aşılırsa Lina o gün yeni cevap hazırlamaz (fatura koruması). */
+  dailyStoreMessageLimit: number;
   businessHours: BusinessHours;
   /** Varsayılan sabit metinlerin yerine geçen mağaza metinleri. */
   texts: Partial<Record<FixedTextKey, string>>;
@@ -59,6 +62,7 @@ export const defaultTenantSettings: TenantSettings = {
   botEnabled: true,
   botHoursOnly: false,
   dailyMessageLimit: 200,
+  dailyStoreMessageLimit: 3000,
   businessHours: { days: [1, 2, 3, 4, 5], start: "09:00", end: "18:00" },
   texts: {},
   allowedSearchDomains: [],
@@ -198,7 +202,11 @@ export const messages = pgTable(
      */
     seq: bigserial("seq", { mode: "number" }).notNull(),
   },
-  (t) => [index("messages_conversation_idx").on(t.conversationId, t.createdAt)],
+  (t) => [
+    index("messages_conversation_idx").on(t.conversationId, t.createdAt),
+    // Mağazanın günlük toplam mesaj sayısı (fatura koruması).
+    index("messages_tenant_created_idx").on(t.tenantId, t.createdAt),
+  ],
 );
 
 export const agentRuns = pgTable(
@@ -389,6 +397,8 @@ export type NotificationDetails = {
   replyFailed?: boolean;
   /** Bu cevap(lar)da müşterinin yazdığı ad soyad siparişle eşleşmedi: kaç kez (deneme sınırı için sayılır). */
   failedIdentity?: number;
+  /** Günlük sınır bildirimi: "store" mağazanın toplam sınırı aşıldı (varsayılan: tek müşteri). */
+  scope?: "customer" | "store";
   /** Açık bildirim aynı vaka için güncellendiyse: son güncelleme zamanı (ISO) ve kaç kez güncellendiği. */
   updatedAt?: string;
   updates?: number;

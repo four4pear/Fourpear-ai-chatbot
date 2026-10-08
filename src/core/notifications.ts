@@ -182,17 +182,20 @@ export async function identityLocked(db: DB, conversationId: string, now: Date):
  */
 export async function recordLimitNotification(
   deps: { db: DB; events?: EventBus },
-  input: { tenantId: string; conversationId: string; limit: number; lastMessage: string; now: Date; since: Date },
+  input: { tenantId: string; conversationId: string; limit: number; scope?: "customer" | "store"; lastMessage: string; now: Date; since: Date },
 ) {
+  const store = input.scope === "store";
+  // Müşteri sınırı konuşma başına, mağaza sınırı mağaza başına günde bir kez bildirilir.
   const [open] = await deps.db
     .select({ id: notifications.id })
     .from(notifications)
     .where(
       and(
-        eq(notifications.conversationId, input.conversationId),
+        store ? eq(notifications.tenantId, input.tenantId) : eq(notifications.conversationId, input.conversationId),
         eq(notifications.kind, "daily_limit"),
         eq(notifications.status, "open"),
         gte(notifications.createdAt, input.since),
+        store ? sql`${notifications.details}->>'scope' = 'store'` : undefined,
       ),
     )
     .limit(1);
@@ -206,7 +209,12 @@ export async function recordLimitNotification(
     answer: "",
     details: {
       kinds: ["daily_limit"],
-      issues: [`Müşteri bugün ${input.limit} mesajı aştı. Lina bugün bu müşteriye yeni cevap hazırlamıyor; müşteriye bilgi verilmedi. Yarın kendiliğinden devam eder.`],
+      ...(store && { scope: "store" as const }),
+      issues: [
+        store
+          ? `Mağazaya bugün ${input.limit} mesajdan fazla müşteri mesajı geldi (olağandışı yoğunluk ya da istenmeyen mesaj olabilir). Lina bugün hiçbir müşteriye yeni cevap hazırlamıyor; müşterilere bilgi verilmedi. Yarın kendiliğinden devam eder; acil müşterilere konuşmadan siz yazabilirsiniz.`
+          : `Müşteri bugün ${input.limit} mesajı aştı. Lina bugün bu müşteriye yeni cevap hazırlamıyor; müşteriye bilgi verilmedi. Yarın kendiliğinden devam eder.`,
+      ],
     },
     createdAt: input.now,
   });

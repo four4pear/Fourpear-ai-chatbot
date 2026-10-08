@@ -1,7 +1,7 @@
 import { and, eq, gt, isNull } from "drizzle-orm";
 import type { DB } from "../db/client.js";
 import { authTokens, memberships, sessions, tenants, users, type MemberRole, type User } from "../db/schema.js";
-import { DUMMY_HASH, MIN_PASSWORD_LENGTH, hashPassword, randomToken, tokenHash, verifyPassword } from "./password.js";
+import { DUMMY_HASH, MIN_PASSWORD_LENGTH, hashPassword, needsRehash, randomToken, tokenHash, verifyPassword } from "./password.js";
 
 export const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 export const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -22,7 +22,10 @@ export const normalizeEmail = (email: string) => email.trim().toLowerCase();
 export async function checkCredentials(db: DB, email: string, password: string): Promise<User | null> {
   const [user] = await db.select().from(users).where(eq(users.email, normalizeEmail(email)));
   const ok = await verifyPassword(password, user?.passwordHash ?? DUMMY_HASH);
-  return ok && user?.passwordHash ? user : null;
+  if (!ok || !user?.passwordHash) return null;
+  // Eski (daha zayıf) parametreli özet, doğru şifre girilince güncel parametrelerle yenilenir.
+  if (needsRehash(user.passwordHash)) await db.update(users).set({ passwordHash: await hashPassword(password) }).where(eq(users.id, user.id));
+  return user;
 }
 
 export async function createSession(db: DB, userId: string, userAgent: string | undefined, now = new Date()) {

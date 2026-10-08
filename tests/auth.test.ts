@@ -7,7 +7,8 @@ import { EventBus } from "../src/core/events.js";
 import type { Deps } from "../src/core/conversation.js";
 import { openDatabase, type Database } from "../src/db/client.js";
 import { memberships, tenants, users } from "../src/db/schema.js";
-import { hashPassword, verifyPassword } from "../src/auth/password.js";
+import { randomBytes, scryptSync } from "node:crypto";
+import { hashPassword, needsRehash, verifyPassword } from "../src/auth/password.js";
 import { createInvite, createResetToken } from "../src/auth/service.js";
 
 const ORIGIN = "http://panel.test";
@@ -47,6 +48,7 @@ function startApp() {
       status: res.status,
       body: (await res.json()) as Record<string, any>,
       cookie: setCookie ? setCookie.split(";")[0]! : undefined,
+      cacheControl: res.headers.get("cache-control"),
     };
   }
   return { server, call };
@@ -114,6 +116,30 @@ describe("giriş ve oturum", () => {
     const nobody = await login("yok@maius.test", "yanlis-sifre-000");
     expect(wrong).toMatchObject({ status: 401, body: { error: "E-posta ya da şifre hatalı" } });
     expect(nobody).toMatchObject({ status: 401, body: { error: "E-posta ya da şifre hatalı" } });
+  });
+
+  it("eski (daha zayıf) parametreli şifre özeti, doğru şifreyle girişte güncel parametrelerle yenilenir; yanlış şifre yenilemez", async () => {
+    const salt = randomBytes(16);
+    const old = ["scrypt", 16384, 8, 1, salt.toString("base64"), scryptSync(PASSWORD, salt, 64, { N: 16384, r: 8, p: 1 }).toString("base64")].join("$");
+    expect(needsRehash(old)).toBe(true);
+    expect(needsRehash(await hashPassword(PASSWORD))).toBe(false);
+    const user = await createUser("eskihash@maius.test", { memberOf: [[tenantA, "agent"]] });
+    await database.db.update(users).set({ passwordHash: old }).where(eq(users.id, user.id));
+
+    expect((await login("eskihash@maius.test", "yanlis-sifre-123")).status).toBe(401);
+    expect((await database.db.select().from(users).where(eq(users.id, user.id)))[0]!.passwordHash).toBe(old);
+
+    expect((await login("eskihash@maius.test")).status).toBe(200);
+    const [after] = await database.db.select().from(users).where(eq(users.id, user.id));
+    expect(after!.passwordHash).toMatch(/^scrypt\$16384\$8\$5\$/);
+    expect(await verifyPassword(PASSWORD, after!.passwordHash!)).toBe(true);
+    expect((await login("eskihash@maius.test")).status).toBe(200);
+  });
+
+  it("panel API cevapları önbelleğe alınmaz", async () => {
+    expect((await app.call("GET", "/api/me")).cacheControl).toBe("no-store");
+    const owner = await login("sahip@maius.test");
+    expect((await app.call("GET", "/api/me", { cookie: owner.cookie })).cacheControl).toBe("no-store");
   });
 
   it("5 hatalı denemeden sonra doğru şifreyi de 15 dk kabul etmez", async () => {

@@ -101,6 +101,7 @@ const fakeWa: WhatsAppSender = {
   },
   async downloadMedia({ mediaId }) {
     if (mediaId === "broken") throw new Error("indirilemedi");
+    if (bigMedia) return { data: Buffer.alloc(10 * 1024 * 1024 + 1), mimeType: "image/jpeg" };
     return { data: Buffer.from(`jpeg-bytes-${mediaId}`), mimeType: "image/jpeg" };
   },
 };
@@ -117,6 +118,8 @@ let tenantId: string;
 let appDeps: Deps;
 let msgSeq = 0;
 
+/** Test: indirilen fotoğraf saklama sınırını aşsın. */
+let bigMedia = false;
 /** Sunucu günlüğüne yazılanlar (telefon numarası sızmamalı). */
 const logs: string[] = [];
 
@@ -444,6 +447,20 @@ describe("fotoğraf", () => {
     expect(blocks).toEqual([{ type: "text", text: "[müşteri fotoğraf gönderdi]" }]);
   });
 
+  it("günlük sınır aşıldıysa fotoğraf indirilip saklanmaz (spam depolamayı şişirmesin)", async () => {
+    await setSettings({ dailyMessageLimit: 1 });
+    await post(text("bir"));
+    await post(payload({ type: "image", image: { id: "spam-img" } }));
+    expect(await database.db.select().from(media).where(eq(media.waMediaId, "spam-img"))).toHaveLength(0);
+  });
+
+  it("çok büyük fotoğraf saklanmaz", async () => {
+    bigMedia = true;
+    await post(payload({ type: "image", image: { id: "huge" } }));
+    bigMedia = false;
+    expect(await database.db.select().from(media).where(eq(media.waMediaId, "huge"))).toHaveLength(0);
+  });
+
   it("ekip devraldıysa da fotoğraf saklanır", async () => {
     await post(text("merhaba"));
     await database.db.update(conversations).set({ status: "human" });
@@ -552,6 +569,20 @@ describe("sabit metinler ve ayarlar", () => {
     await post(text("dört"));
     const rows = await database.db.select().from(notifications);
     expect(rows.map((n) => n.question).sort()).toEqual(["iki", "üç"]);
+  });
+
+  it("mağazanın toplam günlük sınırı aşılınca (tek müşteri sınırı aşılmasa da) Lina susar; ekibe mağaza düzeyinde bir kez bildirim düşer", async () => {
+    await setSettings({ dailyStoreMessageLimit: 1 });
+    await post(text("bir"));
+    await post(text("iki"));
+    await post(text("üç"));
+    expect(sent.map((s) => s.text)).toEqual(["Merhaba, ben Lina. Nasıl yardımcı olabilirim?"]);
+    expect(typing).toEqual([true, false, false]);
+    const notified = await database.db.select().from(notifications);
+    expect(notified).toHaveLength(1);
+    expect(notified[0]).toMatchObject({ kind: "daily_limit", important: true, question: "iki" });
+    expect(notified[0]!.details).toMatchObject({ scope: "store" });
+    expect(notified[0]!.details.issues![0]).toContain("Mağazaya bugün 1 mesajdan fazla");
   });
 
   it("cevap hazırlanırken gelen mesaj, cevap kaydedildikten sonra bile cevapsız sayılır ve bir sonraki cevaba girer", async () => {

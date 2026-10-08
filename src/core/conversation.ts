@@ -107,6 +107,8 @@ const NO_NEW_MESSAGE = "[Müşteri yeni bir mesaj yazmadı.]";
 export const SILENT_TYPES = ["reaction", "sticker", "system", "request_welcome"];
 const CLAUDE_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+/** Panelde saklanan bir fotoğrafın üst sınırı (WhatsApp zaten 5 MB verir; aracı servis daha büyük gönderirse saklanmaz). */
+const MAX_STORED_MEDIA_BYTES = 10 * 1024 * 1024;
 /** Token maliyetini sınırlamak için geçmişte görsel olarak gönderilecek son fotoğraf sayısı. */
 const MAX_IMAGES_IN_HISTORY = 3;
 
@@ -170,20 +172,24 @@ export async function ingestInbound(deps: Deps, event: InboundEvent): Promise<In
   // Lina cevap vermeyecekse (kapalı, ekipte ya da günlük sınır aşıldı) "yazıyor…" gösterilmez:
   // müşteri cevap bekleyip boşa kalmasın. Mesaj yine okundu işaretlenir.
   const limit = settings.dailyMessageLimit;
-  const overLimit = (await countCustomerMessagesToday(db, conversationId, deps.timeZone, now)) > limit;
+  const overCustomerLimit = (await countCustomerMessagesToday(db, conversationId, deps.timeZone, now)) > limit;
+  // Mağazanın toplam sınırı: çok sayıda numaradan gelen spam ya da bot döngüsü faturayı şişirmesin.
+  const overStoreLimit = !overCustomerLimit && (await countStoreMessagesToday(db, tenant.id, deps.timeZone, now)) > settings.dailyStoreMessageLimit;
+  const overLimit = overCustomerLimit || overStoreLimit;
   const outsideHours = botClosedByHours(settings, deps.timeZone, now);
   const silent = !settings.botEnabled || conversation.status === "human" || outsideHours || overLimit;
   deps.wa
     .markReadAndTyping({ ...wa, messageId: message.id, typing: !silent })
     .catch((err) => deps.log.warn("Okundu bilgisi gönderilemedi", err));
 
-  // Fotoğraf, bot kapalı ya da ekipte olsa da saklanır: ekip panelde görür.
-  if (message.type === "image" && message.image?.id) {
+  // Fotoğraf, bot kapalı ya da ekipte olsa da saklanır: ekip panelde görür. Günlük sınır aşıldıysa (spam)
+  // fotoğraf indirilip saklanmaz, ses yazıya çevrilmez: depolama ve çeviri maliyeti sınırsız büyümesin.
+  if (!overLimit && message.type === "image" && message.image?.id) {
     await storeImage(deps, tenant.id, messageId, accessToken, message.image.id);
   }
   // Sesli mesaj: yazıya çevrilip mesajın metni olur; ses kaydı saklanmaz. Çevrilemezse (servis yok, hata,
   // sessizlik) metin boş kalır ve müşteriye "yazarak iletin" denir.
-  if (message.type === "audio" && message.audio?.id && deps.transcribe) {
+  if (!overLimit && message.type === "audio" && message.audio?.id && deps.transcribe) {
     const text = await transcribeVoice(deps, accessToken, message.audio.id);
     if (text) await db.update(messages).set({ text }).where(eq(messages.id, messageId));
   }
@@ -201,7 +207,8 @@ export async function ingestInbound(deps: Deps, event: InboundEvent): Promise<In
     await recordLimitNotification(deps, {
       tenantId: tenant.id,
       conversationId,
-      limit,
+      limit: overStoreLimit ? settings.dailyStoreMessageLimit : limit,
+      scope: overStoreLimit ? "store" : "customer",
       lastMessage: messageText(message) ?? "",
       now,
       since: startOfToday(deps.timeZone, now),
@@ -463,6 +470,10 @@ async function transcribeVoice(deps: Deps, accessToken: string, mediaId: string)
 async function storeImage(deps: Deps, tenantId: string, messageId: string, accessToken: string, waMediaId: string) {
   try {
     const { data, mimeType } = await deps.wa.downloadMedia({ accessToken, mediaId: waMediaId });
+    if (data.length > MAX_STORED_MEDIA_BYTES) {
+      deps.log.warn(`Fotoğraf çok büyük, saklanmadı (${data.length} bayt)`);
+      return;
+    }
     await deps.db.insert(media).values({ tenantId, messageId, waMediaId, mimeType, sizeBytes: data.length, data });
   } catch (err) {
     deps.log.error(`Fotoğraf indirilemedi (media=${waMediaId})`, err);
@@ -493,6 +504,22 @@ async function findOrCreateConversation(
     .onConflictDoNothing({ target: conversations.customerId });
   const [conversation] = await db.select().from(conversations).where(eq(conversations.customerId, customer!.id));
   return conversation!;
+}
+
+/** Mağazanın bugün aldığı müşteri mesajları (tepki gibi sessiz tipler sayılmaz). */
+async function countStoreMessagesToday(db: DB, tenantId: string, timeZone: string, now: Date): Promise<number> {
+  const [row] = await db
+    .select({ n: count() })
+    .from(messages)
+    .where(
+      and(
+        eq(messages.tenantId, tenantId),
+        eq(messages.sender, "customer"),
+        notInArray(messages.type, SILENT_TYPES),
+        gte(messages.createdAt, startOfToday(timeZone, now)),
+      ),
+    );
+  return row?.n ?? 0;
 }
 
 async function countCustomerMessagesToday(db: DB, conversationId: string, timeZone: string, now: Date): Promise<number> {

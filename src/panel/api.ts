@@ -97,6 +97,12 @@ export function registerPanelApi(app: Express, deps: PanelApiDeps) {
       maxAge: SESSION_TTL_MS,
     });
 
+  // Panel cevapları (müşteri bilgisi, oturum) tarayıcıda ya da aradaki sunucularda önbelleğe alınmasın.
+  // Fotoğraflar ve canlı akış kendi başlıklarını yazar (bu varsayılanın yerine geçer).
+  api.use((_req, res, next) => {
+    res.set("Cache-Control", "no-store");
+    next();
+  });
   api.use(express.json({ limit: "100kb" }));
 
   // CSRF: durum değiştiren istekler yalnızca panelin kendi adresinden gelebilir.

@@ -513,6 +513,15 @@ describe("Shopify adresleri", () => {
     expect(runs.find((r) => r.agent === "order")).toMatchObject({ input: null, output: null });
     expect(runs.find((r) => r.agent === "lina")).toMatchObject({ input: "merhaba", output: "Merhaba" });
   });
+  it("kurulum linkinde ASCII dışı karakterli sahte imza 500 değil 400 verir", async () => {
+    const real = createInstallToken(tenantId, "maius.myshopify.com", SIGNING_KEY);
+    const payload = real.split(".")[0]!;
+    for (const fake of ["ş".repeat(43), "é".repeat(43), "x".repeat(10), ""]) {
+      const res = await fetch(`${base}/shopify/install?token=${payload}.${encodeURIComponent(fake)}`, { redirect: "manual" });
+      expect(res.status).toBe(400);
+    }
+  });
+
   it("müşteri veri talebi günlüğe yalnızca kimliklerle yazılır; e-posta ve telefon yazılmaz", async () => {
     await createStore();
     logs.length = 0;

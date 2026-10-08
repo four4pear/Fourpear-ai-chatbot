@@ -6,7 +6,8 @@ const scrypt = (password: string, salt: Buffer, keylen: number, opts: ScryptOpti
   );
 
 // scrypt parametreleri özetle birlikte saklanır; ileride artırılırsa eski şifreler de doğrulanır.
-const PARAMS = { N: 16384, r: 8, p: 1 };
+// OWASP'ın scrypt önerisinin bellek dostu eşdeğeri: N=2^14, r=8, p=5 (N=2^17, p=1 ile aynı güvenlik, 16 MB bellek).
+const PARAMS = { N: 16384, r: 8, p: 5 };
 const KEYLEN = 64;
 
 export const MIN_PASSWORD_LENGTH = 10;
@@ -16,6 +17,12 @@ export async function hashPassword(password: string): Promise<string> {
   const salt = randomBytes(16);
   const key = await scrypt(password, salt, KEYLEN, PARAMS);
   return ["scrypt", PARAMS.N, PARAMS.r, PARAMS.p, salt.toString("base64"), key.toString("base64")].join("$");
+}
+
+/** Saklı özet güncel parametrelerden zayıfsa true: giriş yapınca özet yenilenir. */
+export function needsRehash(stored: string): boolean {
+  const [algo, N, r, p] = stored.split("$");
+  return algo !== "scrypt" || Number(N) < PARAMS.N || Number(r) < PARAMS.r || Number(p) < PARAMS.p;
 }
 
 export async function verifyPassword(password: string, stored: string): Promise<boolean> {
@@ -32,7 +39,7 @@ export async function verifyPassword(password: string, stored: string): Promise<
 
 /** Kullanıcı yoksa da aynı süre harcansın diye (hangi e-postaların kayıtlı olduğu anlaşılmasın). */
 export const DUMMY_HASH =
-  "scrypt$16384$8$1$AAAAAAAAAAAAAAAAAAAAAA==$" + Buffer.alloc(KEYLEN).toString("base64");
+  "scrypt$16384$8$5$AAAAAAAAAAAAAAAAAAAAAA==$" + Buffer.alloc(KEYLEN).toString("base64");
 
 /** Çerez ve linklerde kullanılan tahmin edilemez anahtar. */
 export function randomToken(): string {

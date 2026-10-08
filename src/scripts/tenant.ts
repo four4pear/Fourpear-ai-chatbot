@@ -239,8 +239,9 @@ try {
     }
   } else if (command === "whatsapp") {
     const tenant = await tenantBySlug();
-    // Erişim anahtarı gizli sorulur: komut satırında yazılırsa kabuk geçmişine düşer. (--token hâlâ çalışır.)
-    const token = args.token ?? (await promptSecret("WhatsApp erişim anahtarı (yazdığınız görünmez, sonra Enter): "));
+    // Erişim anahtarı yalnızca gizli sorulur: komut satırında yazılırsa kabuk geçmişine düşer.
+    if (args.token) throw new Error("Erişim anahtarını komut satırına yazmayın (kabuk geçmişine düşer). Komutu --token olmadan çalıştırın; anahtar gizli sorulur.");
+    const token = await promptSecret("WhatsApp erişim anahtarı (yazdığınız görünmez, sonra Enter): ");
     if (!token) throw new Error("Erişim anahtarı boş olamaz");
     const values = {
       tenantId: tenant.id,

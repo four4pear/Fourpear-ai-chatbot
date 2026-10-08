@@ -35,6 +35,7 @@ Lina'nın cevap taslağı henüz yapılmadı.
 - **Ad:** Shopify'daki ad varsa o (sipariş ajanıyla gelecek), yoksa WhatsApp profil adı, o da yoksa numara.
 - **Telefon:** Ekibe tam görünür.
 - Müşterinin gönderdiği fotoğraflar sohbette görünür (yalnızca o mağazanın ekibine).
+- **Müşteri verisini silme (silme talebi):** müşteri kartındaki "Müşteri verisini sil" düğmesi yalnızca mağaza sahibinde görünür; onay ister, geri alınamaz. Kişi kaydı, konuşma, mesajlar, fotoğraflar, devirler, ekibe giden bildirim ve sorular ile Lina'nın müşteri kartı silinir. Yapay zekâ kullanım kayıtları (maliyet, süre) istatistik için kalır ama müşterinin yazdıklarını içeren metinler boşaltılır ve konuşmayla bağı kopar. Müşteri sonradan yazarsa yeni bir kayıt açılır. API: `POST /api/tenants/:id/conversations/:cid/erase` `{ confirm: true }`. Otomatik saklama süresi (belli süre sonra silme) henüz yok: süre kararı bekliyor.
 
 ## Lina'nın cevap taslağı
 - Konuşma devralınınca hazırlanır; müşteri yeni mesaj yazınca yenilenir.

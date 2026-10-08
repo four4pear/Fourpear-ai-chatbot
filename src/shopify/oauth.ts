@@ -42,6 +42,13 @@ type SignedPayload = { p: "install" | "state"; t: string; s: string; exp: number
 const INSTALL_TTL_MS = 24 * 60 * 60 * 1000;
 const STATE_TTL_MS = 10 * 60 * 1000;
 
+/** Sabit sürede karşılaştırma. Uzunluk bayt olarak denetlenir: ASCII dışı karakterli sahte imza hata (500) vermesin. */
+function safeEqual(a: string, b: string): boolean {
+  const left = Buffer.from(a);
+  const right = Buffer.from(b);
+  return left.length === right.length && timingSafeEqual(left, right);
+}
+
 function sign(data: SignedPayload, secret: string): string {
   const payload = Buffer.from(JSON.stringify(data)).toString("base64url");
   const sig = createHmac("sha256", secret).update(payload).digest("base64url");
@@ -52,7 +59,7 @@ function verify(token: string, purpose: SignedPayload["p"], secret: string, now:
   const [payload, sig] = token.split(".");
   if (!payload || !sig) return null;
   const expected = createHmac("sha256", secret).update(payload).digest("base64url");
-  if (sig.length !== expected.length || !timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) return null;
+  if (!safeEqual(sig, expected)) return null;
   const data = JSON.parse(Buffer.from(payload, "base64url").toString()) as SignedPayload;
   if (data.p !== purpose || now > data.exp || !isValidShopDomain(data.s)) return null;
   return data;
@@ -100,7 +107,7 @@ export function isValidCallbackHmac(query: Record<string, string>, apiSecret: st
     .map((k) => `${k}=${rest[k]}`)
     .join("&");
   const expected = createHmac("sha256", apiSecret).update(message).digest("hex");
-  return hmac.length === expected.length && timingSafeEqual(Buffer.from(hmac), Buffer.from(expected));
+  return safeEqual(hmac, expected);
 }
 
 async function tokenRequest(shop: string, body: Record<string, string>): Promise<ShopifyTokenResponse> {

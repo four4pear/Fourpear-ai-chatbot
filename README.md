@@ -105,7 +105,7 @@ Uzman çağrılarını, devirleri ve mesaj başı maliyeti gösterir. Komutlar: 
 ```bash
 npm run tenant -- upsert --slug maius --name MAIUS --domain maiusonline.com \
   --hours "1,2,3,4,5,6 10:00-17:00"               # günler: 0=pazar ... 6=cumartesi
-npm run tenant -- whatsapp --slug maius --phone-number-id <PHONE_NUMBER_ID> --token <ERİŞİM_TOKEN>
+npm run tenant -- whatsapp --slug maius --phone-number-id <PHONE_NUMBER_ID>   # Erişim anahtarı gizli sorulur (komut satırına yazılmaz)
 npm run tenant -- shopify-app --slug maius --shop kkhwm0-at.myshopify.com --client-id <CLIENT_ID>   # Client secret gizli sorulur
 ```
 Mağaza sahibi Shopify'ın özel dağıtım linkiyle uygulamayı kurar; bilgiler otomatik çekilir (ayrıntı: "Shopify uygulaması kurulumu"). Sonra:
