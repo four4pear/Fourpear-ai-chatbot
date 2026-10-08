@@ -203,7 +203,11 @@ export function registerPanelApi(app: Express, deps: PanelApiDeps) {
 
   api.post("/tokens/:token/accept", async (req, res) => {
     const ipKey = req.ip ?? "?";
-    if (ipFailures.isBlocked(ipKey)) {
+    // Davet linkiyle şifre denemek de hesabın deneme sayacına yazılır (giriş ekranıyla aynı sayaç):
+    // linki ele geçiren biri farklı IP'lerden sınırsız şifre deneyemez.
+    const info = await describeToken(db, param(req, "token"));
+    const emailKey = info ? normalizeEmail(info.email) : null;
+    if (ipFailures.isBlocked(ipKey) || (emailKey && emailFailures.isBlocked(emailKey))) {
       res.status(429).json({ error: "Çok fazla hatalı deneme. 15 dakika sonra tekrar deneyin." });
       return;
     }
@@ -214,11 +218,15 @@ export function registerPanelApi(app: Express, deps: PanelApiDeps) {
         password: typeof password === "string" ? password : undefined,
         currentUserId: (res.locals as Locals).user?.id,
       });
+      if (emailKey) emailFailures.reset(emailKey);
       setSessionCookie(res, await createSession(db, user.id, req.get("user-agent")));
       res.json(await me(user));
     } catch (err) {
       if (!(err instanceof AuthError)) throw err;
-      if (err.status === 401) ipFailures.fail(ipKey);
+      if (err.status === 401) {
+        ipFailures.fail(ipKey);
+        if (emailKey) emailFailures.fail(emailKey);
+      }
       res.status(err.status).json({ error: err.message });
     }
   });

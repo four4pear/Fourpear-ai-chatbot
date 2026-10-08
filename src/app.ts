@@ -6,6 +6,7 @@ import { ReplyScheduler } from "./core/reply-scheduler.js";
 import { registerShopifyRoutes, type ShopifyRouteDeps } from "./shopify/routes.js";
 import { registerPanelApi, type PanelApiDeps } from "./panel/api.js";
 import { DEFAULT_PANEL_DIST, registerPanelStatic } from "./panel/static.js";
+import { maskPhone } from "./lib/phone.js";
 import { isValidSignature } from "./whatsapp/signature.js";
 import { extractInboundEvents, type InboundEvent, type WaWebhookPayload } from "./whatsapp/types.js";
 import { isValidZernioSignature, zernioToInbound, type ZernioWebhookPayload } from "./whatsapp/zernio.js";
@@ -20,7 +21,8 @@ export function createApp(
   // Railway gibi bir vekil sunucunun arkasında gerçek istemci IP'si (giriş deneme sınırı için).
   app.set("trust proxy", 1);
   // Aynı müşterinin mesajları sırayla alınır.
-  const queue = new KeyedQueue((err, key) => deps.log.error(`Mesaj işlenemedi (${key})`, err));
+  // Sıra anahtarı "hat:müşteri telefonu" biçimindedir; günlüğe telefon yazılmaz.
+  const queue = new KeyedQueue((err, key) => deps.log.error(`Mesaj işlenemedi (${key.replace(/:(\d+)$/, (_m, phone: string) => `:${maskPhone(phone)}`)})`, err));
   // Art arda mesajlar: müşteri susunca hepsine tek cevap (docs/lina-davranis.md).
   const scheduler = new ReplyScheduler({
     respond: async (conversationId, ctl) => {
@@ -110,7 +112,7 @@ export function createApp(
     for (const event of events) {
       queue.push(`${event.phoneNumberId}:${event.message.from}`, async () => {
         const result = await ingestInbound(deps, event);
-        deps.log.info(`[${event.phoneNumberId}] ${event.message.from} ${event.message.type} → ${result.outcome}`);
+        deps.log.info(`[${event.phoneNumberId}] ${maskPhone(event.message.from)} ${event.message.type} → ${result.outcome}`);
         if (result.outcome === "queued") {
           scheduler.onCustomerMessage(result.conversationId, {
             delayMs: deps.replyDelayOverrideMs ?? result.delayMs,

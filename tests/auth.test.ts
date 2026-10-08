@@ -185,6 +185,24 @@ describe("davet", () => {
     expect(real.body.memberships.map((m: { slug: string }) => m.slug).sort()).toEqual(["diger", "maius"]);
   });
 
+  it("davet linkiyle şifre denemek hesabı kilitler; farklı linkler de aynı sayacı kullanır", async () => {
+    const own = startApp(); // ayrı sınırlayıcı: diğer testleri etkilemesin
+    try {
+      await createUser("kilitli@maius.test", { memberOf: [[tenantA, "agent"]] });
+      const link = await createInvite(database.db, { tenantId: tenantB, email: "kilitli@maius.test", role: "agent", createdBy: null });
+      for (let i = 0; i < 5; i++) {
+        expect((await own.call("POST", `/api/tokens/${link}/accept`, { body: { password: "tahmin-" + i } })).status).toBe(401);
+      }
+      // 6. deneme: doğru şifre bile kabul edilmez; giriş ekranı da aynı hesap için kilitli.
+      expect((await own.call("POST", `/api/tokens/${link}/accept`, { body: { password: PASSWORD } })).status).toBe(429);
+      expect((await own.call("POST", "/api/auth/login", { body: { email: "kilitli@maius.test", password: PASSWORD } })).status).toBe(429);
+      const other = await createInvite(database.db, { tenantId: tenantB, email: "kilitli@maius.test", role: "agent", createdBy: null });
+      expect((await own.call("POST", `/api/tokens/${other}/accept`, { body: { password: PASSWORD } })).status).toBe(429);
+    } finally {
+      own.server.close();
+    }
+  });
+
   it("süresi dolmuş davet geçersizdir", async () => {
     const token = await createInvite(
       database.db,

@@ -117,6 +117,9 @@ let tenantId: string;
 let appDeps: Deps;
 let msgSeq = 0;
 
+/** Sunucu günlüğüne yazılanlar (telefon numarası sızmamalı). */
+const logs: string[] = [];
+
 beforeAll(async () => {
   database = await openDatabase({}); // bellekte PGlite
   const deps: Deps = {
@@ -127,7 +130,7 @@ beforeAll(async () => {
     masterKey: MASTER_KEY,
     historyLimit: 20,
     timeZone: "Europe/Istanbul",
-    log: { info() {}, warn() {}, error() {} },
+    log: { info: (m: string) => logs.push(String(m)), warn: (m: string) => logs.push(String(m)), error: (m: string) => logs.push(String(m)) },
     now: () => now,
     // Bu testler tek tek mesajları dener: beklemeden cevap (art arda mesajlar ayrı testte).
     replyDelayOverrideMs: 0,
@@ -283,6 +286,14 @@ describe("Zernio webhook'u", () => {
     expect(chatRefs).toEqual(["conv-1"]);
     const [customer] = await database.db.select().from(customers);
     expect(customer).toMatchObject({ waId: CUSTOMER, name: "Ayşe", channelRef: "conv-1" });
+  });
+
+  it("sunucu günlüğüne müşterinin telefon numarası yazılmaz (yalnızca son 3 hane)", async () => {
+    logs.length = 0;
+    expect(await postZernio(zernioBody())).toBe(200);
+    expect(logs.some((l) => l.includes("***567"))).toBe(true);
+    expect(logs.join("\n")).not.toContain(CUSTOMER);
+    expect(logs.join("\n")).not.toContain(CUSTOMER.slice(2));
   });
 
   it("yanlış imza 401, işlem yok", async () => {

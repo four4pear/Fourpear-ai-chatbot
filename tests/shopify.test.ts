@@ -25,6 +25,8 @@ const APP = { apiKey: "app-key", apiSecret: "app-secret" };
 const OWN_APP = { apiKey: "diger-key", apiSecret: "diger-secret" };
 const SIGNING_KEY = oauthSigningKey(MASTER_KEY);
 
+/** Sunucu günlüğüne yazılanlar. */
+const logs: string[] = [];
 let database: Database;
 let tenantId: string;
 let otherTenantId: string;
@@ -399,7 +401,7 @@ describe("Shopify adresleri", () => {
       appUrl: "https://app.example.com",
       masterKey: MASTER_KEY,
       syncStore: async (store) => synced.push(store.shopDomain),
-      log: { info() {}, warn() {}, error() {} },
+      log: { info: (m: string) => logs.push(String(m)), warn: (m: string) => logs.push(String(m)), error: (m: string) => logs.push(String(m)) },
       exchange: async () => ({ access_token: "shpat_x", scope: "read_content", expires_in: 3600, refresh_token: "shprt_x", refresh_token_expires_in: 7776000 }),
     });
     server = app.listen(0);
@@ -510,6 +512,26 @@ describe("Shopify adresleri", () => {
     const runs = await database.db.select().from(agentRuns).where(eq(agentRuns.tenantId, tenantId));
     expect(runs.find((r) => r.agent === "order")).toMatchObject({ input: null, output: null });
     expect(runs.find((r) => r.agent === "lina")).toMatchObject({ input: "merhaba", output: "Merhaba" });
+  });
+  it("müşteri veri talebi günlüğe yalnızca kimliklerle yazılır; e-posta ve telefon yazılmaz", async () => {
+    await createStore();
+    logs.length = 0;
+    const body = JSON.stringify({ shop_domain: "maius.myshopify.com", data_request: { id: 9001 }, customer: { id: 77, email: "ayse@ornek.test", phone: "+90 532 123 45 67" } });
+    const res = await fetch(`${base}/webhook/shopify`, {
+      method: "POST",
+      headers: {
+        "x-shopify-hmac-sha256": createHmac("sha256", APP.apiSecret).update(body).digest("base64"),
+        "x-shopify-topic": "customers/data_request",
+        "x-shopify-shop-domain": "maius.myshopify.com",
+      },
+      body,
+    });
+    expect(res.status).toBe(200);
+    await new Promise((r) => setTimeout(r, 50));
+    const line = logs.find((l) => l.includes("müşteri veri talebi"));
+    expect(line).toContain("talep=9001");
+    expect(line).toContain("müşteri=77");
+    expect(logs.join("\n")).not.toMatch(/ayse@ornek|532 123|5321234567/);
   });
   it("kendi uygulaması olan mağaza kendi anahtarıyla kurulur; ortak uygulamanın imzası geçmez", async () => {
     const shop = "diger.myshopify.com";

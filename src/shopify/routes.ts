@@ -166,7 +166,7 @@ export function registerShopifyRoutes(app: Express, deps: ShopifyRouteDeps) {
       res.sendStatus(401);
       return;
     }
-    const payload = JSON.parse(raw.toString("utf8") || "{}") as { customer?: { phone?: string | null } };
+    const payload = JSON.parse(raw.toString("utf8") || "{}") as { customer?: { id?: number; phone?: string | null }; data_request?: { id?: number } };
     res.sendStatus(200);
 
     try {
@@ -202,7 +202,8 @@ export function registerShopifyRoutes(app: Express, deps: ShopifyRouteDeps) {
         deps.log.info(`[${shop}] müşteri verisi silme talebi işlendi`);
       } else if (topic === "customers/data_request") {
         // Mağaza sahibine müşteri verisini iletmek için kayıt; panelde listelenecek (Faz 3).
-        deps.log.warn(`[${shop}] müşteri veri talebi alındı: ${raw.toString("utf8")}`);
+        // Yük müşterinin e-posta ve telefonunu içerir; günlüğe yalnızca kimlikler yazılır.
+        deps.log.warn(`[${shop}] müşteri veri talebi alındı (talep=${payload.data_request?.id ?? "?"}, müşteri=${payload.customer?.id ?? "?"})`);
       }
     } catch (err) {
       deps.log.error(`[${shop}] Shopify bildirimi işlenemedi (${topic})`, err);

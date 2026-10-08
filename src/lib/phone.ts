@@ -24,3 +24,9 @@ export function samePhone(a: string, b: string): boolean {
   const na = normalizePhone(a);
   return na.length >= 10 && na === normalizePhone(b);
 }
+
+/** Sunucu günlüğü için: numaranın yalnızca son 3 hanesi ("***567"); kişiyi tanıtmaz, hata ayıklamaya yeter. */
+export function maskPhone(waId: string): string {
+  const d = waId.replace(/\D/g, "");
+  return d.length > 3 ? `***${d.slice(-3)}` : "***";
+}
