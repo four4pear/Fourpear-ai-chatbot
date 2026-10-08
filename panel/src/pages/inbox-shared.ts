@@ -120,6 +120,7 @@ const FORWARDED_TONES: Record<string, Tone> = {
   complaint: "red",
   verify_locked: "red",
   team_overdue: "red",
+  customer_waiting: "red",
 };
 const HANDOFF_TONES: Record<string, Tone> = { customer_request: "red", complaint: "red" };
 

@@ -14,6 +14,7 @@ import { shopifyApps } from "./shopify/apps.js";
 import { createShopifyApi } from "./shopify/client.js";
 import { createWhatsAppClient } from "./whatsapp/client.js";
 import { escalateOverdueQuestions } from "./core/team-questions.js";
+import { escalateWaitingCustomers } from "./core/waiting.js";
 import { createRoutingSender } from "./whatsapp/routing.js";
 import { createZernioClient } from "./whatsapp/zernio.js";
 import { EventBus } from "./core/events.js";
@@ -199,6 +200,9 @@ async function escalateOverdue() {
   for (const t of await db.select().from(tenants)) {
     const raised = await escalateOverdueQuestions({ db, events }, t, config.TZ);
     if (raised) console.log(`Cevapsız ekip sorusu (${t.slug}): ${raised} soru için ekibe uyarı düştü.`);
+    // Ekibin dönüşünü 20 dakikadır bekleyen müşteriler (ekipte unutulan ya da devralınmayan konuşmalar).
+    const waiting = await escalateWaitingCustomers({ db, events }, t, config.TZ);
+    if (waiting) console.log(`Bekleyen müşteri (${t.slug}): ${waiting} konuşma için ekibe uyarı düştü.`);
   }
 }
 const hoursTimer = setInterval(() => {

@@ -369,6 +369,7 @@ export const textArchive = pgTable(
  * order_not_found: müşteri sipariş numarası ve ad soyad yazdı ama sipariş bulunamadı ya da bilgiler eşleşmedi.
  * verify_locked: aynı numaradan çok sayıda yanlış ad soyad denemesi; ad soyadla doğrulama 24 saat kapalı.
  * team_overdue: Lina'nın ekibe sorduğu soru 20 dakikadır cevapsız (mesaidayken); müşteri bekliyor.
+ * customer_waiting: müşteri 20 dakikadır ekibin dönüşünü bekliyor (konuşma ekipte ve son mesaj müşterinin ya da devri kimse devralmadı); ekip cevap verince kendiliğinden kapanır.
  */
 export const IMPORTANT_KINDS = [
   "complaint",
@@ -382,6 +383,7 @@ export const IMPORTANT_KINDS = [
   "verify_locked",
   "order_not_found",
   "team_overdue",
+  "customer_waiting",
 ] as const;
 export const RECORD_KINDS = ["return_request", "return_status", "unverified", "order_question"] as const;
 /** Önem sırasıyla: bir cevapta birden fazla konu varsa bildirimin türü ilk sıradaki olur. */

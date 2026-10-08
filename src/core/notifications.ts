@@ -56,6 +56,7 @@ const KIND_TEXT: Partial<Record<NotificationKind, string>> = {
   verify_locked: "çok sayıda yanlış doğrulama denemesi",
   order_not_found: "sipariş bulunamadı",
   team_overdue: "ekip cevabı bekleniyor",
+  customer_waiting: "müşteri ekibin dönüşünü bekliyor",
 };
 
 /**

@@ -18,6 +18,7 @@ Bekleyenler ve Tüm sohbetler **aynı üç bölmeli ekrandır**: solda liste, or
   - **Lina soruyor:** Lina'nın arka planda ekibe sorduğu sorular. **Ekibe iletilenler:** önemli bildirimler; "Tamamlandı" denince listeden düşer, hemen çıkan "Geri al" ile ya da tamamlananlar listesinden (kimin, ne zaman tamamladığı yazar) geri açılır. **Ekibi bekleyen konuşmalar:** açık devri olan konuşmalar (aşağıda) ve ekipteyken müşterinin yeniden yazdığı, kimsenin cevaplamadığı konuşmalar.
 - **Bende:** benim devraldığım konuşmalar. **Tümü:** bütün konuşmalar, en son hareket eden üstte; ad ya da telefonla arama.
 - Menüdeki Bekleyenler simgesinde ve sekme başlığında bekleyen iş sayısı görünür: **konuşma sayısıdır** (aynı müşteri birden çok nedenle bekliyorsa bir kez sayılır). Liste, sayı ve konuşma aynı kaynaktan beslenir: 20 saniyede bir, her işlemden sonra, pencereye dönünce ve sunucudan canlı olay (devir, bildirim, ekibe soru) gelince yenilenir. Sayı **artarsa** (ilk yüklemede değil) ses çalar ve pencere arka plandaysa masaüstü bildirimi çıkar. Üst çubuktaki **zil** bu uyarıyı açar/kapatır (tercih bu cihazda kalır); açarken deneme sesi çalar ve tarayıcı bildirim izni istenir. Bildirimde müşteri bilgisi yoktur, yalnızca "yeni iş geldi" ve toplam sayı yazar.
+- **Unutulan konuşma:** ekipteyken son mesajı müşteriden olan ya da devri kimsenin devralmadığı konuşma 20 dakikayı geçerse (yalnızca mesaideyken) ekibe önemli bildirim düşer ("Müşteri ekibin dönüşünü bekliyor"; ses ve sayı artışı); ekip cevap verince, devralınca ya da Lina'ya geri verince kendiliğinden kapanır. Otomatik geri verme yok (mağaza kararı).
 - Listenin bir kaynağı yüklenemezse diğerleri yine görünür. Oturum düşerse panel girişe döner.
 
 ## Sohbetler
@@ -52,7 +53,7 @@ listelenir (Bekleyen sekmesinde); ekip işlemi yapınca "Tamamlandı" der. Sessi
 
 | Tür | Önem |
 |---|---|
-| Şikayet, İade: ekip kararı gerekiyor, İptal isteği (kargoya verilmemiş), Değişiklik isteği, Sipariş bilgisine ulaşılamadı, Gecikme, Takip numarası yok, Günlük mesaj sınırı aşıldı, Sipariş bulunamadı, Çok sayıda yanlış doğrulama denemesi, Müşteri cevap bekliyor (ekibe sorulan soru 20 dakikadır cevapsız) | ⚠️ Önemli: sesli uyarı + tarayıcı bildirimi |
+| Şikayet, İade: ekip kararı gerekiyor, İptal isteği (kargoya verilmemiş), Değişiklik isteği, Sipariş bilgisine ulaşılamadı, Gecikme, Takip numarası yok, Günlük mesaj sınırı aşıldı, Sipariş bulunamadı, Çok sayıda yanlış doğrulama denemesi, Müşteri cevap bekliyor (ekibe sorulan soru 20 dakikadır cevapsız), Müşteri ekibin dönüşünü bekliyor (konuşma ekipte ve son mesaj müşterinin ya da devri kimse devralmadı; 20 dakika) | ⚠️ Önemli: sesli uyarı + tarayıcı bildirimi |
 | İade/değişim isteği, İade durumu sorusu, Doğrulanamayan sipariş sorusu, Sipariş sorusu | Kayıt (sessiz) |
 
 Lina'nın cevabı WhatsApp'a gönderilemediyse bildirim her durumda önemlidir ve `replyFailed` işaretlidir (müşteri cevap almadı).

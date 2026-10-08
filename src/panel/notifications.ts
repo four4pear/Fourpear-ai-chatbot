@@ -22,6 +22,7 @@ export const NOTIFICATION_LABELS: Record<Notification["kind"], string> = {
   verify_locked: "Çok sayıda yanlış doğrulama denemesi",
   order_not_found: "Sipariş bulunamadı",
   team_overdue: "Müşteri cevap bekliyor (soru cevapsız)",
+  customer_waiting: "Müşteri ekibin dönüşünü bekliyor",
   return_request: "İade/değişim isteği",
   return_status: "İade durumu sorusu",
   unverified: "Doğrulanamayan sipariş sorusu",
