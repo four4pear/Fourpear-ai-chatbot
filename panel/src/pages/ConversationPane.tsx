@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api, waitingChanged, type Membership } from "../api";
 import { UserIcon } from "../icons";
-import { Link } from "../router";
+import { Link, navigate } from "../router";
 import {
   ago, clock, dateTime, dayOf, HANDOFF_REASONS, initials, statusLabel, TYPE_LABELS, useLive,
   type Customer, type Handoff, type Person, type Status,
@@ -127,6 +127,21 @@ export function ConversationPane({ store, conversationId, userId, backTo }: { st
       setSending(null);
       await load();
       waitingChanged();
+    }
+  }
+
+  /** Silme talebi: müşterinin bütün verisi silinir (yalnızca mağaza sahibi; geri alınamaz). */
+  async function erase() {
+    const name = detail?.customer.name ?? "Bu müşteri";
+    if (!window.confirm(`${name} müşterisinin bütün verisi silinsin mi?\n\nKonuşma, mesajlar, fotoğraflar ve Lina’nın kayıtları kalıcı olarak silinir. Bu işlem geri alınamaz.`)) return;
+    setError(""); setBusy(true);
+    try {
+      await api(`${base}/erase`, { method: "POST", body: { confirm: true } });
+      waitingChanged();
+      navigate(backTo);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Silinemedi");
+      setBusy(false);
     }
   }
 
@@ -266,6 +281,11 @@ export function ConversationPane({ store, conversationId, userId, backTo }: { st
         {pastHandoffs.length > 0 && <section>
           <h3>Önceki devirler</h3>
           {pastHandoffs.map((h, i) => <p key={i} className="hint">{dateTime(h.createdAt)} · {HANDOFF_REASONS[h.reason] ?? h.reason}</p>)}
+        </section>}
+        {store.role === "owner" && <section>
+          <h3>Müşteri verisi</h3>
+          <p className="hint">Müşteri ya da mağaza silme talep ederse tüm kayıtlar kalıcı olarak silinir.</p>
+          <button type="button" className="btn btn-danger btn-sm" disabled={busy} onClick={() => void erase()}>Müşteri verisini sil</button>
         </section>}
       </>}
     </aside>

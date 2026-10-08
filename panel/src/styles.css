@@ -108,6 +108,14 @@ textarea {
 .btn-secondary:hover:not(:disabled) {
   background: var(--surface-2);
 }
+.btn-danger {
+  background: var(--surface);
+  border-color: #e3b5b5;
+  color: var(--danger);
+}
+.btn-danger:hover:not(:disabled) {
+  background: var(--danger-soft);
+}
 .btn-block {
   width: 100%;
 }

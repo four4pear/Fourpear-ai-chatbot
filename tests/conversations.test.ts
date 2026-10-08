@@ -7,7 +7,7 @@ import { createApp } from "../src/app.js";
 import { EventBus, type PanelEvent } from "../src/core/events.js";
 import type { Deps } from "../src/core/conversation.js";
 import { openDatabase, type Database } from "../src/db/client.js";
-import { agentRuns, conversations, customers, handoffs, memberships, messages, teamQuestions, tenants, users, whatsappAccounts } from "../src/db/schema.js";
+import { agentRuns, conversations, customerMemories, customers, handoffs, media, memberships, messages, notifications, teamQuestions, tenants, users, whatsappAccounts } from "../src/db/schema.js";
 import { hashPassword } from "../src/auth/password.js";
 import { encryptSecret } from "../src/lib/crypto.js";
 
@@ -336,5 +336,47 @@ describe("panel: konuşmayı devralma, yazma, Lina'ya geri verme", () => {
     expect((await call("sahip", "POST", `${other}/release`)).status).toBe(404);
     expect((await call("sahip", "GET", other)).status).toBe(404);
     expect((await call("sahip", "POST", `/api/tenants/${tenantB}/conversations/${ids.other}/takeover`)).status).toBe(404);
+  });
+});
+
+describe("panel: müşteri verisini silme (silme talebi)", () => {
+  it("yalnızca sahip siler, onay ister; kişi, mesajlar, fotoğraf ve kayıtlar gider, maliyet kaydı kalır; başka mağaza ve müşteriler dokunulmaz", async () => {
+    const { db } = database;
+    const [photo] = await db.insert(messages).values({ tenantId: tenantA, conversationId: ids.conv!, sender: "customer", type: "image", text: null }).returning();
+    await db.insert(media).values({ tenantId: tenantA, messageId: photo!.id, waMediaId: "m1", mimeType: "image/jpeg", sizeBytes: 3, data: Buffer.from("abc") });
+    const [conversation] = await db.select().from(conversations).where(eq(conversations.id, ids.conv!));
+    await db.insert(customerMemories).values({ tenantId: tenantA, customerId: conversation!.customerId, text: "Ayşe: beden 38" });
+    await db.insert(notifications).values({ tenantId: tenantA, conversationId: ids.conv!, kind: "complaint", important: true, question: "Ayşe: ürün hasarlı", answer: "a" });
+    await db.insert(teamQuestions).values({ tenantId: tenantA, conversationId: ids.conv!, question: "Ayşe'nin siparişi?" });
+    await db.insert(agentRuns).values({ tenantId: tenantA, conversationId: ids.conv!, agent: "lina", model: "m", input: "Ayşe: siparişim nerede", output: "Merhaba Ayşe", apiCalls: 2, inputTokens: 100, outputTokens: 20 });
+    const [otherConv] = await db.select().from(conversations).where(eq(conversations.id, ids.other!));
+
+    // Çalışan silemez; onay olmadan sahip de silemez.
+    expect((await call("zeynep", "POST", conv("/erase"), { confirm: true })).status).toBe(403);
+    expect((await call("sahip", "POST", conv("/erase"), {})).status).toBe(400);
+    expect(await thread()).not.toHaveLength(0);
+
+    // Başka mağazanın konuşması bu mağaza adıyla silinemez.
+    expect((await call("sahip", "POST", `/api/tenants/${tenantA}/conversations/${ids.other}/erase`, { confirm: true })).status).toBe(404);
+    expect(await db.select().from(conversations).where(eq(conversations.id, otherConv!.id))).toHaveLength(1);
+
+    const res = await call("sahip", "POST", conv("/erase"), { confirm: true });
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ ok: true, messages: 2, photos: 1 });
+    expect(await db.select().from(conversations).where(eq(conversations.id, ids.conv!))).toHaveLength(0);
+    expect(await db.select().from(customers).where(eq(customers.id, conversation!.customerId))).toHaveLength(0);
+    expect(await thread()).toHaveLength(0);
+    expect(await db.select().from(media).where(eq(media.tenantId, tenantA))).toHaveLength(0);
+    expect(await db.select().from(handoffs).where(eq(handoffs.tenantId, tenantA))).toHaveLength(0);
+    expect(await db.select().from(notifications).where(eq(notifications.tenantId, tenantA))).toHaveLength(0);
+    expect(await db.select().from(teamQuestions).where(eq(teamQuestions.tenantId, tenantA))).toHaveLength(0);
+    expect(await db.select().from(customerMemories).where(eq(customerMemories.tenantId, tenantA))).toHaveLength(0);
+    // Maliyet istatistiği kalır; müşterinin yazdıkları ve konuşma bağı gider.
+    const runs = await db.select().from(agentRuns).where(eq(agentRuns.tenantId, tenantA));
+    expect(runs).toHaveLength(1);
+    expect(runs[0]).toMatchObject({ conversationId: null, input: null, output: null, apiCalls: 2, inputTokens: 100, outputTokens: 20 });
+    // Aynı müşteri bir daha silinemez; ekran yenilensin diye canlı sinyal gitti.
+    expect((await call("sahip", "POST", conv("/erase"), { confirm: true })).status).toBe(404);
+    expect(events.some((e) => e.type === "conversation" && (e as { conversationId?: string }).conversationId === ids.conv)).toBe(true);
   });
 });

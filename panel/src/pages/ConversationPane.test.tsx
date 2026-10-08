@@ -238,3 +238,25 @@ it("müşteri kartı düğmesi dar ekranda kartı açıp kapatır", async () => 
   expect(toggle.getAttribute("aria-expanded")).toBe("true");
   expect(screen.getByLabelText("Müşteri kartı", { selector: "aside" }).className).toContain("open");
 });
+
+it("müşteri verisini silme: yalnızca sahipte görünür; onay verilince istenir, vazgeçilince istenmez", async () => {
+  // Çalışan düğmeyi görmez.
+  server();
+  render_();
+  await screen.findByText("Ürün hasarlı geldi");
+  expect(screen.queryByRole("button", { name: "Müşteri verisini sil" })).toBeNull();
+  cleanup();
+
+  // Sahip: vazgeçince hiçbir istek gitmez.
+  const posted = server();
+  vi.stubGlobal("confirm", () => false);
+  render_({ store: { ...store, role: "owner" } });
+  fireEvent.click(await screen.findByRole("button", { name: "Müşteri verisini sil" }));
+  expect(posted).toEqual([]);
+
+  // Onay verilince silme isteği onayla birlikte gider.
+  vi.stubGlobal("confirm", () => true);
+  fireEvent.click(screen.getByRole("button", { name: "Müşteri verisini sil" }));
+  await vi.waitFor(() => expect(posted).toEqual([{ url: "/api/tenants/t/conversations/c1/erase", body: { confirm: true } }]));
+});
+

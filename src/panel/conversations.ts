@@ -18,6 +18,7 @@ import {
 import { toNotificationView } from "./notifications.js";
 import { roleIn, userForSession } from "../auth/service.js";
 import { deliverText, waTargetFor } from "../core/conversation.js";
+import { eraseCustomerData } from "../core/customer-data.js";
 import type { EventBus } from "../core/events.js";
 import { formatPhone } from "../lib/phone.js";
 import type { WhatsAppSender } from "../whatsapp/client.js";
@@ -60,6 +61,7 @@ export function registerConversationRoutes(
   const { db } = deps;
   const now = () => deps.now?.() ?? new Date();
   const member = [guards.requireUser, guards.requireTenant("agent")];
+  const owner = [guards.requireUser, guards.requireTenant("owner")];
 
   /** Konuşma bu mağazanın mı? Değilse (ya da kimlik geçersizse) null: başka mağazanın verisine erişilemez. */
   async function findConversation(tenantId: string, conversationId: string) {
@@ -403,6 +405,23 @@ export function registerConversationRoutes(
 
   // ---------------------------------------------------------------------------
   // Müşterinin fotoğrafı: yalnızca o mağazanın ekibine.
+
+  /**
+   * Müşterinin bütün verisini siler (silme talebi). Yalnızca mağaza sahibi; geri alınamaz, bu yüzden
+   * `confirm: true` gerekir. Bekleyen Lina cevabı da iptal edilir.
+   */
+  api.post("/tenants/:tenantId/conversations/:conversationId/erase", ...owner, async (req, res) => {
+    const tenantId = param(req, "tenantId");
+    const conversationId = param(req, "conversationId");
+    if (!isUuid(conversationId)) return notFound(res);
+    if (req.body?.confirm !== true) return res.status(400).json({ error: "Silme onaylanmadı" });
+    deps.cancelPendingReply?.(conversationId);
+    const erased = await eraseCustomerData(db, tenantId, conversationId);
+    if (!erased) return notFound(res);
+    deps.log.info(`[${tenantId}] müşteri verisi silindi (mesaj=${erased.messages}, fotoğraf=${erased.photos})`);
+    deps.events.publish(tenantId, { type: "conversation", conversationId });
+    res.json({ ok: true, ...erased });
+  });
 
   api.get("/tenants/:tenantId/media/:messageId", ...member, async (req, res) => {
     const tenantId = param(req, "tenantId");
