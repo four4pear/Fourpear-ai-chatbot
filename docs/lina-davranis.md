@@ -59,7 +59,7 @@ Sipariş uzmanının kaynakları:
 - Tamamlayıcıysa birleştirir: ör. "Ürünler sipariş üzerine üretiliyor; üretimden sonra kargo 1–7 gün."
 - Aynı konuda kaynaklar farklı rakam/kural söylüyorsa (ör. biri 14 gün iade, diğeri 30 gün) müşteriye rakam vermez ve tutarsızlıktan bahsetmez: "Hemen kontrol ediyorum, kısa süre içinde size buradan bilgi vereceğim." der ve **arka planda ekibe hangisinin doğru olduğunu sorar** (§15).
 - **İstisna (28 Eylül 2026):** Çelişki yalnızca iade, değişim ya da hasarlı ürün başvurusunun *nereden* yapılacağıyla ilgiliyse (ör. bir sayfada form, diğerinde e-posta) ve mağaza iade formunu ayarlarda belirlediyse, form geçerlidir. Lina devretmez, §3'teki iade/şikayet adımlarını uygular; çelişki uyarısı mağazaya yine düşer.
-- Çelişki bulunduğunda panelde mağazaya **uyarı** çıkar ("Kargo politikanız ile SSS sayfanız farklı süre söylüyor"), mağaza sitesini düzeltir.
+- Çelişki bulunduğunda panelde (Ayarlar → "Mağaza bilgilerinde çelişki") mağazaya **uyarı** çıkar ("Kargo politikanız ile SSS sayfanız farklı süre söylüyor"); mağaza sitesini ya da Lina'ya notları düzeltir ve "Çözüldü" der.
 
 **Güncelleme**
 - Shopify sayfa/politika değişikliği için bildirim göndermiyor; bilgiler **15 dakikada bir** kontrol edilir, sadece değişenler yenilenir.
@@ -138,9 +138,9 @@ Müşteri hizmetleri ekibinin ilk uzmanı. İade, değişim, hasarlı/hatalı/ya
 - Lina'ya kısa bir yol haritası yazar: müşteri ne istiyor ve eksik bilgi, geçerli kural, başvuru süreci, ekibe iletilip iletilmediği.
 - **Öncelik:** el kitabı mağazanın talimatıdır, politikalarla çelişirse el kitabı geçerlidir. Ürünün sipariş tarihindeki kampanya koşulu ise her zaman bağlayıcıdır.
 - **Ekibe iletir** (⚠️ İade: ekip kararı gerekiyor): hasarlı/hatalı/yanlış ürün; kuralın izin vermediği ama müşterinin istediği talep; iade sürecinde sorun; para iadesi isteyen sinirli ya da gecikmeden şikâyetçi müşteri; el kitabında istenen durumlar. Kuralı ve süreci anlatmak yetiyorsa iletmez.
-- Kaynaklarda çelişki görürse (ör. iade süresi, başvuru yolu) panele uyarı düşer ve Lina §7'ye göre davranır.
+- Kaynaklarda çelişki görürse (ör. iade süresi, başvuru yolu) panele uyarı düşer (Ayarlar → çelişki) ve Lina müşteriye rakam vermez, ekibe sorar (§2a çelişki kuralı).
 - Shopify bağlı değilse siparişleri göremez; kuralı ve süreci anlatır, iletilmesi gerekeni Lina devreder.
-- **El kitabı** mağaza başınadır (`npm run tenant -- returns-playbook --slug maius --file iade-el-kitabi.md`); panel "Ekip" sayfası ekip kurulurken eklenecek. Boşsa uzman politikalara göre çalışır.
+- **El kitabı** mağaza başınadır: panelde Ayarlar → İade el kitabı (ya da `npm run tenant -- returns-playbook --slug maius --file iade-el-kitabi.md`). Boşsa uzman politikalara göre çalışır.
 
 ### 3.4 İade sistemi bağlantısı (mağaza ayarı, isteğe bağlı)
 - Lina mağazanın iade sistemine yalnızca **okumak** için bağlanır (MAIUS: Kolay İade paneli, iade talebini arama ve talep durumu). Kupon, e-posta, durum değiştirme, ayar ve SQL gibi yazma ve yönetim araçları hiçbir zaman kullanılmaz.

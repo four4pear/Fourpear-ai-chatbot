@@ -37,7 +37,7 @@ WhatsApp → Meta → POST /webhook/whatsapp → imza kontrolü → 200
 ```bash
 npm install
 cp .env.example .env        # değerleri doldurun (MASTER_KEY üretme komutu dosyada)
-npm test                    # 53 test, gerçek API çağırmaz
+npm test                    # bütün testler (gerçek API çağırmaz)
 npm run dev
 ```
 
@@ -194,11 +194,12 @@ Zernio hattında hesap `zernio:<hesap kimliği>` olarak saklanır, API anahtarı
 ## Davranış kuralları
 
 Tamamı [docs/lina-davranis.md](docs/lina-davranis.md) içinde; kod bu belgeye göre yazılır. Özet:
-- Lina yalnızca uzmanlardan gelen bilgiyi söyler; bilmediğinde hemen devreder.
-- Sipariş, iade, iptal, değişim ve şikayet: konuşma devredilmez. Lina siparişi okur, ürünün kuralını söyler, gerekirse iade formu linkini verir ve ekibe bildirim düşer (onaylandı, sipariş uzmanıyla devreye girecek; o zamana kadar devreder).
+- Lina yalnızca uzmanlardan gelen bilgiyi söyler. Bilmediğinde konuşmayı devretmez: arka planda ekibe sorar, ekip panelden cevaplayınca müşteriye kendisi iletir (20 dakikada cevapsızsa ekibe hatırlatma düşer).
+- Uzmanlar: mağaza bilgisi, sipariş ve kargo, iade ve değişim, ürün/fiyat/stok (Shopify bağlıysa).
+- Sipariş, iade, iptal, değişim ve şikayet: konuşma devredilmez. Lina siparişi okur, ürünün kuralını söyler, gerekirse iade formu linkini verir ve ekibe bildirim düşer. Müşteri ısrarla temsilci isterse konuşma devredilir.
 - Kampanya yazıları tarihleriyle saklanır; siparişte o tarihteki kural geçerlidir.
 - Devir kuyruğunda Lina basit sorulara cevap vermeye devam eder; ekip devralınca susar.
-- Devirde mesai saatine göre ne zaman dönüleceğini söyler.
+- Müşteri açıkça temsilci isterse, mesai saatine göre ekibin ne zaman döneceğini söyler.
 - Claude hata verir ya da cevap üretemezse müşteriye özür mesajı gider ve konuşma otomatik devredilir.
 - Her ajan çalıştırmasının token kullanımı `agent_runs` tablosuna yazılır (maliyet ve kota için).
 
@@ -206,3 +207,11 @@ Tamamı [docs/lina-davranis.md](docs/lina-davranis.md) içinde; kod bu belgeye g
 
 Postgres eklentisi ekleyin, `DATABASE_URL` otomatik gelir. Diğer `.env` değerlerini girin.
 Build: `npm run build`, Start: `npm start`. Migration'lar açılışta uygulanır.
+
+**Railway → Variables** (gizli değerleri yalnızca Railway'e kendiniz girin, sohbete ya da depoya yazmayın):
+- Zorunlu: `MASTER_KEY` (hesap şifreleri ve anahtarlar için; kaybolursa kayıtlı WhatsApp ve Shopify anahtarları çözülemez), `ANTHROPIC_API_KEY`, `APP_URL` (panel ve webhook adresi, `https://…`), `TZ` (ör. `Europe/Istanbul`).
+- WhatsApp (Meta): `WHATSAPP_APP_SECRET`, `WHATSAPP_VERIFY_TOKEN`; Meta'da webhook `https://<adres>/webhook/whatsapp`. WhatsApp (Zernio): `ZERNIO_WEBHOOK_SECRET`; webhook `https://<adres>/webhook/zernio`. Biri eksikse o webhook kapalı kalır (panel çalışır).
+- İsteğe bağlı: `GROQ_API_KEY` (sesli mesajları yazıya çevirir; yoksa müşteriye "yazarak iletin" denir), `SHOPIFY_API_KEY` / `SHOPIFY_API_SECRET` (ortak Shopify uygulaması), `CLAUDE_MODEL`, `KNOWLEDGE_SYNC_MINUTES`, `ARCHIVE_SYNC_MINUTES`.
+- Kurulumdan sonra `npm run saglik` bağlantıları (sunucu, panel, webhook'lar) tek komutla denetler.
+
+**Tek sunucu şartı:** Deneme sınırları (giriş kilidi), cevap bekleme zamanlayıcısı, canlı panel akışı ve hatırlatmalar sunucunun belleğinde tutulur. Bu yüzden servis **tek kopya** (instance) çalışmalıdır; Railway'de ölçeği 1'den fazla yapmayın. Birden çok kopya gerekirse bu parçaların Postgres'e taşınması gerekir.

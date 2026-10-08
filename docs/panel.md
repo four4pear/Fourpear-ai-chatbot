@@ -25,14 +25,14 @@ Bekleyenler ve Tüm sohbetler **aynı üç bölmeli ekrandır**: solda liste, or
 
 ## Sohbetler
 **Konuşma bölmesi:** mesajlar kimin yazdığıyla (müşteri, Lina, ekip), müşterinin fotoğraflarıyla; iç notlar ayrı görünür. Başlıkta **Devral** ve **Lina'ya geri ver**, mesajların altında yazma kutusu vardır; kurallar aşağıda. Konuşmanın üstünde Lina'nın devir özeti, ekibe iletilen talepler ve Lina'nın ekibe sorduğu açık sorular (müşterinin sorusuyla birlikte) yer alır; ekibe iletilen talep oradan da "Tamamlandı" yapılabilir. **Müşteri kartı bölmesi:** ad, telefon, ilk mesaj tarihi, Lina'nın bu konuşmada baktığı siparişler, uzmanlara sorduğu sorular ve önceki devirler. Yeni mesaj gelince ekran yalnızca kişi en alttaysa aşağı iner (eski mesajları okuyan yerinden edilmez).
-Lina'nın cevap taslağı henüz yapılmadı.
+Lina'nın cevap taslağı henüz yok (aşağıda "planlanan").
 
 - **Devirler:** Bekleyen sekmesinde Lina'nın devrettiği, açık devri olan konuşmalar kimsenin devralmadığı en uzun bekleyen üstte olacak şekilde, devralınmış olanlar altta ve kimde olduğu yazılı görünür.
 - **Devralma:** İlk tıklayan alır; Lina o konuşmada susar. Başkasının devraldığı konuşmayı yalnızca mağaza sahibi alabilir (çalışan izinde/meşgulse).
 - **Lina'ya geri ver:** Devralan kişi, mağaza sahibi ya da (henüz kimse devralmadıysa) herhangi bir ekip üyesi yapabilir. Açık devirler "çözüldü" olarak kapanır; müşterinin cevapsız mesajı varsa Lina hemen cevaplar.
 - **Cevap yazma:** Sadece konuşmayı devralan kişi yazabilir. Mesaj **imzasız**, mağaza adına gider.
 - **24 saat kuralı (WhatsApp):** Müşterinin son mesajından 24 saat geçtiyse serbest mesaj gönderilemez; yazma kutusu kapanır ve nedeni yazar. (Meta onaylı şablon desteği sonra.)
-- Devralma ve bota geri verme olayları sohbette not olarak görünür (müşteriye gitmez).
+- Devralma ve Lina'ya geri verme olayları sohbette not olarak görünür (müşteriye gitmez).
 
 ## Müşteri bilgisi
 - **Ad:** Shopify'daki ad varsa o (sipariş ajanıyla gelecek), yoksa WhatsApp profil adı, o da yoksa numara.
@@ -40,7 +40,7 @@ Lina'nın cevap taslağı henüz yapılmadı.
 - Müşterinin gönderdiği fotoğraflar sohbette görünür (yalnızca o mağazanın ekibine).
 - **Müşteri verisini silme (silme talebi):** müşteri kartındaki "Müşteri verisini sil" düğmesi yalnızca mağaza sahibinde görünür; onay ister, geri alınamaz. Kişi kaydı, konuşma, mesajlar, fotoğraflar, devirler, ekibe giden bildirim ve sorular ile Lina'nın müşteri kartı silinir. Yapay zekâ kullanım kayıtları (maliyet, süre) istatistik için kalır ama müşterinin yazdıklarını içeren metinler boşaltılır ve konuşmayla bağı kopar. Müşteri sonradan yazarsa yeni bir kayıt açılır. API: `POST /api/tenants/:id/conversations/:cid/erase` `{ confirm: true }`. Otomatik saklama süresi (belli süre sonra silme) henüz yok: süre kararı bekliyor.
 
-## Lina'nın cevap taslağı
+## Lina'nın cevap taslağı (planlanan; henüz yok)
 - Konuşma devralınınca hazırlanır; müşteri yeni mesaj yazınca yenilenir.
 - Çalışan "Taslağı kullan" ile yazma kutusuna alır, düzenleyip gönderir. Taslak kendiliğinden gönderilmez.
 
