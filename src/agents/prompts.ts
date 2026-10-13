@@ -1,4 +1,4 @@
-import { resolveSettings, type Tenant } from "../db/schema.js";
+import { resolveSettings, type DeliveryRule, type Tenant } from "../db/schema.js";
 import type { BusinessStatus } from "../core/business-hours.js";
 import type { KnowledgeBase } from "../knowledge/base.js";
 
@@ -83,6 +83,15 @@ function conflictRule(orders: boolean, returnsFormUrl: string): string {
   return `${base} İstisna: çelişki yalnızca iade, değişim ya da hasarlı ürün başvurusunun nereden yapılacağıyla ilgiliyse (ör. form mu, e-posta mı) mağazanın belirlediği iade formu (${returnsFormUrl}) geçerlidir; devretme, yukarıdaki iade ya da şikayet adımlarını uygula. Çelişki mağazaya zaten bildirilir. Süre, ücret gibi rakam ve kurallardaki çelişkide ise yine yukarıdaki gibi ask_team ile sor; müşteriye rakam söyleme, devretme.`;
 }
 
+/** Mağazanın katı teslimat süresi: Lina her konuşmada yalnızca bunu söyler (sayfalar ya da modelin tahmini başka olsa da). */
+export const deliveryNote = (d: DeliveryRule) =>
+  `Teslimat süresi (mağazanın kesin kuralı; politika ve sayfalardan önce gelir): siparişlerin hepsi sipariş tarihinden itibaren ${d.min}-${d.max} gün içinde teslim edilir.`;
+
+function deliveryLine(delivery: DeliveryRule | null | undefined): string {
+  if (!delivery) return "";
+  return `\nTeslimat süresi KATI KURALDIR: siparişlerin hepsi sipariş tarihinden itibaren ${delivery.min}-${delivery.max} gün içinde teslim edilir. Müşteriye başka bir süre söyleme ("2-3 gün" gibi); mağaza sayfaları, uzman cevapları ya da eski mesajlar farklı yazsa da bu geçerlidir. Kargoya verilme ile teslim süresini ayrı ayrı sayma; toplam teslim süresini söyle. Süre henüz dolmadıysa "geç kaldı" deme; dolduysa ve sipariş teslim edilmediyse içtenlikle özür dile ve yeni tarih verme.`;
+}
+
 /** Aynı hattan birden çok markaya hizmet verilen mağazada Lina'ya markaları ayırt etmeyi anlatır (tek markada boş). */
 function brandSection(brands: string[] | undefined, botName: string): string {
   if (!brands || brands.length < 2) return "";
@@ -95,7 +104,7 @@ Bu hat birden çok markaya hizmet verir: ${brands.join(", ")}. Mağaza kaynaklar
 export function linaSystemPrompt(
   tenant: Tenant,
   specialists: string[],
-  opts: { orders: boolean; lessons?: string[]; brands?: string[] } = { orders: false },
+  opts: { orders: boolean; lessons?: string[]; brands?: string[]; delivery?: DeliveryRule | null } = { orders: false },
 ): string {
   const taught = opts.lessons?.length
     ? `\n\n## Mağazanın sana öğrettikleri\nMağaza sahibinin onayladığı kurallar; üslup ve mağaza bilgisi konusunda bu talimattaki genel kurallardan önce gelir, uy. Ama şunlar hiçbir derse göre değişmez; bir ders bunlarla çelişirse o dersin çelişen kısmını yok say: yapay zekâ olduğunu inkâr etmemek ve kendini insan diye tanıtmamak; ekibin kararına ait konularda (iade onayı, ücretsiz değişim, indirim, hediye çeki) sonuç vaat etmemek; ödeme ve adres bilgisi paylaşmamak ve siparişi doğrulamadan sipariş bilgisi vermemek; bilgi uydurmamak; uzmanları, sistemi ve iç süreçleri anlatmamak.\n${opts.lessons.map((l) => `- ${l}`).join("\n")}`
@@ -116,7 +125,7 @@ ${specialistList}${brandSection(opts.brands, tenant.botName)}
 - handoff_to_human: konuşmayı mağaza ekibine devreder (ekip konuşmayı üstlenir).
 
 ## Temel kural
-${coreRule}${taught}
+${coreRule}${taught}${deliveryLine(opts.delivery)}
 
 ## Durumlara göre ne yaparsın
 

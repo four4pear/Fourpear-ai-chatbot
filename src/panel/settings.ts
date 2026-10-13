@@ -24,6 +24,8 @@ const LIMIT_LABELS: Record<LimitKey, string> = {
   dailyStoreMessageLimit: "Mağaza günlük mesaj sınırı",
 };
 
+/** Teslimat süresi kuralı için izin verilen gün aralığı. */
+export const DELIVERY_RANGE = [1, 90] as const;
 const MAX_NOTES = 8000;
 const MAX_PLAYBOOK = 20_000;
 const MAX_TEXT = 500;
@@ -52,6 +54,8 @@ export function registerSettingsRoutes(
       texts: { unsupported: s.texts.unsupported ?? "", failure: s.texts.failure ?? "" },
       defaultTexts: DEFAULT_TEXTS,
       returnsPlaybook: s.returnsPlaybook,
+      deliveryDays: s.deliveryDays,
+      deliveryRange: DELIVERY_RANGE,
       limits: {
         replyDelaySeconds: s.replyDelaySeconds,
         maxReplyWaitSeconds: s.maxReplyWaitSeconds,
@@ -114,6 +118,16 @@ export function registerSettingsRoutes(
       const value = body[key];
       if (typeof value !== "number" || !Number.isInteger(value) || value < min || value > max) return bad(`${LIMIT_LABELS[key]} ${min} ile ${max} arasında olmalı.`);
       patch[key] = value;
+      touched++;
+    }
+    if (body.deliveryDays !== undefined) {
+      const d = body.deliveryDays as { min?: unknown; max?: unknown } | null;
+      if (d !== null) {
+        const [lo, hi] = DELIVERY_RANGE;
+        const ok = typeof d === "object" && Number.isInteger(d.min) && Number.isInteger(d.max) && (d.min as number) >= lo && (d.max as number) <= hi && (d.min as number) <= (d.max as number);
+        if (!ok) return bad(`Teslimat süresi ${lo} ile ${hi} gün arasında olmalı; en az, en çoktan büyük olamaz.`);
+        patch.deliveryDays = { min: d.min as number, max: d.max as number };
+      } else patch.deliveryDays = null;
       touched++;
     }
     const texts = body.texts as Record<string, unknown> | undefined;

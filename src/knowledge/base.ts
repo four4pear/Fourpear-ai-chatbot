@@ -1,6 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import type { DB } from "../db/client.js";
-import { knowledgeDocs, shopifyStores, type KnowledgeDoc, type Tenant } from "../db/schema.js";
+import { deliveryNote } from "../agents/prompts.js";
+import { knowledgeDocs, resolveSettings, shopifyStores, type KnowledgeDoc, type Tenant } from "../db/schema.js";
 
 export type KnowledgeBase = {
   notes: string;
@@ -36,8 +37,10 @@ export async function loadKnowledge(db: DB, tenant: Tenant): Promise<KnowledgeBa
     .filter(isEnabled)
     // Sıra sabit olmalı: sistem istemi değişmezse önbellekten okunur.
     .sort((a, b) => SOURCE_ORDER[a.source]! - SOURCE_ORDER[b.source]! || a.title.localeCompare(b.title, "tr"));
+  // Mağazanın katı teslimat süresi notlara eklenir: sayfalardaki başka süreden önce gelir, çelişki sayılmaz.
+  const delivery = resolveSettings(tenant.settings).deliveryDays;
   const kb = {
-    notes: tenant.notes.trim(),
+    notes: [tenant.notes.trim(), delivery ? deliveryNote(delivery) : ""].filter(Boolean).join("\n\n"),
     core: docs.filter((d) => d.kind === "core"),
     legal: docs.filter((d) => d.kind === "legal"),
   };

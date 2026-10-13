@@ -332,6 +332,13 @@ Aynı WhatsApp hattından birden çok markaya hizmet verilebilir (ör. MAIUS ve 
 - **Lina:** Sistem istemine "Markalar" bölümü eklenir: marka belli değilse ve cevap markaya göre değişiyorsa (kargo, iade koşulu, ürün, fiyat, stok) önce hangi markadan sorduğunu sorar ya da markaları ayrı ayrı yazar; bir markanın kuralını diğerine uygulamaz; kendini tanıtırken marka adı söylemez.
 - **Değişmeyenler:** Konuşmalar, bildirimler, ekibe sorular, dersler, müşteri kartı, mesai saatleri ve sınırlar ana mağazanındır; panelde yalnızca ana mağaza görünür. Panel test ekranının deneme siparişleri/ürünleri tek markadır (bağlantılar yok sayılır).
 
+## 18. Katı teslimat süresi (13 Ekim 2026)
+Mağaza "siparişlerin hepsi sipariş tarihinden itibaren **7-14 gün** içinde teslim edilir" gibi katı bir kural koyabilir (Ayarlar → Teslimat süresi ya da `npm run tenant -- upsert --slug … --delivery 7-14`; `--delivery off` kaldırır). Çok markalı hatta ana mağazanın kuralı bütün markalar için geçerlidir (§17).
+- **Lina her yerde yalnızca bu süreyi söyler:** kural mağaza notlarına "kesin kural" olarak eklenir (sayfalardaki başka süreden önce gelir, çelişki sayılmaz) ve Lina'nın talimatında KATI KURAL olarak yazar. "2-3 gün" gibi başka bir süre söylemez; kargoya verilme ile teslimi ayrı saymaz, toplam süreyi söyler.
+- **Sipariş kartı** (kodda üretilir): teslim edilmemiş siparişte "Sipariş N gün önce verildi" ve en geç teslim tarihi yazılır. Süre dolmadıysa "geç kaldı" denmez; dolduysa ve teslim edilmediyse kart "SÜRE AŞILDI" der: Lina özür diler, yeni tarih vermez, ekibe **gecikme bildirimi** (⚠️ önemli, §12) düşer ("sipariş 18 gündür teslim edilmedi (mağaza kuralı en fazla 14 gün)").
+- **İstisnalar:** teslim edilmiş ve iptal edilmiş siparişte kural satırı yok. Ön siparişte ürün sayfasındaki kargo tarihi henüz gelmediyse süre o tarihe göre işler: süre aşıldı denmez, bildirim açılmaz.
+- Kural yoksa (varsayılan) hiçbir şey değişmez; Lina süreyi mağaza sayfalarından okur.
+
 ## MAIUS ayarları
 - Mesai: **Pazartesi–Cumartesi 10:00–17:00** (pazar kapalı)
 - Mesai dışı devir örneği: "Ekibimiz yarın saat 10:00'dan itibaren size buradan dönecek."

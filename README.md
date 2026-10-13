@@ -191,6 +191,10 @@ Meta işletme doğrulaması beklemeden bağlanmak için [Zernio](https://zernio.
 
 Zernio hattında hesap `zernio:<hesap kimliği>` olarak saklanır, API anahtarı şifreli tutulur; cevap için gereken konuşma kimliği `customers.channel_ref` alanındadır. Zernio'nun "yazıyor…" ucu belgelerde ayrıntılı olmadığı için reddedilirse bir kez uyarı verilip bırakılır.
 
+### Katı teslimat süresi
+
+Mağaza "siparişlerin hepsi 7-14 gün içinde teslim edilir" gibi bir kural koyduysa: `node dist/scripts/tenant.js upsert --slug betulsaday --delivery 7-14` (ya da panelde Ayarlar → Teslimat süresi). Lina her yerde yalnızca bu süreyi söyler; süre aşılırsa ekibe gecikme bildirimi düşer ([docs/lina-davranis.md §18](docs/lina-davranis.md)).
+
 ### Birden çok marka tek hatta
 
 Aynı WhatsApp hattından birden çok mağazaya (marka) hizmet verilecekse her marka ayrı mağaza olarak kurulur (kendi alan adı ve Shopify bağlantısı), hat ana mağazaya bağlanır ve diğerleri ona **bağlanır**:

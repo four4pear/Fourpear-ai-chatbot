@@ -340,7 +340,7 @@ export async function respond(deps: Deps, conversationId: string, ctl: RespondCo
   // Yalnızca ekibin cevabı geldiyse müşteri yeni bir şey yazmamıştır; Claude'a giden geçmiş müşteriyle bitmeli.
   if (history.at(-1)?.role !== "user") history.push({ role: "user", content: [{ type: "text", text: NO_NEW_MESSAGE }] });
   const ctx = { db, llm: deps.llm, model: deps.model, tenantId: tenant.id, tenantIds: multi ? brands.map((t) => t.id) : undefined, conversationId, signal: ctl.signal, log: deps.log };
-  const orders = orderSource ? { source: orderSource, waId, timeZone: deps.timeZone, now, returns, identityLocked: locked } : null;
+  const orders = orderSource ? { source: orderSource, waId, timeZone: deps.timeZone, now, returns, identityLocked: locked, delivery: settings.deliveryDays } : null;
   // Ekibin Lina'ya cevabı iç bilgidir; müşterinin yazdığı diye bildirime ya da soruya geçmez.
   const lastText = batch
     .filter((m) => m.type !== TEAM_ANSWER_TYPE)
@@ -354,7 +354,7 @@ export async function respond(deps: Deps, conversationId: string, ctl: RespondCo
   let orderFindings: OrderFindings | null = null;
   let teamQuestions: AskedQuestion[] = [];
   try {
-    const result = await runLina(ctx, tenant, history, turn, withLessons(storeKnowledge, lessons), orders, lessons, productSource ? { source: productSource } : null, multi ? brands.map(brandLabel) : []);
+    const result = await runLina(ctx, tenant, history, turn, withLessons(storeKnowledge, lessons), orders, lessons, productSource ? { source: productSource } : null, multi ? brands.map(brandLabel) : [], settings.deliveryDays);
     if (result.kind === "failed") {
       reply = fixedText(settings, "failure", failureContext);
       handoff = { reason: "other", summary: `Asistan cevap üretemedi (stop_reason: ${result.stopReason}). Müşteriye dönüleceği söylendi. Mesajlar: "${lastText}"` };

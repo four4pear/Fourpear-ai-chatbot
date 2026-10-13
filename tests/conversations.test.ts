@@ -343,6 +343,21 @@ describe("panel: konuşmayı devralma, yazma, Lina'ya geri verme", () => {
     await patch({ notes: "", texts: { unsupported: "", failure: "" }, returnsPlaybook: "", replyDelaySeconds: 30, maxReplyWaitSeconds: 180, dailyMessageLimit: 200, dailyStoreMessageLimit: 3000 });
   });
 
+  it("ayarlar: teslimat süresi kuralı doğrulanır, kaydedilir ve null ile kaldırılır", async () => {
+    const url = `/api/tenants/${tenantA}/settings`;
+    const patch = (body: unknown) => call("sahip", "PATCH", url, body);
+    expect((await call("sahip", "GET", url)).body.deliveryDays).toBeNull();
+    expect((await patch({ deliveryDays: { min: 7, max: 14 } })).body).toMatchObject({ deliveryDays: { min: 7, max: 14 }, deliveryRange: [1, 90] });
+    const [t] = await database.db.select().from(tenants).where(eq(tenants.id, tenantA));
+    expect(t!.settings).toMatchObject({ deliveryDays: { min: 7, max: 14 } });
+    for (const bad of [{ min: 14, max: 7 }, { min: 0, max: 5 }, { min: 1, max: 91 }, { min: 2.5, max: 9 }, { min: "7", max: "14" }, { min: 7 }, "7-14", []]) {
+      expect((await patch({ deliveryDays: bad })).status).toBe(400);
+    }
+    expect((await call("zeynep", "PATCH", url, { deliveryDays: null })).status).toBe(403);
+    expect((await call("sahip", "GET", url)).body.deliveryDays).toEqual({ min: 7, max: 14 }); // geçersizler değiştirmedi
+    expect((await patch({ deliveryDays: null })).body.deliveryDays).toBeNull();
+  });
+
   it("bekleyen sayısı Lina'nın şu anki durumunu da söyler: açık, kapalı, mesai dışı", async () => {
     const settings = `/api/tenants/${tenantA}/settings`;
     const state = async () => (await call("zeynep", "GET", `/api/tenants/${tenantA}/waiting-count`)).body.bot;

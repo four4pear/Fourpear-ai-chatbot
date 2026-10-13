@@ -13,6 +13,7 @@ const BASE = {
   notes: "", texts: { unsupported: "", failure: "" },
   defaultTexts: { unsupported: "Şu an yazılı mesajları ve fotoğrafları anlayabiliyorum.", failure: "Üzgünüm, şu an sorunuza cevap veremiyorum." },
   returnsPlaybook: "",
+  deliveryDays: null as { min: number; max: number } | null, deliveryRange: [1, 90],
   limits: { replyDelaySeconds: 30, maxReplyWaitSeconds: 180, dailyMessageLimit: 200, dailyStoreMessageLimit: 3000 },
   limitRanges: { replyDelaySeconds: [0, 120], maxReplyWaitSeconds: [10, 600], dailyMessageLimit: [10, 2000], dailyStoreMessageLimit: [100, 50000] },
 };
@@ -30,9 +31,9 @@ function server(initial: typeof BASE = BASE) {
       const b = JSON.parse(String(init.body));
       patched.push(b);
       // Sunucudaki gibi: metinler birleşir, sınırlar tek tek gelir.
-      const { texts, ...rest } = b;
+      const { texts, deliveryDays, ...rest } = b;
       const limits = { ...state.limits, ...Object.fromEntries(Object.keys(state.limits).filter((k) => k in rest).map((k) => [k, rest[k]])) };
-      state = { ...state, ...rest, limits, ...(texts && { texts: { ...state.texts, ...texts } }), ...("returnsPlaybook" in rest && { returnsPlaybook: rest.returnsPlaybook.trim() }), ...("notes" in rest && { notes: rest.notes.trim() }) };
+      state = { ...state, ...rest, ...("deliveryDays" in b && { deliveryDays }), limits, ...(texts && { texts: { ...state.texts, ...texts } }), ...("returnsPlaybook" in rest && { returnsPlaybook: rest.returnsPlaybook.trim() }), ...("notes" in rest && { notes: rest.notes.trim() }) };
     }
     return json(state);
   }));
@@ -151,5 +152,24 @@ it("kaynak çelişkisi uyarısı görünür ve 'Çözüldü' ile kapanır; uyar�
   await screen.findByText('"İade süresi" çözüldü olarak işaretlendi.');
   expect(resolved).toEqual(["/api/tenants/t/knowledge-alerts/a1/resolve"]);
   expect(screen.queryByText("Politika 14 gün, SSS 30 gün diyor.")).toBeNull();
+});
+
+it("teslimat süresi kuralı: açılıp 7-14 yazılır ve kaydedilir; kapatılınca boş gider", async () => {
+  const patched = server();
+  render(<SettingsPage store={store} />);
+  const toggle = await screen.findByRole("switch", { name: "Teslimat süresi kuralı" });
+  expect(toggle.getAttribute("aria-checked")).toBe("false");
+  expect(screen.queryByLabelText("En az (gün)")).toBeNull();
+  fireEvent.click(toggle);
+  expect((screen.getByLabelText("En az (gün)") as HTMLInputElement).value).toBe("7");
+  expect((screen.getByLabelText("En çok (gün)") as HTMLInputElement).value).toBe("14");
+  fireEvent.click(screen.getByRole("button", { name: "Teslimat süresini kaydet" }));
+  await screen.findByText("Teslimat süresi kaydedildi.");
+  expect(patched).toEqual([{ deliveryDays: { min: 7, max: 14 } }]);
+  // Kapatınca kural silinir.
+  fireEvent.click(screen.getByRole("switch", { name: "Teslimat süresi kuralı" }));
+  fireEvent.click(screen.getByRole("button", { name: "Teslimat süresini kaydet" }));
+  await screen.findByText("Teslimat süresi kuralı kapatıldı.");
+  expect(patched.at(-1)).toEqual({ deliveryDays: null });
 });
 

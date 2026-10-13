@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { textAt } from "../archive/archive.js";
-import { resolveSettings, type Tenant } from "../db/schema.js";
+import { resolveSettings, type DeliveryRule, type Tenant } from "../db/schema.js";
 import { normalizePhone } from "../lib/phone.js";
 import { buildOrderSheet, orderSummaryLine, type OrderIssue, type ProductTextAt } from "../orders/facts.js";
 import { belongsTo, nameMatches, sameOrderNumber, type OrderFacts, type OrderSource } from "../orders/types.js";
@@ -37,6 +37,8 @@ export type OrderAgentDeps = {
   timeZone: string;
   now: Date;
   returns: ReturnsProvider | null;
+  /** Mağazanın katı teslimat süresi (gün); sipariş kartı kalan süreyi ve süre aşımını buna göre yazar. */
+  delivery?: DeliveryRule | null;
   /**
    * Bu numaradan son 24 saatte çok sayıda yanlış ad soyad denemesi yapıldı: ad soyadla doğrulama kapalı
    * (sipariş numaralarını sırayla denemek mümkün olmasın). WhatsApp numarası eşleşen siparişler yine görünür.
@@ -132,7 +134,7 @@ export function orderLookup(
         texts.set(item.productId, found);
       }
     }
-    const sheet = buildOrderSheet(order, texts, deps.now, deps.timeZone, verifiedBy);
+    const sheet = buildOrderSheet(order, texts, deps.now, deps.timeZone, verifiedBy, deps.delivery ?? null);
     findings.orders.set(order.name, { unshipped: sheet.unshipped, cancelled: sheet.cancelled, ...(verifiedBy === "name" ? { byName: true } : {}) });
     for (const issue of sheet.issues) addIssue(findings, issue);
     return opts.withReturns && deps.returns ? `${sheet.text}\n\n${await returnInfo(order.name)}` : sheet.text;

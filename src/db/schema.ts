@@ -24,6 +24,9 @@ export type BusinessHours = {
   end: string;
 };
 
+/** Teslimat süresi kuralı (gün). */
+export type DeliveryRule = { min: number; max: number };
+
 export type TenantSettings = {
   botEnabled: boolean;
   /** Açıksa Lina yalnızca mesai saatlerinde cevap verir; dışındaki mesajlar açılışta cevaplanır. */
@@ -50,6 +53,12 @@ export type TenantSettings = {
    * Müşteri konuşmaları, panel ve ekip bu (ana) mağazada kalır.
    */
   linkedTenantIds: string[];
+  /**
+   * Mağazanın katı teslimat kuralı: siparişlerin hepsi sipariş tarihinden itibaren en az `min`, en çok `max` gün içinde
+   * teslim edilir. Lina her yerde bunu söyler (sayfalar başka süre yazsa da), sipariş kartı kalan süreyi gösterir ve
+   * süre aşılırsa ekibe gecikme bildirimi düşer. Boşsa kural yok.
+   */
+  deliveryDays: DeliveryRule | null;
   /** Müşterinin iade/değişim talebini kendisi açtığı form (ör. Kolay İade); boşsa yok. */
   returnsFormUrl: string;
   /**
@@ -76,6 +85,7 @@ export const defaultTenantSettings: TenantSettings = {
   maxReplyWaitSeconds: 180,
   returnsFormUrl: "",
   linkedTenantIds: [],
+  deliveryDays: null,
   phoneCountryCode: "90",
   returnsPlaybook: "",
 };

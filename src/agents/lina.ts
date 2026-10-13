@@ -1,6 +1,6 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
-import type { Tenant } from "../db/schema.js";
+import type { DeliveryRule, Tenant } from "../db/schema.js";
 import type { KnowledgeBase } from "../knowledge/base.js";
 import { askKnowledgeAgent } from "./knowledge.js";
 import { askOrderAgent, newFindings, type OrderAgentDeps, type OrderFindings } from "./orders.js";
@@ -112,6 +112,8 @@ export async function runLina(
   products: ProductAgentDeps | null = null,
   /** Çok markalı hatta markaların adları (ana mağaza ilk); tek markada boş. */
   brands: string[] = [],
+  /** Mağazanın katı teslimat süresi (gün); varsa Lina başka süre söylemez. */
+  delivery: DeliveryRule | null = null,
 ): Promise<LinaResult> {
   const tools: AgentTool[] = [];
   const specialists: string[] = [];
@@ -292,7 +294,7 @@ export async function runLina(
 
   const result = await runAgent(ctx, {
     agent: "lina",
-    system: linaSystemPrompt(tenant, specialists, { orders: Boolean(orders), lessons, brands }),
+    system: linaSystemPrompt(tenant, specialists, { orders: Boolean(orders), lessons, brands, delivery }),
     systemContext: turnContext(tenant, turn),
     messages: history,
     tools,

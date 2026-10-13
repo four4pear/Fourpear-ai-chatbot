@@ -1,4 +1,5 @@
 import type { TextAt } from "../archive/archive.js";
+import type { DeliveryRule } from "../db/schema.js";
 import type { OrderFacts, OrderItem, Shipment } from "./types.js";
 
 /**
@@ -241,6 +242,8 @@ export function buildOrderSheet(
   now: Date,
   timeZone: string,
   verifiedBy: "whatsapp" | "name" = "whatsapp",
+  /** Mağazanın katı teslimat süresi (gün); yoksa kural satırı yazılmaz. */
+  delivery: DeliveryRule | null = null,
 ): OrderSheet {
   const fmt = (d: Date) => longDate(localDate(d, timeZone));
   const today = localDate(now, timeZone);
@@ -315,6 +318,34 @@ export function buildOrderSheet(
     }
     if (text) lines.push(`   Ürün açıklaması (tamamı): ${text.replace(/\n+/g, " ")}`);
   });
+
+  // Mağazanın katı teslimat kuralı: sipariş tarihinden itibaren en az-en çok gün; teslim edilmemiş siparişte kalan süre yazılır.
+  if (delivery && !cancelled && active.length) {
+    const delivered = !waiting.length && order.shipments.length > 0 && order.shipments.every(isDelivered);
+    if (!delivered) {
+      const days = Math.round((dayMs(today) - dayMs(orderDay)) / 86_400_000);
+      const deadline = new Date(dayMs(orderDay) + delivery.max * 86_400_000).toISOString().slice(0, 10);
+      const head = `TESLİMAT KURALI (mağazanın kesin kuralı): siparişlerin hepsi sipariş tarihinden itibaren ${delivery.min}-${delivery.max} gün içinde teslim edilir; başka bir süre söyleme.`;
+      const given = days <= 0 ? "Sipariş bugün verildi" : `Sipariş ${days} gün önce verildi`;
+      // Ön siparişte ürün sayfasındaki kargo tarihi henüz gelmediyse süre ondan sonra başlar: kuralı aşmış saymayız.
+      const preorderPending = active.some((i) => {
+        const text = texts.get(i.productId ?? "")?.version.content ?? i.currentDescription ?? "";
+        const pre = text ? preorderFor(text, i, orderDay) : null;
+        return Boolean(pre?.applies && pre.date && i.unfulfilled > 0 && today <= pre.date);
+      });
+      if (days > delivery.max && !preorderPending) {
+        lines.push("", `${head} ${given}: SÜRE AŞILDI (kural en fazla ${delivery.max} gün). Müşteriden içtenlikle özür dile, süreyi aştığını kabul et, yeni bir tarih söyleme; konu ekibe bildirildi.`);
+        issues.push({ kind: "delay", orderName: order.name, text: `Gecikme: sipariş ${days} gündür teslim edilmedi (mağaza kuralı en fazla ${delivery.max} gün)` });
+      } else if (days > delivery.max) {
+        // Ön sipariş: teslimat ürün sayfasındaki kargo tarihinden sonra başlar; kuralı aşmış saymayız.
+        lines.push("", `${head} ${given}; bu bir ön sipariş ve ürün sayfasındaki kargo tarihi henüz gelmedi: süre o tarihe göre işler, "süre aşıldı" deme.`);
+      } else if (days < delivery.min) {
+        lines.push("", `${head} ${given}; henüz erken: "geç kaldı" deme. En geç ${longDate(deadline)} tarihine kadar teslim edilmesi beklenir.`);
+      } else {
+        lines.push("", `${head} ${given}; teslimat süresinin içinde. En geç ${longDate(deadline)} tarihine kadar teslim edilmesi beklenir.`);
+      }
+    }
+  }
 
   if (order.shipments.length) {
     lines.push("", "KARGO");

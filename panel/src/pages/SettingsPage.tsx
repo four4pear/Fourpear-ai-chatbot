@@ -11,9 +11,11 @@ type Settings = {
   botEnabled: boolean; botHoursOnly: boolean; businessHours: Hours;
   notes: string; texts: Texts; defaultTexts: Texts; returnsPlaybook: string; limits: Limits;
   limitRanges: Record<keyof Limits, [number, number]>;
+  deliveryDays: { min: number; max: number } | null; deliveryRange: [number, number];
 };
+type Delivery = { on: boolean; min: number; max: number };
 type Alert = { id: string; topic: string; description: string; createdAt: string };
-type Draft = { hours: Hours; notes: string; texts: Texts; playbook: string; limits: Limits };
+type Draft = { hours: Hours; notes: string; texts: Texts; playbook: string; limits: Limits; delivery: Delivery };
 
 /** Sayısal ayarların adı, açıklaması ve birimi. */
 const LIMIT_FIELDS: { key: keyof Limits; label: string; hint: string; unit: string }[] = [
@@ -48,7 +50,8 @@ export function SettingsPage({ store }: { store: Membership }) {
     catch (e) { setError(e instanceof Error ? e.message : "Uyarı kapatılamadı"); }
     await loadAlerts();
   }
-  const draftOf = (s: Settings): Draft => ({ hours: s.businessHours, notes: s.notes, texts: s.texts, playbook: s.returnsPlaybook, limits: s.limits });
+  const deliveryOf = (s: Settings): Delivery => ({ on: s.deliveryDays !== null, min: s.deliveryDays?.min ?? 7, max: s.deliveryDays?.max ?? 14 });
+  const draftOf = (s: Settings): Draft => ({ hours: s.businessHours, notes: s.notes, texts: s.texts, playbook: s.returnsPlaybook, limits: s.limits, delivery: deliveryOf(s) });
   useEffect(() => {
     api<Settings>(path).then((s) => { setSettings(s); setDraft(draftOf(s)); }, (e) => setError(e instanceof Error ? e.message : "Ayarlar yüklenemedi"));
   }, [path]);
@@ -75,6 +78,7 @@ export function SettingsPage({ store }: { store: Membership }) {
   const textsDirty = settings && draft && JSON.stringify(draft.texts) !== JSON.stringify(settings.texts);
   const playbookDirty = settings && draft && draft.playbook.trim() !== settings.returnsPlaybook;
   const limitsDirty = settings && draft && JSON.stringify(draft.limits) !== JSON.stringify(settings.limits);
+  const deliveryDirty = settings && draft && JSON.stringify(draft.delivery) !== JSON.stringify(deliveryOf(settings));
   return <main className="page settings-page">
     <div className="settings-head">
       <div><p className="hint">{store.name}</p><h1>Ayarlar</h1></div>
@@ -92,6 +96,7 @@ export function SettingsPage({ store }: { store: Membership }) {
         <a href="#lina">Lina</a>
         {alerts.length > 0 && <a href="#celiski">Çelişkiler ({alerts.length})</a>}
         <a href="#mesai">Mesai saatleri</a>
+        <a href="#teslimat">Teslimat süresi</a>
         <a href="#notlar">Lina'ya notlar</a>
         <a href="#metinler">Müşteriye giden metinler</a>
         <a href="#sinirlar">Cevap hızı ve sınırlar</a>
@@ -144,6 +149,23 @@ export function SettingsPage({ store }: { store: Membership }) {
               <Switch checked={settings.botHoursOnly} disabled={busy} label="Lina yalnızca mesai saatlerinde cevap versin"
                 onChange={(next) => void save({ botHoursOnly: next }, next ? "Lina artık yalnızca mesai saatlerinde cevap verecek." : "Lina yeniden her saat cevap verecek.")} />
             </div>
+          </section>
+
+          <section id="teslimat" className="panel-card settings-card" aria-labelledby="delivery-title">
+            <div><h2 id="delivery-title">Teslimat süresi</h2><p className="hint">Mağazanın katı kuralı: siparişlerin hepsi sipariş tarihinden itibaren bu süre içinde teslim edilir. Lina müşteriye her yerde yalnızca bunu söyler (sayfalarınız başka süre yazsa da), sipariş kartında kalan süreyi görür ve süre aşılırsa ekibe gecikme bildirimi düşer.</p></div>
+            <div className="switch-row">
+              <div><strong>Teslimat süresi kuralı</strong>
+                <p className="hint">{draft.delivery.on ? "Açık: Lina bu süreyi söyler." : "Kapalı: Lina süreyi mağaza sayfalarından okur."}</p></div>
+              <Switch checked={draft.delivery.on} label="Teslimat süresi kuralı" onChange={(on) => setDraft({ ...draft, delivery: { ...draft.delivery, on } })} />
+            </div>
+            {draft.delivery.on && <div className="field-row">
+              <div className="field"><label htmlFor="delivery-min">En az (gün)</label><input id="delivery-min" type="number" inputMode="numeric" min={settings.deliveryRange[0]} max={settings.deliveryRange[1]} value={draft.delivery.min}
+                onChange={(e) => setDraft({ ...draft, delivery: { ...draft.delivery, min: e.target.value === "" ? NaN : Number(e.target.value) } })} /></div>
+              <div className="field"><label htmlFor="delivery-max">En çok (gün)</label><input id="delivery-max" type="number" inputMode="numeric" min={settings.deliveryRange[0]} max={settings.deliveryRange[1]} value={draft.delivery.max}
+                onChange={(e) => setDraft({ ...draft, delivery: { ...draft.delivery, max: e.target.value === "" ? NaN : Number(e.target.value) } })} /></div>
+            </div>}
+            <div><button type="button" className="btn btn-primary" disabled={busy || !deliveryDirty}
+              onClick={() => void save({ deliveryDays: draft.delivery.on ? { min: draft.delivery.min, max: draft.delivery.max } : null }, draft.delivery.on ? "Teslimat süresi kaydedildi." : "Teslimat süresi kuralı kapatıldı.")}>Teslimat süresini kaydet</button></div>
           </section>
 
           <section id="notlar" className="panel-card settings-card" aria-labelledby="notes-title">

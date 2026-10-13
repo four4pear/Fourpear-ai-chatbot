@@ -20,6 +20,7 @@
  *
  * İade:
  *   npm run tenant -- upsert --slug maius --returns-url https://iade.betulsaday.com   (Lina'nın vereceği iade formu)
+ *   npm run tenant -- upsert --slug maius --delivery 7-14   (katı teslimat süresi: sipariş tarihinden itibaren 7-14 gün; off kaldırır)
  *   npm run tenant -- upsert --slug maius --phone-country 90   (Shopify'da ülke kodsuz yazılan telefonların ülkesi)
  *   npm run tenant -- returns --slug maius --url https://iade.betulsaday.com/mcp.php --store maius
  *        (iade sistemi bağlantısı; anahtar gizli sorulur, bağlantı test edilir)
@@ -97,6 +98,7 @@ const { values: args } = parseArgs({
     url: { type: "string" },
     store: { type: "string" },
     with: { type: "string" },
+    delivery: { type: "string" },
     test: { type: "boolean" },
     file: { type: "string" },
   },
@@ -171,8 +173,14 @@ try {
     if (returnsUrl && !/^https:\/\/\S+$/.test(returnsUrl)) throw new Error("--returns-url https:// ile başlamalı");
     const phoneCountry = args["phone-country"];
     if (phoneCountry !== undefined && !/^\d{1,3}$/.test(phoneCountry)) throw new Error("--phone-country ülke kodu olmalı, ör. 90");
+    // --delivery 7-14: siparişlerin hepsi sipariş tarihinden itibaren 7-14 gün içinde teslim edilir (katı kural); --delivery off kaldırır.
+    const deliveryMatch = args.delivery && args.delivery !== "off" ? /^(\d{1,2})-(\d{1,2})$/.exec(args.delivery) : null;
+    if (args.delivery && args.delivery !== "off" && (!deliveryMatch || Number(deliveryMatch[1]) < 1 || Number(deliveryMatch[1]) > Number(deliveryMatch[2]))) {
+      throw new Error("--delivery 7-14 biçiminde (en az-en çok gün) ya da off olmalı");
+    }
     const settingsChange = {
       ...(args.hours && { businessHours: parseHours(args.hours) }),
+      ...(args.delivery && { deliveryDays: deliveryMatch ? { min: Number(deliveryMatch[1]), max: Number(deliveryMatch[2]) } : null }),
       ...(returnsUrl !== undefined && { returnsFormUrl: returnsUrl }),
       ...(phoneCountry !== undefined && { phoneCountryCode: phoneCountry }),
     };
