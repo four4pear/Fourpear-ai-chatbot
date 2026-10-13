@@ -184,9 +184,13 @@ export async function ingestInbound(deps: Deps, event: InboundEvent): Promise<In
   const overLimit = overCustomerLimit || overStoreLimit;
   const outsideHours = botClosedByHours(settings, deps.timeZone, now);
   const silent = !settings.botEnabled || conversation.status === "human" || outsideHours || overLimit;
-  deps.wa
-    .markReadAndTyping({ ...wa, messageId: message.id, typing: !silent })
-    .catch((err) => deps.log.warn("Okundu bilgisi gönderilemedi", err));
+  // Lina tamamen kapalıyken hiçbir şey gönderilmez, okundu da işaretlenmez: hat telefondaki WhatsApp Business
+  // uygulamasıyla ortak kullanılıyorsa (coexistence) ekip okunmamış rozetinden kime dönmesi gerektiğini görür.
+  if (settings.botEnabled) {
+    deps.wa
+      .markReadAndTyping({ ...wa, messageId: message.id, typing: !silent })
+      .catch((err) => deps.log.warn("Okundu bilgisi gönderilemedi", err));
+  }
 
   // Fotoğraf, bot kapalı ya da ekipte olsa da saklanır: ekip panelde görür. Günlük sınır aşıldıysa (spam)
   // fotoğraf indirilip saklanmaz, ses yazıya çevrilmez: depolama ve çeviri maliyeti sınırsız büyümesin.

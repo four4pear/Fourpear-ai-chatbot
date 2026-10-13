@@ -674,8 +674,10 @@ describe("sabit metinler ve ayarlar", () => {
     appDeps.memory = { model: "haiku", schedule: (customerId) => void scheduled.push(customerId) };
     try {
       await setSettings({ botEnabled: false });
+      const typingBefore = typing.length;
       await post(text("siparişim ne zaman gelir"));
       expect(sent).toHaveLength(0);
+      expect(typing).toHaveLength(typingBefore); // okundu da işaretlenmez: telefondaki okunmamış rozeti kalır
       const stored = await database.db.select().from(messages).where(eq(messages.text, "siparişim ne zaman gelir"));
       expect(stored).toHaveLength(1);
       expect(scheduled).toHaveLength(1);
