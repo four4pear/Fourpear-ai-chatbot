@@ -2,7 +2,7 @@ import type { NextFunction, Request, Response, Router } from "express";
 import { eq } from "drizzle-orm";
 import { DEFAULT_TEXTS } from "../core/texts.js";
 import type { DB } from "../db/client.js";
-import { resolveSettings, tenants, type FixedTextKey, type MemberRole, type TenantSettings } from "../db/schema.js";
+import { botIsOn, resolveSettings, tenants, type FixedTextKey, type MemberRole, type TenantSettings } from "../db/schema.js";
 import { param } from "./api.js";
 
 type Middleware = (req: Request, res: Response, next: NextFunction) => unknown;
@@ -46,7 +46,8 @@ export function registerSettingsRoutes(
   const view = (row: { settings: Parameters<typeof resolveSettings>[0]; notes: string }) => {
     const s = resolveSettings(row.settings);
     return {
-      botEnabled: s.botEnabled,
+      botEnabled: botIsOn(s, new Date()),
+      botUntil: s.botUntil,
       botHoursOnly: s.botHoursOnly,
       businessHours: s.businessHours,
       notes: row.notes,
@@ -86,6 +87,7 @@ export function registerSettingsRoutes(
     if (body.botEnabled !== undefined) {
       if (typeof body.botEnabled !== "boolean") return bad("Lina'nın açık/kapalı durumu geçersiz.");
       patch.botEnabled = body.botEnabled;
+      patch.botUntil = null; // panelden açıp kapatınca zamanlı kapanış iptal olur
       touched++;
     }
     if (body.botHoursOnly !== undefined) {

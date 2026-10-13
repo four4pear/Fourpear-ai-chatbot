@@ -1,7 +1,7 @@
 import type { NextFunction, Request, Response, Router } from "express";
 import { and, asc, count, desc, eq, isNull } from "drizzle-orm";
 import type { DB } from "../db/client.js";
-import { conversations, customers, handoffs, notifications, resolveSettings, teamQuestions, tenants, users, type MemberRole, type Notification } from "../db/schema.js";
+import { botIsOn, conversations, customers, handoffs, notifications, resolveSettings, teamQuestions, tenants, users, type MemberRole, type Notification } from "../db/schema.js";
 import { botClosedByHours } from "../core/conversation.js";
 import type { EventBus } from "../core/events.js";
 import { formatPhone } from "../lib/phone.js";
@@ -179,7 +179,7 @@ export function registerNotificationRoutes(
     ]);
     // Lina şu an müşterilere cevap veriyor mu? Panel konuşma etiketlerini ve üst uyarıyı buna göre yazar.
     const settings = resolveSettings(tenant?.settings);
-    const bot = !settings.botEnabled ? "off" : botClosedByHours(settings, deps.timeZone ?? "Europe/Istanbul", deps.now?.() ?? new Date()) ? "hours" : "on";
+    const bot = !botIsOn(settings, deps.now?.() ?? new Date()) ? "off" : botClosedByHours(settings, deps.timeZone ?? "Europe/Istanbul", deps.now?.() ?? new Date()) ? "hours" : "on";
     // Liste müşteriye göre birleşir (aynı müşterinin sorusu, talebi ve devri tek satırdır); rozet de aynı sayıyı gösterir.
     const handoffIds = new Set([...handedOff.map((h) => h.id), ...pending.map((p) => p.id)]);
     const everyone = new Set([...questions.map((q) => q.id), ...forwarded.map((n) => n.id), ...handoffIds]);

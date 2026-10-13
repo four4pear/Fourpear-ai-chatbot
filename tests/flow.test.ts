@@ -707,6 +707,18 @@ describe("sabit metinler ve ayarlar", () => {
     expect(sent).toHaveLength(2);
   });
 
+  it("zamanlı açılış: kapanış anı gelince Lina kendiliğinden susar (bot açık görünse de)", async () => {
+    const at = (minutes: number) => new Date(now.getTime() + minutes * 60_000).toISOString();
+    await setSettings({ botEnabled: true, botUntil: at(30) });
+    await post(text("merhaba"));
+    expect(sent).toHaveLength(1);
+    await setSettings({ botEnabled: true, botUntil: at(-1) }); // kapanış anı geçti
+    const typingBefore = typing.length;
+    await post(text("teşekkürler"));
+    expect(sent).toHaveLength(1);
+    expect(typing).toHaveLength(typingBefore);
+  });
+
   it("eski kayıtlardaki eksik ayarları varsayılanla tamamlar", async () => {
     await database.db.update(tenants).set({ settings: { botEnabled: true } }).where(eq(tenants.id, tenantId));
     await post(text("merhaba"));

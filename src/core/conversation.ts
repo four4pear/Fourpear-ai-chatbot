@@ -184,7 +184,7 @@ export async function ingestInbound(deps: Deps, event: InboundEvent): Promise<In
   const overStoreLimit = !overCustomerLimit && (await countStoreMessagesToday(db, tenant.id, deps.timeZone, now)) > settings.dailyStoreMessageLimit;
   const overLimit = overCustomerLimit || overStoreLimit;
   const outsideHours = botClosedByHours(settings, deps.timeZone, now);
-  const botOn = botAnswersTo(settings, message.from);
+  const botOn = botAnswersTo(settings, message.from, now);
   const silent = !botOn || conversation.status === "human" || outsideHours || overLimit;
   // Lina bu müşteriye kapalıyken hiçbir şey gönderilmez, okundu da işaretlenmez: hat telefondaki WhatsApp Business
   // uygulamasıyla ortak kullanılıyorsa (coexistence) ekip okunmamış rozetinden kime dönmesi gerektiğini görür.
@@ -275,7 +275,7 @@ export async function respond(deps: Deps, conversationId: string, ctl: RespondCo
   if (!row) return "gone";
   const { conversation, tenant, account, waId, chatRef } = row;
   const settings = resolveSettings(tenant.settings);
-  if (!botAnswersTo(settings, waId)) return "bot_disabled";
+  if (!botAnswersTo(settings, waId, now)) return "bot_disabled";
   if (conversation.status === "human") return "human_mode";
   if (botClosedByHours(settings, deps.timeZone, now)) return "outside_hours";
 

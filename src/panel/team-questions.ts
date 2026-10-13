@@ -75,7 +75,7 @@ export function registerTeamQuestionRoutes(
       .innerJoin(tenants, eq(tenants.id, conversations.tenantId))
       .innerJoin(customers, eq(customers.id, conversations.customerId))
       .where(eq(conversations.id, result.conversationId));
-    const relay = !row ? "lina" : !botAnswersTo(resolveSettings(row.settings), row.waId) ? "bot_off" : row.status === "human" ? "in_team" : "lina";
+    const relay = !row ? "lina" : !botAnswersTo(resolveSettings(row.settings), row.waId, new Date()) ? "bot_off" : row.status === "human" ? "in_team" : "lina";
     res.json({
       ok: true,
       taught: result.teach === "taught",

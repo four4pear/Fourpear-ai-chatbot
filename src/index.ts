@@ -4,7 +4,7 @@ import { and, eq, inArray, isNull } from "drizzle-orm";
 import { createApp } from "./app.js";
 import { loadConfig, whatsappConfigured } from "./config.js";
 import { exitIfLocked, openDatabase } from "./db/client.js";
-import { resolveSettings, shopifyStores, tenants } from "./db/schema.js";
+import { botIsOn, resolveSettings, shopifyStores, tenants } from "./db/schema.js";
 import { llmFromClient } from "./agents/runner.js";
 import { syncAllStores, syncStoreKnowledge } from "./knowledge/sync.js";
 import { archiveAllTenants } from "./archive/sync.js";
@@ -195,7 +195,7 @@ async function openPendingByHours() {
     const closed = !settings.botHoursOnly || botClosedByHours(settings, config.TZ, new Date());
     const wasClosed = hoursState.get(t.id) ?? true;
     hoursState.set(t.id, closed);
-    if (closed || !wasClosed || !settings.botEnabled) continue;
+    if (closed || !wasClosed || !botIsOn(settings, new Date())) continue;
     const waiting = await findUnansweredConversations(db, new Date(Date.now() - 72 * 60 * 60 * 1000), t.id);
     for (const id of waiting) scheduler.onCustomerMessage(id, { delayMs: 5_000, maxWaitMs: 5_000 });
     if (waiting.length) console.log(`Mesai başladı (${t.slug}): ${waiting.length} bekleyen konuşma cevaplanıyor.`);

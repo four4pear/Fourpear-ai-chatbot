@@ -29,6 +29,8 @@ export type DeliveryRule = { min: number; max: number };
 
 export type TenantSettings = {
   botEnabled: boolean;
+  /** Doluysa (ISO an) Lina bu andan sonra kendiliğinden kapanır; açık kalma süresi sınırlı denemeler için. */
+  botUntil: string | null;
   /** Açıksa Lina yalnızca mesai saatlerinde cevap verir; dışındaki mesajlar açılışta cevaplanır. */
   botHoursOnly: boolean;
   /** Bir müşterinin günde en fazla kaç mesajına cevap verilir (spam ve bot döngüsü koruması). */
@@ -80,6 +82,7 @@ export type TenantSettings = {
 
 export const defaultTenantSettings: TenantSettings = {
   botEnabled: true,
+  botUntil: null,
   botHoursOnly: false,
   dailyMessageLimit: 200,
   dailyStoreMessageLimit: 3000,
@@ -96,9 +99,14 @@ export const defaultTenantSettings: TenantSettings = {
   returnsPlaybook: "",
 };
 
+/** Lina şu an açık mı? Anahtar açık ve (varsa) kapanış anı gelmemiş olmalı. */
+export function botIsOn(settings: Pick<TenantSettings, "botEnabled" | "botUntil">, now: Date): boolean {
+  return settings.botEnabled && (!settings.botUntil || now.getTime() < Date.parse(settings.botUntil));
+}
+
 /** Lina bu müşteriye cevap verir mi? Açıkken herkese; kapalıyken yalnızca test numaralarına. */
-export function botAnswersTo(settings: Pick<TenantSettings, "botEnabled" | "testNumbers">, waId: string): boolean {
-  return settings.botEnabled || settings.testNumbers.includes(waId);
+export function botAnswersTo(settings: Pick<TenantSettings, "botEnabled" | "botUntil" | "testNumbers">, waId: string, now: Date): boolean {
+  return botIsOn(settings, now) || settings.testNumbers.includes(waId);
 }
 
 /** Eski kayıtlarda eksik olabilecek alanları varsayılanlarla tamamlar. */
