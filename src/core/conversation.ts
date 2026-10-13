@@ -631,7 +631,19 @@ type HistoryRow = Pick<Message, "sender" | "text" | "type"> & {
   image?: { mimeType: string; data: Buffer } | null;
   seq?: number;
   meta?: Message["meta"];
+  createdAt?: Date;
 };
+
+/** Art arda müşteri mesajları arasında bu kadar süre geçtiyse araya zaman ayracı konur (ekip eskileri cevaplamış olabilir). */
+const STALE_GAP_MS = 30 * 60_000;
+
+/** "45 dakika", "3 saat", "2 gün": ayraçtaki süre. */
+function gapLabel(ms: number): string {
+  const minutes = Math.round(ms / 60_000);
+  if (minutes < 120) return `${minutes} dakika`;
+  const hours = Math.round(minutes / 60);
+  return hours < 48 ? `${hours} saat` : `${Math.round(hours / 24)} gün`;
+}
 
 /**
  * Lina cevabı hazırlarken gelen müşteri mesajı, cevaptan önce kaydedilir ama o cevap onu görmemiştir
@@ -677,6 +689,7 @@ async function loadHistory(db: DB, conversationId: string, limit: number): Promi
  */
 export function toClaudeMessages(rows: HistoryRow[]): Anthropic.MessageParam[] {
   const out: { role: "user" | "assistant"; content: Anthropic.ContentBlockParam[] }[] = [];
+  let previousAt: Date | undefined;
   for (const row of placeLateMessages(rows)) {
     // Panel notları iç nottur; tepki/sticker cevap beklemez. Otomatik mesajlar (sabit metinler)
     // müşterinin gördüğü mesajlardır: Lina tekrar etmesin diye geçmişte yer alır.
@@ -709,10 +722,14 @@ export function toClaudeMessages(rows: HistoryRow[]): Anthropic.MessageParam[] {
     }
 
     const last = out.at(-1);
+    const gap = row.createdAt && previousAt ? row.createdAt.getTime() - previousAt.getTime() : 0;
+    if (row.createdAt) previousAt = row.createdAt;
     if (last?.role !== role) {
       out.push({ role, content: blocks });
       continue;
     }
+    // Müşteri uzun aradan sonra yazdıysa: öncekiler eskidir, ekip telefondan cevaplamış olabilir (Lina göremez).
+    if (role === "user" && gap > STALE_GAP_MS) blocks.unshift({ type: "text", text: `[— aradan ${gapLabel(gap)} geçti; aşağıdakiler yeni yazılanlar —]` });
     // Art arda mesajlar tek yazı gibi: ardışık metinler satır satır tek blokta birleşir.
     for (const block of blocks) {
       const prev = last.content.at(-1);

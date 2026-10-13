@@ -346,6 +346,7 @@ Canlı denemede Lina'nın cevapları çok uzun ve fazla kesindi: ürün tükenmi
 - **Kısa:** cevap en fazla 2-3 kısa cümle (~40 kelime); sorulmayan ayrıntı, seçenek listesi ve "Kontrol ettim" gibi girişler yok. İade/başvuru adımları ve müşterinin açıkça istediği ayrıntı istisnadır.
 - **Yumuşak:** kayıtlardaki durum "görünüyor" diye söylenir; "maalesef olmayacak", "kesinlikle hayır" gibi hükümler yok.
 - **Bilgi yok = "yok" demek değil:** üretim durumu, ne zaman geleceği, yeniden stok, ön sipariş açılıp açılmayacağı kayıtlarda yoktur. Ürün uzmanı "EKİBE SORULMALI" yazar; Lina ask_team ile sorar, müşteriye kontrol ettiğini söyler. "Tükendi" ürünün üretimde olmadığı anlamına gelmez.
+- **Eski mesajlar ayrı gösterilir:** Lina son cevabından beri gelen bütün müşteri mesajlarını tek paket okuyordu; Lina kapalıyken ya da ekip telefondan cevaplarken biriken saatler öncesinin mesajlarına da cevap veriyordu. Artık müşteri mesajları arasında 30 dakikadan uzun ara varsa araya "[— aradan 64 dakika geçti; aşağıdakiler yeni yazılanlar —]" ayracı konur; Lina yalnızca ayraçtan sonrakilere cevap verir (ekip eskileri telefondan cevaplamış olabilir, Lina göremez).
 - **"Bana şöyle söylemişlerdi":** müşteriyi yalanlamaz, tartışmaz; ne söylendiğini ekibe doğrulatır.
 
 ## MAIUS ayarları

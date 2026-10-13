@@ -125,6 +125,36 @@ describe("geçmiş dönüştürme", () => {
   });
 });
 
+describe("eski ve yeni müşteri mesajları", () => {
+  const at = (hhmm: string) => new Date(`2026-10-13T${hhmm}:00+03:00`);
+  it("müşteri mesajları arasında 30 dakikadan uzun ara varsa araya zaman ayracı konur", () => {
+    const out = toClaudeMessages([
+      { sender: "customer", text: "Ne kadarlıkmış sepetim", type: "text", createdAt: at("18:04") },
+      { sender: "customer", text: "Görünüyor mu", type: "text", createdAt: at("18:05") },
+      { sender: "customer", text: "Bu ceketi ekler misiniz", type: "text", createdAt: at("19:09") },
+    ]);
+    expect(out).toEqual([
+      {
+        role: "user",
+        content: [{ type: "text", text: "Ne kadarlıkmış sepetim\nGörünüyor mu\n[— aradan 64 dakika geçti; aşağıdakiler yeni yazılanlar —]\nBu ceketi ekler misiniz" }],
+      },
+    ]);
+  });
+
+  it("kısa aralarda ayraç yok; saat bilgisi olmayan mesajlarda da ayraç yok", () => {
+    const quick = toClaudeMessages([
+      { sender: "customer", text: "a", type: "text", createdAt: at("10:00") },
+      { sender: "customer", text: "b", type: "text", createdAt: at("10:29") },
+    ]);
+    expect(quick[0]!.content).toEqual([{ type: "text", text: "a\nb" }]);
+    const gapHours = toClaudeMessages([
+      { sender: "customer", text: "eski", type: "text", createdAt: at("08:00") },
+      { sender: "customer", text: "yeni", type: "text", createdAt: at("19:00") },
+    ]);
+    expect(JSON.stringify(gapHours)).toContain("aradan 11 saat geçti");
+  });
+});
+
 describe("gün başlangıcı", () => {
   it("İstanbul saatine göre gece yarısını bulur", () => {
     // 2026-09-25 01:30 İstanbul = 2026-09-24 22:30 UTC
