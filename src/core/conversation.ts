@@ -5,6 +5,7 @@ import {
   conversations,
   customers,
   handoffs,
+  botAnswersTo,
   media,
   messages,
   resolveSettings,
@@ -183,10 +184,11 @@ export async function ingestInbound(deps: Deps, event: InboundEvent): Promise<In
   const overStoreLimit = !overCustomerLimit && (await countStoreMessagesToday(db, tenant.id, deps.timeZone, now)) > settings.dailyStoreMessageLimit;
   const overLimit = overCustomerLimit || overStoreLimit;
   const outsideHours = botClosedByHours(settings, deps.timeZone, now);
-  const silent = !settings.botEnabled || conversation.status === "human" || outsideHours || overLimit;
-  // Lina tamamen kapalıyken hiçbir şey gönderilmez, okundu da işaretlenmez: hat telefondaki WhatsApp Business
+  const botOn = botAnswersTo(settings, message.from);
+  const silent = !botOn || conversation.status === "human" || outsideHours || overLimit;
+  // Lina bu müşteriye kapalıyken hiçbir şey gönderilmez, okundu da işaretlenmez: hat telefondaki WhatsApp Business
   // uygulamasıyla ortak kullanılıyorsa (coexistence) ekip okunmamış rozetinden kime dönmesi gerektiğini görür.
-  if (settings.botEnabled) {
+  if (botOn) {
     deps.wa
       .markReadAndTyping({ ...wa, messageId: message.id, typing: !silent })
       .catch((err) => deps.log.warn("Okundu bilgisi gönderilemedi", err));
@@ -206,7 +208,7 @@ export async function ingestInbound(deps: Deps, event: InboundEvent): Promise<In
   // Fotoğraf kaydedildikten sonra: panel mesajı açtığında fotoğraf da hazır olsun.
   deps.events?.publish(tenant.id, { type: "message", conversationId });
 
-  if (!settings.botEnabled) {
+  if (!botOn) {
     // Lina kapalıyken de müşteri kartı çıkar (gözlem modu): müşteri susunca konuşma okunup kart güncellenir.
     scheduleMemoryUpdate(deps, tenant, conversation.customerId, conversationId);
     return { outcome: "bot_disabled", conversationId };
@@ -273,7 +275,7 @@ export async function respond(deps: Deps, conversationId: string, ctl: RespondCo
   if (!row) return "gone";
   const { conversation, tenant, account, waId, chatRef } = row;
   const settings = resolveSettings(tenant.settings);
-  if (!settings.botEnabled) return "bot_disabled";
+  if (!botAnswersTo(settings, waId)) return "bot_disabled";
   if (conversation.status === "human") return "human_mode";
   if (botClosedByHours(settings, deps.timeZone, now)) return "outside_hours";
 

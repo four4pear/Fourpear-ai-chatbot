@@ -3,7 +3,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { answerTeamQuestion } from "../core/team-questions.js";
 import type { EventBus } from "../core/events.js";
 import type { DB } from "../db/client.js";
-import { conversations, customers, resolveSettings, teamQuestions, tenants, users, type MemberRole } from "../db/schema.js";
+import { botAnswersTo, conversations, customers, resolveSettings, teamQuestions, tenants, users, type MemberRole } from "../db/schema.js";
 import { formatPhone } from "../lib/phone.js";
 import { isUuid, param, type Locals } from "./api.js";
 import { LIST_LIMIT } from "./notifications.js";
@@ -70,11 +70,12 @@ export function registerTeamQuestionRoutes(
     deps.events?.publish(tenantId, { type: "team_question", conversationId: result.conversationId });
     // Lina cevabı müşteriye iletebilir mi? Konuşma ekipteyse ya da Lina kapalıysa iletmez; ekran gerçeği söylesin.
     const [row] = await db
-      .select({ status: conversations.status, settings: tenants.settings })
+      .select({ status: conversations.status, settings: tenants.settings, waId: customers.waId })
       .from(conversations)
       .innerJoin(tenants, eq(tenants.id, conversations.tenantId))
+      .innerJoin(customers, eq(customers.id, conversations.customerId))
       .where(eq(conversations.id, result.conversationId));
-    const relay = !row ? "lina" : !resolveSettings(row.settings).botEnabled ? "bot_off" : row.status === "human" ? "in_team" : "lina";
+    const relay = !row ? "lina" : !botAnswersTo(resolveSettings(row.settings), row.waId) ? "bot_off" : row.status === "human" ? "in_team" : "lina";
     res.json({
       ok: true,
       taught: result.teach === "taught",

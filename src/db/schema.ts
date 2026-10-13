@@ -59,6 +59,11 @@ export type TenantSettings = {
    * süre aşılırsa ekibe gecikme bildirimi düşer. Boşsa kural yok.
    */
   deliveryDays: DeliveryRule | null;
+  /**
+   * Test numaraları (905321234567): Lina kapalıyken (botEnabled=false) yalnızca bu numaralara cevap verir;
+   * diğer müşteriler için gözlem modunda kalır (mesajlar ve müşteri kartları oluşur). Lina açıkken etkisizdir.
+   */
+  testNumbers: string[];
   /** Müşterinin iade/değişim talebini kendisi açtığı form (ör. Kolay İade); boşsa yok. */
   returnsFormUrl: string;
   /**
@@ -85,10 +90,16 @@ export const defaultTenantSettings: TenantSettings = {
   maxReplyWaitSeconds: 180,
   returnsFormUrl: "",
   linkedTenantIds: [],
+  testNumbers: [],
   deliveryDays: null,
   phoneCountryCode: "90",
   returnsPlaybook: "",
 };
+
+/** Lina bu müşteriye cevap verir mi? Açıkken herkese; kapalıyken yalnızca test numaralarına. */
+export function botAnswersTo(settings: Pick<TenantSettings, "botEnabled" | "testNumbers">, waId: string): boolean {
+  return settings.botEnabled || settings.testNumbers.includes(waId);
+}
 
 /** Eski kayıtlarda eksik olabilecek alanları varsayılanlarla tamamlar. */
 export function resolveSettings(settings: Partial<TenantSettings> | null | undefined): TenantSettings {

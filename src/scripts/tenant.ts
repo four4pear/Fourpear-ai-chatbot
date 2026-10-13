@@ -22,6 +22,7 @@
  *   npm run tenant -- upsert --slug maius --returns-url https://iade.betulsaday.com   (Lina'nın vereceği iade formu)
  *   npm run tenant -- upsert --slug maius --delivery 7-14   (katı teslimat süresi: sipariş tarihinden itibaren 7-14 gün; off kaldırır)
  *   npm run tenant -- upsert --slug maius --bot off   (Lina cevap yazmaz; mesajlar ve müşteri kartları yine oluşur) | --bot on
+ *   npm run tenant -- upsert --slug maius --bot off --test-numbers 905321234567[,905...]   (Lina kapalıyken yalnızca bu numaralara cevap verir; off listeyi boşaltır)
  *   npm run tenant -- upsert --slug maius --phone-country 90   (Shopify'da ülke kodsuz yazılan telefonların ülkesi)
  *   npm run tenant -- returns --slug maius --url https://iade.betulsaday.com/mcp.php --store maius
  *        (iade sistemi bağlantısı; anahtar gizli sorulur, bağlantı test edilir)
@@ -65,6 +66,7 @@ import { createInstallToken, isValidShopDomain } from "../shopify/oauth.js";
 import { currentTexts, recordSnapshot, refreshCampaignDoc, versionsByTitle, type RecordResult } from "../archive/archive.js";
 import { parseProductsJson, productSnapshot, siteTextsOf } from "../archive/storefront.js";
 import { archiveTenant, describeRun } from "../archive/sync.js";
+import { maskPhone, normalizePhone } from "../lib/phone.js";
 import { ZERNIO_PREFIX } from "../whatsapp/zernio.js";
 import { listZernioAccounts, registerZernioWebhook } from "../whatsapp/zernio-admin.js";
 
@@ -101,6 +103,7 @@ const { values: args } = parseArgs({
     with: { type: "string" },
     delivery: { type: "string" },
     bot: { type: "string" },
+    "test-numbers": { type: "string" },
     test: { type: "boolean" },
     file: { type: "string" },
   },
@@ -181,8 +184,16 @@ try {
       throw new Error("--delivery 7-14 biçiminde (en az-en çok gün) ya da off olmalı");
     }
     if (args.bot !== undefined && args.bot !== "on" && args.bot !== "off") throw new Error("--bot on ya da off olmalı");
+    // --test-numbers: telefonlar ülke koduyla ya da 0532… biçiminde yazılabilir; off listeyi boşaltır.
+    let testNumbers: string[] | undefined;
+    if (args["test-numbers"] !== undefined) {
+      const country = resolveSettings(existing?.settings).phoneCountryCode;
+      testNumbers = args["test-numbers"] === "off" ? [] : args["test-numbers"].split(",").map((n) => normalizePhone(n.trim(), country));
+      if (testNumbers.some((n) => !/^\d{10,15}$/.test(n))) throw new Error("--test-numbers geçersiz: 905321234567 biçiminde, virgülle ayırarak yazın (ya da off)");
+    }
     const settingsChange = {
       ...(args.hours && { businessHours: parseHours(args.hours) }),
+      ...(testNumbers && { testNumbers: [...new Set(testNumbers)] }),
       ...(args.bot && { botEnabled: args.bot === "on" }),
       ...(args.delivery && { deliveryDays: deliveryMatch ? { min: Number(deliveryMatch[1]), max: Number(deliveryMatch[2]) } : null }),
       ...(returnsUrl !== undefined && { returnsFormUrl: returnsUrl }),
@@ -204,7 +215,7 @@ try {
     const hours = settings.businessHours;
     console.log(
       `Mağaza kaydedildi: ${tenant!.name} (${tenant!.slug}), mesai ${hours.days.join(",")} ${hours.start}-${hours.end}, ` +
-        `notlar ${tenant!.notes.length} karakter, iade formu ${settings.returnsFormUrl || "yok"}, Lina ${settings.botEnabled ? "açık" : "KAPALI (cevap yazmaz)"}`,
+        `notlar ${tenant!.notes.length} karakter, iade formu ${settings.returnsFormUrl || "yok"}, Lina ${settings.botEnabled ? "açık" : `KAPALI (cevap yazmaz${settings.testNumbers.length ? `; yalnızca ${settings.testNumbers.length} test numarasına cevap verir: ${settings.testNumbers.map(maskPhone).join(", ")}` : ""})`}`,
     );
   } else if (command === "returns") {
     // İade sistemi bağlantısı (yalnızca okuma). Anahtar gizli sorulur; komut satırında dolaşmaz.

@@ -691,6 +691,22 @@ describe("sabit metinler ve ayarlar", () => {
     }
   });
 
+  it("Lina kapalıyken yalnızca test numarasına cevap verir; diğer müşteriler gözlem modunda kalır", async () => {
+    await setSettings({ botEnabled: false, testNumbers: ["905559998877"] });
+    const typingBefore = typing.length;
+    await post(text("siparişim ne zaman gelir")); // CUSTOMER test numarası değil
+    expect(sent).toHaveLength(0);
+    expect(typing).toHaveLength(typingBefore);
+    await setSettings({ botEnabled: false, testNumbers: [CUSTOMER] });
+    await post(text("merhaba"));
+    expect(sent).toHaveLength(1);
+    expect(sent[0]!.to).toBe(CUSTOMER);
+    // Test numarası listesi Lina açıkken etkisizdir: herkese cevap verilir.
+    await setSettings({ botEnabled: true, testNumbers: ["905559998877"] });
+    await post(text("teşekkürler"));
+    expect(sent).toHaveLength(2);
+  });
+
   it("eski kayıtlardaki eksik ayarları varsayılanla tamamlar", async () => {
     await database.db.update(tenants).set({ settings: { botEnabled: true } }).where(eq(tenants.id, tenantId));
     await post(text("merhaba"));

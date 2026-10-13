@@ -195,7 +195,7 @@ Zernio hattında hesap `zernio:<hesap kimliği>` olarak saklanır, API anahtarı
 
 Mağaza "siparişlerin hepsi 7-14 gün içinde teslim edilir" gibi bir kural koyduysa: `node dist/scripts/tenant.js upsert --slug betulsaday --delivery 7-14` (ya da panelde Ayarlar → Teslimat süresi). Lina her yerde yalnızca bu süreyi söyler; süre aşılırsa ekibe gecikme bildirimi düşer ([docs/lina-davranis.md §18](docs/lina-davranis.md)).
 
-Hatta önce yalnızca gözlem yapılacaksa (Lina cevap yazmaz; mesajlar ve müşteri kartları oluşur): `node dist/scripts/tenant.js upsert --slug betulsaday --bot off`. Hazır olunca `--bot on` ya da panelde Ayarlar → Lina anahtarı. **Zernio hattını bağlamadan önce kapatın**, yoksa ilk mesajdan itibaren Lina cevap yazar.
+Hatta önce yalnızca gözlem yapılacaksa (Lina cevap yazmaz; mesajlar ve müşteri kartları oluşur): `node dist/scripts/tenant.js upsert --slug betulsaday --bot off`. Hazır olunca `--bot on` ya da panelde Ayarlar → Lina anahtarı. Kapalıyken yalnızca bir kişiye cevap verdirmek için (deneme): `--bot off --test-numbers 905321234567`. **Zernio hattını bağlamadan önce kapatın**, yoksa ilk mesajdan itibaren Lina cevap yazar.
 
 ### Birden çok marka tek hatta
 
