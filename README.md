@@ -191,6 +191,16 @@ Meta işletme doğrulaması beklemeden bağlanmak için [Zernio](https://zernio.
 
 Zernio hattında hesap `zernio:<hesap kimliği>` olarak saklanır, API anahtarı şifreli tutulur; cevap için gereken konuşma kimliği `customers.channel_ref` alanındadır. Zernio'nun "yazıyor…" ucu belgelerde ayrıntılı olmadığı için reddedilirse bir kez uyarı verilip bırakılır.
 
+### Birden çok marka tek hatta
+
+Aynı WhatsApp hattından birden çok mağazaya (marka) hizmet verilecekse her marka ayrı mağaza olarak kurulur (kendi alan adı ve Shopify bağlantısı), hat ana mağazaya bağlanır ve diğerleri ona **bağlanır**:
+```bash
+node dist/scripts/tenant.js upsert --slug maius --name MAIUS --domain maiusonline.com --hours "1,2,3,4,5,6 10:00-17:00"
+node dist/scripts/tenant.js link --slug betulsaday --with maius      # Lina betulsaday konuşmalarında MAIUS'u da okur
+node dist/scripts/tenant.js zernio --slug betulsaday                 # hattı ana mağazaya bağlar
+```
+Ayrıntı: [docs/lina-davranis.md §17](docs/lina-davranis.md).
+
 ## Davranış kuralları
 
 Tamamı [docs/lina-davranis.md](docs/lina-davranis.md) içinde; kod bu belgeye göre yazılır. Özet:

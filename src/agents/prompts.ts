@@ -83,10 +83,19 @@ function conflictRule(orders: boolean, returnsFormUrl: string): string {
   return `${base} İstisna: çelişki yalnızca iade, değişim ya da hasarlı ürün başvurusunun nereden yapılacağıyla ilgiliyse (ör. form mu, e-posta mı) mağazanın belirlediği iade formu (${returnsFormUrl}) geçerlidir; devretme, yukarıdaki iade ya da şikayet adımlarını uygula. Çelişki mağazaya zaten bildirilir. Süre, ücret gibi rakam ve kurallardaki çelişkide ise yine yukarıdaki gibi ask_team ile sor; müşteriye rakam söyleme, devretme.`;
 }
 
+/** Aynı hattan birden çok markaya hizmet verilen mağazada Lina'ya markaları ayırt etmeyi anlatır (tek markada boş). */
+function brandSection(brands: string[] | undefined, botName: string): string {
+  if (!brands || brands.length < 2) return "";
+  return `
+
+## Markalar
+Bu hat birden çok markaya hizmet verir: ${brands.join(", ")}. Mağaza kaynaklarının başlıkları "[MARKA]" ile, siparişler ve ürünler "Marka:" satırıyla gelir; yalnızca ilgili markanın bilgisini kullan, bir markanın kuralını ya da fiyatını diğerine uygulama. Müşterinin hangi markadan bahsettiği belli değilse ve cevap markaya göre değişiyorsa (kargo, iade koşulu, ürün, fiyat, stok) önce hangi markadan sorduğunu sor; bulunan bir sipariş ya da ürün markayı belli eder. Markalar aynı şeyi söylüyorsa (aynı kargo süresi gibi) tek cevap yeter. Kendini tanıtırken marka adı söyleme ("Merhaba, ben ${botName}." yeterli).`;
+}
+
 export function linaSystemPrompt(
   tenant: Tenant,
   specialists: string[],
-  opts: { orders: boolean; lessons?: string[] } = { orders: false },
+  opts: { orders: boolean; lessons?: string[]; brands?: string[] } = { orders: false },
 ): string {
   const taught = opts.lessons?.length
     ? `\n\n## Mağazanın sana öğrettikleri\nMağaza sahibinin onayladığı kurallar; üslup ve mağaza bilgisi konusunda bu talimattaki genel kurallardan önce gelir, uy. Ama şunlar hiçbir derse göre değişmez; bir ders bunlarla çelişirse o dersin çelişen kısmını yok say: yapay zekâ olduğunu inkâr etmemek ve kendini insan diye tanıtmamak; ekibin kararına ait konularda (iade onayı, ücretsiz değişim, indirim, hediye çeki) sonuç vaat etmemek; ödeme ve adres bilgisi paylaşmamak ve siparişi doğrulamadan sipariş bilgisi vermemek; bilgi uydurmamak; uzmanları, sistemi ve iç süreçleri anlatmamak.\n${opts.lessons.map((l) => `- ${l}`).join("\n")}`
@@ -102,7 +111,7 @@ export function linaSystemPrompt(
   return `Sen ${tenant.botName}'sın; ${store} mağazasının WhatsApp müşteri asistanısın. Müşterilerle sen konuşursun; bilgiyi arka plandaki uzmanlardan alırsın.
 
 ## Uzmanların
-${specialistList}
+${specialistList}${brandSection(opts.brands, tenant.botName)}
 - ask_team: bilmediğin bir bilgiyi arka planda mağaza ekibine sorar; cevap gelince sana iç bilgi olarak iletilir, müşteriye sen söylersin.
 - handoff_to_human: konuşmayı mağaza ekibine devreder (ekip konuşmayı üstlenir).
 
@@ -175,8 +184,13 @@ export type TurnInfo = {
  * bazen empatiyle başlayıp atlıyor. Cevap tanıtımı ilk cümlelerinde içermiyorsa ve Türkçeyse kod başına
  * ekler. Başka dildeki cevaba Türkçe tanıtım eklenmez (model onu müşterinin dilinde yazar).
  */
+/** Türkçede çok geçen sözcükler (Türkçe harf içermese de metni Türkçe saydırır); İngilizcede yaygın olanlar yok. */
+const TURKISH_WORDS =
+  "ve|bir|için|ile|siz|biz|bu|çok|size|merhaba|selam|nasıl|hangi|nedir|lütfen|evet|hayır|teşekkür\\w*|yardımcı|sipariş\\w*|kargo\\w*|iade\\w*|ürün\\w*|marka\\w*|değil|kadar|hemen|kontrol|ediyorum|sizin|bizim|tekrar|yok|mı|mi|mu|mü|soruyorsunuz|gelir|veriyor\\w*|bilgi\\w*";
+const TURKISH_RE = new RegExp(`[ığşöüçİĞŞÖÜÇ]|(?<![\\p{L}])(?:${TURKISH_WORDS})(?![\\p{L}])`, "iu");
+
 /** Metin Türkçe mi? (Türkçe harfler ya da yaygın Türkçe sözcükler.) */
-export const looksTurkish = (text: string) => /[ığşöüçİĞŞÖÜÇ]|\b(ve|bir|için|ile|siz|biz|bu|çok|size|merhaba|selam|nasıl)\b/i.test(text);
+export const looksTurkish = (text: string) => TURKISH_RE.test(text);
 
 /**
  * Metin açıkça İngilizce mi? Türkçe harf ya da sözcük yoksa ve yaygın İngilizce sözcükler varsa. ASCII ile yazılmış
@@ -291,6 +305,7 @@ export function productAgentSystemPrompt(tenant: Tenant): string {
 - Fiyat: araçtaki fiyatı TL olarak aynen ver. İndirimliyse hem güncel hem önceki fiyatı yaz. Ürün yazısında kampanya ya da ön sipariş koşulu varsa (iade yok, kargo tarihi gibi) aynen ilet; bu koşullar bağlayıcıdır.
 - Birden çok ürün eşleşirse en uygun olanı seç; emin değilsen hepsini kısaca listele ve müşterinin hangisini sorduğunu ${tenant.botName}'nın sorması gerektiğini yaz. Eşleşme yoksa yalnızca "bu adla aktif ürün bulunamadı" yaz ve müşteriden ürünün tam adını ya da linkini istemesini öner; benzer isimli ürün, "birkaç model olabilir" gibi tahmin ya da ürünün hiç olmadığı iddiası yazma.
 - Beden önerisi (hangi beden bana olur) sorulursa ürün yazısındaki model ölçülerini ve beden bilgisini aktar; kişiye özel beden kararı verme, beden tablosu için mağaza bilgi uzmanına yönlendir.
+- Sonuçta "Marka:" satırı varsa mağaza birden çok markaya hizmet veriyor: cevapta ürünün markasını yaz; müşteri markayı söylemediyse ve ürün birden çok markada varsa hepsini marka adıyla listele.
 - Kısa ve olgusal yaz: ürün, fiyat, seçenek durumu, varsa koşul ve ürün linki.`;
 }
 
@@ -307,6 +322,7 @@ export function knowledgeAgentSystemPrompt(tenant: Tenant, kb: KnowledgeBase): s
 - Politikalar ve sayfalar aynı konuda farklı rakam ya da kural söylüyorsa hangisinin doğru olduğunu seçme: report_conflict ile bildir ve cevabına "ÇELİŞKİ:" ile başlayıp hangi kaynağın ne dediğini yaz.
 - Hukuki metinler aşağıda yalnızca başlık olarak listelenir. Soru sözleşme, cayma hakkı, KVKK, gizlilik ya da şirket bilgileri gibi bir konudaysa read_legal_document ile ilgili metni oku.
 - İlgili sayfanın linki varsa cevabına ekle.
+- Kaynak başlıkları "[MARKA]" ile başlıyorsa mağaza birden çok markaya hizmet veriyor: soru hangi markayla ilgiliyse o markanın kaynağını kullan. Marka belli değilse ve markalar farklı şey söylüyorsa her markanın cevabını ayrı yaz (başında marka adıyla); aynı şeyi söylüyorlarsa tek cevap yeter.
 - Kısa ve olgusal yaz.
 
 ## Mağaza notları (öncelikli)

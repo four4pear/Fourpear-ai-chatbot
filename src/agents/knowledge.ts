@@ -43,7 +43,13 @@ export function legalDocumentTool(ctx: AgentContext, tenant: Tenant, kb: Knowled
       },
     },
     run: async (input) => {
-      const doc = await readLegalDoc(ctx.db, tenant.id, legalInput.parse(input).doc_id);
+      // Çok markalı hatta belge hangi markanındaysa o mağazada bulunur; başka mağazanın belgesine kimlikle erişilemez.
+      const docId = legalInput.parse(input).doc_id;
+      let doc = null;
+      for (const id of ctx.tenantIds ?? [tenant.id]) {
+        doc = await readLegalDoc(ctx.db, id, docId);
+        if (doc) break;
+      }
       if (!doc) throw new Error("Belge bulunamadı");
       return `${doc.title}${doc.url ? ` (${doc.url})` : ""}\n\n${doc.content}`;
     },

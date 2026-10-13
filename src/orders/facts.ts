@@ -254,6 +254,7 @@ export function buildOrderSheet(
     verifiedBy === "name"
       ? `SİPARİŞ ${order.name} (doğrulandı: müşterinin yazdığı ad soyad siparişle eşleşiyor)`
       : `SİPARİŞ ${order.name} (doğrulandı: müşterinin WhatsApp numarasıyla eşleşiyor)`,
+    ...(order.brand ? [`Marka: ${order.brand}`] : []),
     `Sipariş tarihi: ${longDate(orderDay)} · Bugün: ${longDate(today)}`,
     `Durum: ${statusLabel(order, active, waiting, timeZone)}`,
     "",
@@ -343,5 +344,5 @@ export function orderSummaryLine(order: OrderFacts, timeZone: string): string {
   const active = order.items.filter((i) => i.quantity > 0);
   const waiting = active.filter((i) => i.unfulfilled > 0);
   const titles = active.slice(0, 3).map((i) => i.title).join(", ") + (active.length > 3 ? ` ve ${active.length - 3} ürün daha` : "");
-  return `${order.name} · ${longDate(localDate(order.createdAt, timeZone))} · ${statusLabel(order, active, waiting, timeZone)} · ${titles}`;
+  return `${order.name}${order.brand ? ` (${order.brand})` : ""} · ${longDate(localDate(order.createdAt, timeZone))} · ${statusLabel(order, active, waiting, timeZone)} · ${titles}`;
 }

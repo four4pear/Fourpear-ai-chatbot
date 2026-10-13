@@ -123,6 +123,8 @@ async function runTest(source: Deps, db: DB, tenantId: string, history: Turn[], 
     // Test numarası hiçbir siparişle eşleşmez; gerçek siparişlerde Lina doğrulama ister, bilgi paylaşmaz.
     orderSourceFor: demo ? async () => demoOrderSource(() => customerPhone) : source.orderSourceFor,
     returnsFor: demo ? async () => demoReturnsProvider() : source.returnsFor,
+    // Deneme siparişleri ve ürünleri tek markadır; bağlı mağazalar eklenirse çiftlenmesin.
+    singleBrand: demo || source.singleBrand,
     productSourceFor: demo ? async () => demoProductSource() : source.productSourceFor,
   };
   // Kart varsa test müşterisi önceden kayıtlı; kart, son cevaptan sonraki mesajlara kadar güncel sayılır.

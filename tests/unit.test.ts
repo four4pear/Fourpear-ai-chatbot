@@ -7,6 +7,7 @@ import { loadConfig, whatsappConfigured } from "../src/config.js";
 import { businessStatus } from "../src/core/business-hours.js";
 import { startOfToday, toClaudeMessages } from "../src/core/conversation.js";
 import { decryptSecret, encryptSecret } from "../src/lib/crypto.js";
+import { ensureIntro, looksEnglish, looksTurkish } from "../src/agents/prompts.js";
 import { maskPhone, normalizePhone, samePhone } from "../src/lib/phone.js";
 import { splitMessage } from "../src/whatsapp/client.js";
 import { isValidSignature } from "../src/whatsapp/signature.js";
@@ -226,3 +227,19 @@ describe("maskPhone", () => {
     expect(maskPhone("12")).toBe("***");
   });
 });
+
+describe("Türkçe ve İngilizce tespiti", () => {
+  it("Türkçe harf içermeyen ama Türkçe cümleler de Türkçe sayılır (ilk temas tanıtımı eklenir)", () => {
+    expect(ensureIntro("Hangi markadan soruyorsunuz?", "Lina")).toBe("Merhaba, ben Lina. Hangi markadan soruyorsunuz?");
+    expect(ensureIntro("Siparisiniz kargoda, takip numarasi asagida.", "Lina").startsWith("Merhaba, ben Lina.")).toBe(true);
+    expect(ensureIntro("Sipariş numaranızı yazar mısınız?", "Lina")).toBe("Merhaba, ben Lina. Sipariş numaranızı yazar mısınız?");
+  });
+
+  it("İngilizce cevaba Türkçe tanıtım eklenmez; Türkçe sayılmaz", () => {
+    expect(ensureIntro("Your order is on its way, please check the tracking link.", "Lina")).toBe("Your order is on its way, please check the tracking link.");
+    expect(looksTurkish("Where is my order please?")).toBe(false);
+    expect(looksEnglish("Where is my order please?")).toBe(true);
+    expect(looksEnglish("kargo kac gunde gelir")).toBe(false);
+  });
+});
+

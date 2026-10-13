@@ -45,6 +45,8 @@ export type OrderFacts = {
   names: string[];
   items: OrderItem[];
   shipments: Shipment[];
+  /** Çok markalı hatta siparişin hangi markaya (mağazaya) ait olduğu; tek mağazada boş. */
+  brand?: string;
 };
 
 /** Mağazanın siparişleri: Shopify ya da testte/simülatörde sahte kaynak. */

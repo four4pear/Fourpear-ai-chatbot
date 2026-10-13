@@ -13,6 +13,7 @@
  *   npm run tenant -- docs --slug maius          (Lina'nın kullandığı kaynaklar)
  *   npm run tenant -- doc --slug maius --id 3f2a --off | --on | --auto
  *   npm run tenant -- alerts --slug maius        (bilgi çelişkisi uyarıları)
+ *   npm run tenant -- link --slug betulsaday --with maius [--off]   (çok markalı hat: --with mağazasını bu hatta bağlar/ayırır)
  *   npm run tenant -- list
  *   npm run tenant -- admin --email sen@ornek.com --name "Ad Soyad"   (yönetici + şifre linki)
  *   npm run tenant -- invite --slug maius --email sahip@maius.info --role owner   (davet linki)
@@ -95,6 +96,7 @@ const { values: args } = parseArgs({
     "phone-country": { type: "string" },
     url: { type: "string" },
     store: { type: "string" },
+    with: { type: "string" },
     test: { type: "boolean" },
     file: { type: "string" },
   },
@@ -420,6 +422,23 @@ try {
       console.log(`Arşivde güncel ${products.length} ürün ve ${site.length} site yazısı var.`);
       for (const s of site) console.log(`- ${s.title}: ${s.content.replace(/\s+/g, " ").slice(0, 200)}`);
     }
+  } else if (command === "link") {
+    // Çok markalı hat: ana mağaza (--slug) cevap hazırlarken --with mağazasının bilgilerini, siparişlerini ve
+    // ürünlerini de okur. Konuşmalar ve panel ana mağazada kalır; bağlanan mağaza kendi Shopify bağlantısıyla çalışır.
+    const tenant = await tenantBySlug();
+    const [other] = await db.select().from(tenants).where(eq(tenants.slug, required("with")));
+    if (!other) throw new Error(`"${args.with}" adlı mağaza yok (önce upsert ile oluşturun)`);
+    if (other.id === tenant.id) throw new Error("Mağaza kendine bağlanamaz");
+    const settings = resolveSettings(tenant.settings);
+    const linkedTenantIds = args.off
+      ? settings.linkedTenantIds.filter((id) => id !== other.id)
+      : [...new Set([...settings.linkedTenantIds, other.id])];
+    await db.update(tenants).set({ settings: { ...settings, linkedTenantIds } }).where(eq(tenants.id, tenant.id));
+    console.log(
+      args.off
+        ? `${other.name} artık ${tenant.name} hattından ayrıldı.`
+        : `${other.name} ${tenant.name} hattına bağlandı: Lina ${tenant.name} konuşmalarında ${other.name} bilgilerini, siparişlerini ve ürünlerini de okur.`,
+    );
   } else if (command === "list") {
     const rows = await db
       .select({

@@ -323,6 +323,15 @@ Lina (yönlendirici) ile uzmanlar (mağaza bilgisi, sipariş, iade) birbirini do
 
 - **Dersler ve değişmez kurallar (6 Ekim 2026):** Mağazanın öğrettikleri üslup ve mağaza bilgisi konusunda genel kurallardan önce gelir, ama şunları değiştiremez: yapay zekâ olduğunu inkâr etmek ya da insan diye tanıtmak, ekibin kararına ait konularda sonuç vaat etmek, ödeme/adres paylaşmak ve doğrulamadan sipariş bilgisi vermek, bilgi uydurmak, iç süreçleri anlatmak. Çelişen ders kısmen yok sayılır. **"Lina'ya öğret"** (ekip cevabından ders) tek müşteriye özel (sipariş numarası ya da telefon içeren), 1000 karakterden uzun ya da 200 ders sınırı dolu cevabı ders yapmaz; ekran sebebini söyler.
 
+## 17. Çok markalı hat (13 Ekim 2026)
+Aynı WhatsApp hattından birden çok markaya hizmet verilebilir (ör. MAIUS ve Betül Saday). Her marka ayrı bir **mağaza** olarak kalır: kendi Shopify bağlantısı, bilgi kaynakları, kampanya arşivi ve alan adı vardır. Hatta bağlı **ana mağaza** (konuşmaların, panelin ve ekibin olduğu mağaza) `linkedTenantIds` ayarında diğer mağazaları listeler; Lina cevap hazırlarken hepsini birlikte okur.
+- **Bağlama:** `npm run tenant -- link --slug betulsaday --with maius` (kaldırmak için `--off`). Bağlanan mağazanın kendi Shopify bağlantısı ve bilgileri ayrıca kurulur (`upsert`, `shopify-app`/`shopify-link`).
+- **Bilgi:** Belge başlıkları markayı taşır ("[MAIUS] Kargo politikası"). Ana mağazanın notları **hat geneli**, bağlı mağazanın notları markaya özeldir. Hukuki metinler kimlikle ilgili markanın mağazasından okunur. Bilgi uzmanı soru hangi markayla ilgiliyse onun kaynağını kullanır; marka belli değilse ve markalar farklı söylüyorsa her markayı ayrı yazar (aynıysa tek cevap).
+- **Sipariş:** Sipariş numarası her markanın mağazasında aranır (aynı numara iki markada varsa müşterinin telefonuna ait olan seçilir); telefonla arama bütün markaların siparişlerini getirir. Sipariş kartı ve listesi "Marka:" yazar. Bir marka Shopify hatası verirse diğerinin bulduğu kullanılır; hiçbiri bulamayıp biri hata verdiyse "bulunamadı" denmez, hata olarak ekibe bildirilir (§12).
+- **Ürün:** Ürün uzmanı her markanın ürünlerini arar; ürünlere marka yazılır.
+- **Lina:** Sistem istemine "Markalar" bölümü eklenir: marka belli değilse ve cevap markaya göre değişiyorsa (kargo, iade koşulu, ürün, fiyat, stok) önce hangi markadan sorduğunu sorar ya da markaları ayrı ayrı yazar; bir markanın kuralını diğerine uygulamaz; kendini tanıtırken marka adı söylemez.
+- **Değişmeyenler:** Konuşmalar, bildirimler, ekibe sorular, dersler, müşteri kartı, mesai saatleri ve sınırlar ana mağazanındır; panelde yalnızca ana mağaza görünür. Panel test ekranının deneme siparişleri/ürünleri tek markadır (bağlantılar yok sayılır).
+
 ## MAIUS ayarları
 - Mesai: **Pazartesi–Cumartesi 10:00–17:00** (pazar kapalı)
 - Mesai dışı devir örneği: "Ekibimiz yarın saat 10:00'dan itibaren size buradan dönecek."

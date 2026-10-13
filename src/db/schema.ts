@@ -44,6 +44,12 @@ export type TenantSettings = {
   replyDelaySeconds: number;
   /** Durmadan yazan müşteri için üst sınır: ilk cevapsız mesajdan en fazla bu kadar sonra cevap. */
   maxReplyWaitSeconds: number;
+  /**
+   * Aynı WhatsApp hattından hizmet verilen diğer mağazaların (markaların) kimlikleri. Lina cevap hazırlarken bu
+   * mağazaların bilgilerini, siparişlerini ve ürünlerini de okur (docs/lina-davranis.md "Çok markalı hat").
+   * Müşteri konuşmaları, panel ve ekip bu (ana) mağazada kalır.
+   */
+  linkedTenantIds: string[];
   /** Müşterinin iade/değişim talebini kendisi açtığı form (ör. Kolay İade); boşsa yok. */
   returnsFormUrl: string;
   /**
@@ -69,6 +75,7 @@ export const defaultTenantSettings: TenantSettings = {
   replyDelaySeconds: 30,
   maxReplyWaitSeconds: 180,
   returnsFormUrl: "",
+  linkedTenantIds: [],
   phoneCountryCode: "90",
   returnsPlaybook: "",
 };

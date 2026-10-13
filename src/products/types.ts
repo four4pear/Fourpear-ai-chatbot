@@ -20,6 +20,8 @@ export type ProductFacts = {
   description: string;
   currency: string;
   variants: ProductVariant[];
+  /** Çok markalı hatta ürünün markası; tek mağazada boş. */
+  brand?: string;
 };
 
 export interface ProductSource {
@@ -71,7 +73,7 @@ export function describeProducts(products: ProductFacts[]): string {
   if (!products.length) return "Eşleşen aktif ürün bulunamadı.";
   return products
     .map((p) => {
-      const lines = [`Ürün: ${p.title}${p.url ? ` — ${p.url}` : ""}`, `Fiyat: ${priceLine(p)}`];
+      const lines = [`Ürün: ${p.title}${p.url ? ` — ${p.url}` : ""}`, ...(p.brand ? [`Marka: ${p.brand}`] : []), `Fiyat: ${priceLine(p)}`];
       if (p.variants.length) lines.push("Seçenekler:", ...p.variants.map((v) => `- ${v.title}: ${STOCK_TEXT[v.stock]}`));
       if (p.tags.length) lines.push(`Etiketler: ${p.tags.join(", ")}`);
       if (p.description) lines.push(`Mağazanın ürün yazısı (kampanya ve ön sipariş koşulları bağlayıcıdır): ${p.description}`);

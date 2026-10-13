@@ -23,6 +23,7 @@ import { CancelledError, describeLlmError, type Llm } from "../agents/runner.js"
 import { decryptSecret } from "../lib/crypto.js";
 import type { OrderSource } from "../orders/types.js";
 import type { ProductSource } from "../products/types.js";
+import { brandLabel, compositeOrderSource, compositeProductSource, loadBrands, mergeKnowledge } from "./brands.js";
 import type { ReturnsProvider } from "../returns/provider.js";
 import type { WhatsAppSender } from "../whatsapp/client.js";
 import type { InboundEvent, WaIncomingMessage } from "../whatsapp/types.js";
@@ -54,6 +55,8 @@ export type Deps = {
   orderSourceFor?: (tenantId: string) => Promise<OrderSource | null>;
   /** Ürün, fiyat ve stok kaynağı (Shopify bağlı mağazada ürün uzmanı açılır). */
   productSourceFor?: (tenantId: string) => Promise<ProductSource | null>;
+  /** Çok markalı hat bağlantıları yok sayılır (panel test ekranının deneme verisi tek markadır). */
+  singleBrand?: boolean;
   /** Mağazanın iade sistemi bağlantısı (varsa, yalnızca okuma). */
   returnsFor?: (tenantId: string) => Promise<ReturnsProvider | null>;
   /**
@@ -283,6 +286,24 @@ export async function respond(deps: Deps, conversationId: string, ctl: RespondCo
     return "unsupported_type";
   }
 
+  // Çok markalı hat: ana mağazaya bağlı mağazaların bilgileri, siparişleri ve ürünleri de okunur.
+  const brands = deps.singleBrand ? [tenant] : await loadBrands(db, tenant);
+  const multi = brands.length > 1;
+  const loadGroupKnowledge = async () =>
+    multi ? mergeKnowledge(await Promise.all(brands.map(async (t) => ({ tenant: t, kb: await loadKnowledge(db, t) })))) : loadKnowledge(db, tenant);
+  /** Kaynak (sipariş ya da ürün) her markadan alınır; tek markada eskisi gibi yalnızca ana mağazadan. Alınamayan marka atlanır. */
+  const groupSource = async <S>(
+    pick: (tenantId: string) => Promise<S | null> | undefined,
+    what: string,
+    combine: (parts: { brand: string; source: S }[]) => S,
+  ): Promise<S | null> => {
+    if (!multi) return optional(pick(tenant.id), what);
+    const parts = (await Promise.all(brands.map(async (t) => ({ brand: t.name, source: await optional(pick(t.id), what) })))).flatMap((p) =>
+      p.source ? [{ brand: p.brand, source: p.source }] : [],
+    );
+    return parts.length ? combine(parts) : null;
+  };
+
   // Sipariş ve iade bağlantısı alınamazsa Lina onlarsız çalışır (sipariş sorularında devreder).
   const optional = <T>(task: Promise<T> | undefined, what: string): Promise<T | null> =>
     (task ?? Promise.resolve(null)).catch((err: unknown) => {
@@ -293,15 +314,15 @@ export async function respond(deps: Deps, conversationId: string, ctl: RespondCo
     loadHistory(db, conversationId, deps.historyLimit),
     isFirstContact(db, conversationId),
     findOpenHandoff(db, conversationId),
-    loadKnowledge(db, tenant),
+    loadGroupKnowledge(),
     loadLessons(db, tenant.id),
     loadMemory(db, conversation.customerId),
     openTeamQuestions(db, conversationId),
     recentTeamAnswers(db, conversationId),
     identityLocked(db, conversationId, now),
-    optional(deps.orderSourceFor?.(tenant.id), "Sipariş kaynağı"),
+    groupSource((id) => deps.orderSourceFor?.(id), "Sipariş kaynağı", (parts) => compositeOrderSource(parts, waId)),
     optional(deps.returnsFor?.(tenant.id), "İade sistemi bağlantısı"),
-    optional(deps.productSourceFor?.(tenant.id), "Ürün kaynağı"),
+    groupSource((id) => deps.productSourceFor?.(id), "Ürün kaynağı", compositeProductSource),
   ]);
   const turn = {
     // Kartı olan müşteri daha önce yazmıştır (ör. eski mesajları silinmiş olsa da): yeniden tanıtım yok.
@@ -318,7 +339,7 @@ export async function respond(deps: Deps, conversationId: string, ctl: RespondCo
   };
   // Yalnızca ekibin cevabı geldiyse müşteri yeni bir şey yazmamıştır; Claude'a giden geçmiş müşteriyle bitmeli.
   if (history.at(-1)?.role !== "user") history.push({ role: "user", content: [{ type: "text", text: NO_NEW_MESSAGE }] });
-  const ctx = { db, llm: deps.llm, model: deps.model, tenantId: tenant.id, conversationId, signal: ctl.signal, log: deps.log };
+  const ctx = { db, llm: deps.llm, model: deps.model, tenantId: tenant.id, tenantIds: multi ? brands.map((t) => t.id) : undefined, conversationId, signal: ctl.signal, log: deps.log };
   const orders = orderSource ? { source: orderSource, waId, timeZone: deps.timeZone, now, returns, identityLocked: locked } : null;
   // Ekibin Lina'ya cevabı iç bilgidir; müşterinin yazdığı diye bildirime ya da soruya geçmez.
   const lastText = batch
@@ -333,7 +354,7 @@ export async function respond(deps: Deps, conversationId: string, ctl: RespondCo
   let orderFindings: OrderFindings | null = null;
   let teamQuestions: AskedQuestion[] = [];
   try {
-    const result = await runLina(ctx, tenant, history, turn, withLessons(storeKnowledge, lessons), orders, lessons, productSource ? { source: productSource } : null);
+    const result = await runLina(ctx, tenant, history, turn, withLessons(storeKnowledge, lessons), orders, lessons, productSource ? { source: productSource } : null, multi ? brands.map(brandLabel) : []);
     if (result.kind === "failed") {
       reply = fixedText(settings, "failure", failureContext);
       handoff = { reason: "other", summary: `Asistan cevap üretemedi (stop_reason: ${result.stopReason}). Müşteriye dönüleceği söylendi. Mesajlar: "${lastText}"` };

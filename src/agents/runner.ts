@@ -27,6 +27,8 @@ export type AgentContext = {
   llm: Llm;
   model: string;
   tenantId: string;
+  /** Çok markalı hatta bilgi ve arşiv aranacak bütün mağazalar (ana mağaza ilk); yoksa yalnızca `tenantId`. */
+  tenantIds?: string[];
   conversationId: string | null;
   /** İptal sinyali; Lina ve çağırdığı uzmanlar aynı sinyali paylaşır. */
   signal?: AbortSignal;

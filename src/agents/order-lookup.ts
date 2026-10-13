@@ -123,7 +123,13 @@ export function orderLookup(
     const texts = new Map<string, ProductTextAt | null>();
     for (const item of order.items) {
       if (item.productId && !texts.has(item.productId)) {
-        texts.set(item.productId, await textAt(ctx.db, tenant.id, "product", item.productId, order.createdAt));
+        // Çok markalı hatta ürün hangi markanın arşivindeyse oradan okunur (ürün kimlikleri mağazalar arasında benzersizdir).
+        let found: Awaited<ReturnType<typeof textAt>> = null;
+        for (const id of ctx.tenantIds ?? [tenant.id]) {
+          found = await textAt(ctx.db, id, "product", item.productId, order.createdAt);
+          if (found) break;
+        }
+        texts.set(item.productId, found);
       }
     }
     const sheet = buildOrderSheet(order, texts, deps.now, deps.timeZone, verifiedBy);

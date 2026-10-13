@@ -141,6 +141,13 @@
       "when": 1791448927062,
       "tag": "0019_message_tenant_index",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1791881214890,
+      "tag": "0020_linked_tenants_default",
+      "breakpoints": true
     }
   ]
 }
