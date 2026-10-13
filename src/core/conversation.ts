@@ -202,7 +202,11 @@ export async function ingestInbound(deps: Deps, event: InboundEvent): Promise<In
   // Fotoğraf kaydedildikten sonra: panel mesajı açtığında fotoğraf da hazır olsun.
   deps.events?.publish(tenant.id, { type: "message", conversationId });
 
-  if (!settings.botEnabled) return { outcome: "bot_disabled", conversationId };
+  if (!settings.botEnabled) {
+    // Lina kapalıyken de müşteri kartı çıkar (gözlem modu): müşteri susunca konuşma okunup kart güncellenir.
+    scheduleMemoryUpdate(deps, tenant, conversation.customerId, conversationId);
+    return { outcome: "bot_disabled", conversationId };
+  }
   // Ekipten biri devraldıysa Lina susar. Devir kuyruğunda ("waiting") cevap vermeye devam eder.
   if (conversation.status === "human") return { outcome: "human_mode", conversationId };
 
@@ -232,6 +236,18 @@ export async function ingestInbound(deps: Deps, event: InboundEvent): Promise<In
     maxWaitMs: settings.maxReplyWaitSeconds * 1000,
     typing: { wa, messageId: message.id },
   };
+}
+
+/** Müşteri kartının güncellenmesini sıraya alır (müşteri susunca tek güncelleme; bkz. core/memory.ts). */
+function scheduleMemoryUpdate(deps: Deps, tenant: Tenant, customerId: string, conversationId: string) {
+  if (!deps.memory?.schedule) return;
+  const { model } = deps.memory;
+  deps.memory.schedule(customerId, async () => {
+    await updateMemory(
+      { db: deps.db, llm: deps.llm, model },
+      { tenant, customerId, conversationId, now: deps.now?.() ?? new Date(), timeZone: deps.timeZone },
+    );
+  });
 }
 
 /**
@@ -387,15 +403,7 @@ export async function respond(deps: Deps, conversationId: string, ctl: RespondCo
     deps.events?.publish(tenant.id, { type: "team_question", conversationId });
   }
   // Müşteri kartı arka planda güncellenir; cevabı geciktirmez, hatası cevabı etkilemez.
-  if (deps.memory?.schedule) {
-    const { model } = deps.memory;
-    deps.memory.schedule(conversation.customerId, async () => {
-      await updateMemory(
-        { db, llm: deps.llm, model },
-        { tenant, customerId: conversation.customerId, conversationId, now: deps.now?.() ?? new Date(), timeZone: deps.timeZone },
-      );
-    });
-  }
+  scheduleMemoryUpdate(deps, tenant, conversation.customerId, conversationId);
   // Sipariş konularında devir yok: ekibe bildirim (docs/lina-davranis.md "Ekibe bildirimler").
   if (orderFindings) {
     await recordOrderNotification(deps, {

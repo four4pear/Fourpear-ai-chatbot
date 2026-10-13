@@ -69,7 +69,7 @@ Lina'nın cevabı WhatsApp'a gönderilemediyse bildirim her durumda önemlidir v
 
 ## Ayarlar
 Yalnızca mağaza sahibi. Ekran: üstte **Lina açık/kapalı anahtarı**, solda bölüm bağlantıları, sağda kartlar. API: `GET/PATCH /api/tenants/:id/settings` (kısmi güncelleme; geçersiz değer 400 ve hiçbir şey değişmez).
-- **Lina'yı aç/kapat** (acil durdurma): kapalıyken Lina hiçbir müşteriye cevap vermez, mesajlar panelde görünür, ekip konuşmaları devralıp yazabilir; açılınca yalnızca yeni mesajlara cevap verilir.
+- **Lina'yı aç/kapat** (acil durdurma): kapalıyken Lina hiçbir müşteriye cevap vermez, mesajlar panelde görünür, ekip konuşmaları devralıp yazabilir; açılınca yalnızca yeni mesajlara cevap verilir. Kapalıyken de müşteri kartları oluşur (gözlem modu).
 - **Mesai saatleri:** gün kutuları (açık günler yeşil çerçeveli, saatler üzerinde yazar), başlangıç ve bitiş; "Lina yalnızca mesai saatlerinde cevap versin" anahtarı. Açıkken mesai dışında gelen mesajlar kaydedilir, müşteriye hiçbir şey yazılmaz ve "yazıyor…" gösterilmez; mesai başlayınca (dakikada bir kontrol) Lina bekleyen mesajlara cevap verir.
 - **Mağaza bilgilerinde çelişki** (yalnızca açık uyarı varsa görünür): sayfalar ya da politikalar aynı konuda farklı şey söylüyorsa bilgi uzmanı uyarı açar; sahip siteyi ya da "Lina'ya notlar"ı düzeltip "Çözüldü" der. API: `GET …/knowledge-alerts`, `POST …/knowledge-alerts/:id/resolve`.
 - **Teslimat süresi:** açıp "en az – en çok gün" yazılır (1–90; ör. 7–14). Katı kuraldır: Lina her yerde bunu söyler, sipariş kartı kalan süreyi gösterir, süre aşılırsa ekibe gecikme bildirimi düşer ([lina-davranis.md §18](lina-davranis.md)). Kapalıyken Lina süreyi sayfalardan okur.

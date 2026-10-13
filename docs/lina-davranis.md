@@ -205,7 +205,7 @@ Kurallar (8 Ekim 2026):
 - **Mesai:** `failure` varsayılan metni mağaza kapalıyken "kısa süre içinde" demez; "Ekibimiz yarın saat 10:00'dan itibaren size buradan dönecek." der. Devir özetine "Müşteriye dönüleceği söylendi" yazılır; devri kimse 20 dakikada devralmazsa (mesaideyken) ekibe hatırlatma düşer (§12 "Müşteri ekibin dönüşünü bekliyor").
 
 ## 9. Diğer
-- Bot kapalıyken hiç cevap verilmez (mesajlar panelde görünür).
+- Bot kapalıyken hiç cevap verilmez (mesajlar panelde görünür). **Gözlem modu:** kapalıyken de müşteri kartı (§14) çıkar; müşteri 10 dakika susunca konuşma okunup kart güncellenir. Canlıya cevap yazmadan önce hattı tanımak için: `tenant upsert --slug betulsaday --bot off` (açmak için `--bot on` ya da Ayarlar → Lina anahtarı).
 - **Yalnızca mesai saatlerinde** (mağaza ayarı, varsayılan kapalı): mesai dışında Lina susar; mesaj kaydedilir, "yazıyor…" gösterilmez, müşteriye bir şey yazılmaz. Mesai başlayınca bekleyen mesajlara cevap verir (son 72 saat). Mesai günleri ve saatleri panel Ayarlar'dan değişir (§6).
 - Lina cevap vermeyecekse (bot kapalı, konuşma ekipte ya da günlük sınır aşıldı) müşteriye "yazıyor…" gösterilmez; mesaj yalnızca okundu işaretlenir.
 - Emoji tepkisi (👍), sticker, WhatsApp sistem bildirimleri ve sohbeti ilk açma bildirimi cevaplanmaz; kaydedilir, günlük sınıra sayılmaz, Lina'nın geçmişine girmez.

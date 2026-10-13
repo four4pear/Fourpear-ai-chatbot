@@ -21,6 +21,7 @@
  * İade:
  *   npm run tenant -- upsert --slug maius --returns-url https://iade.betulsaday.com   (Lina'nın vereceği iade formu)
  *   npm run tenant -- upsert --slug maius --delivery 7-14   (katı teslimat süresi: sipariş tarihinden itibaren 7-14 gün; off kaldırır)
+ *   npm run tenant -- upsert --slug maius --bot off   (Lina cevap yazmaz; mesajlar ve müşteri kartları yine oluşur) | --bot on
  *   npm run tenant -- upsert --slug maius --phone-country 90   (Shopify'da ülke kodsuz yazılan telefonların ülkesi)
  *   npm run tenant -- returns --slug maius --url https://iade.betulsaday.com/mcp.php --store maius
  *        (iade sistemi bağlantısı; anahtar gizli sorulur, bağlantı test edilir)
@@ -99,6 +100,7 @@ const { values: args } = parseArgs({
     store: { type: "string" },
     with: { type: "string" },
     delivery: { type: "string" },
+    bot: { type: "string" },
     test: { type: "boolean" },
     file: { type: "string" },
   },
@@ -178,8 +180,10 @@ try {
     if (args.delivery && args.delivery !== "off" && (!deliveryMatch || Number(deliveryMatch[1]) < 1 || Number(deliveryMatch[1]) > Number(deliveryMatch[2]))) {
       throw new Error("--delivery 7-14 biçiminde (en az-en çok gün) ya da off olmalı");
     }
+    if (args.bot !== undefined && args.bot !== "on" && args.bot !== "off") throw new Error("--bot on ya da off olmalı");
     const settingsChange = {
       ...(args.hours && { businessHours: parseHours(args.hours) }),
+      ...(args.bot && { botEnabled: args.bot === "on" }),
       ...(args.delivery && { deliveryDays: deliveryMatch ? { min: Number(deliveryMatch[1]), max: Number(deliveryMatch[2]) } : null }),
       ...(returnsUrl !== undefined && { returnsFormUrl: returnsUrl }),
       ...(phoneCountry !== undefined && { phoneCountryCode: phoneCountry }),
@@ -200,7 +204,7 @@ try {
     const hours = settings.businessHours;
     console.log(
       `Mağaza kaydedildi: ${tenant!.name} (${tenant!.slug}), mesai ${hours.days.join(",")} ${hours.start}-${hours.end}, ` +
-        `notlar ${tenant!.notes.length} karakter, iade formu ${settings.returnsFormUrl || "yok"}`,
+        `notlar ${tenant!.notes.length} karakter, iade formu ${settings.returnsFormUrl || "yok"}, Lina ${settings.botEnabled ? "açık" : "KAPALI (cevap yazmaz)"}`,
     );
   } else if (command === "returns") {
     // İade sistemi bağlantısı (yalnızca okuma). Anahtar gizli sorulur; komut satırında dolaşmaz.

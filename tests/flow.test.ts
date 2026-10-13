@@ -669,6 +669,26 @@ describe("sabit metinler ve ayarlar", () => {
     expect(sent).toHaveLength(0);
   });
 
+  it("bot kapalıyken de mesaj ve müşteri kartı oluşur (gözlem modu): kart güncellemesi sıraya alınır", async () => {
+    const scheduled: string[] = [];
+    appDeps.memory = { model: "haiku", schedule: (customerId) => void scheduled.push(customerId) };
+    try {
+      await setSettings({ botEnabled: false });
+      await post(text("siparişim ne zaman gelir"));
+      expect(sent).toHaveLength(0);
+      const stored = await database.db.select().from(messages).where(eq(messages.text, "siparişim ne zaman gelir"));
+      expect(stored).toHaveLength(1);
+      expect(scheduled).toHaveLength(1);
+      // Lina açıkken de aynı sıraya girer (cevaptan sonra); kapalıyken fazladan cevap gitmez.
+      await setSettings({ botEnabled: true });
+      await post(text("teşekkürler"));
+      expect(sent).toHaveLength(1);
+      expect(scheduled).toHaveLength(2);
+    } finally {
+      appDeps.memory = undefined;
+    }
+  });
+
   it("eski kayıtlardaki eksik ayarları varsayılanla tamamlar", async () => {
     await database.db.update(tenants).set({ settings: { botEnabled: true } }).where(eq(tenants.id, tenantId));
     await post(text("merhaba"));
