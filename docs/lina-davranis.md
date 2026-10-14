@@ -349,6 +349,9 @@ Canlı denemede Lina'nın cevapları çok uzun ve fazla kesindi: ürün tükenmi
 - **Eski mesajlar ayrı gösterilir:** Lina son cevabından beri gelen bütün müşteri mesajlarını tek paket okuyordu; Lina kapalıyken ya da ekip telefondan cevaplarken biriken saatler öncesinin mesajlarına da cevap veriyordu. Artık müşteri mesajları arasında 30 dakikadan uzun ara varsa araya "[— aradan 64 dakika geçti; aşağıdakiler yeni yazılanlar —]" ayracı konur; Lina yalnızca ayraçtan sonrakilere cevap verir (ekip eskileri telefondan cevaplamış olabilir, Lina göremez).
 - **"Bana şöyle söylemişlerdi":** müşteriyi yalanlamaz, tartışmaz; ne söylendiğini ekibe doğrulatır.
 
+## 20. Müşteri kartı düzeltmeleri (14 Ekim 2026)
+Canlı konuşmalardan 150 kart incelendi; kart yazarı şunları yanlış yapıyordu: tarih uydurma ("Pazartesi (17 Ekim)", oysa 19 Ekim), müşteri yalnızca istediği halde işlemi yapılmış yazma ("iptal faturası gönderilmiş"), taraf tutan sıfatlar ("haklı olarak öfkeli", "çok agresif"), WhatsApp profil adı bilinirken "Bilinmiyor/<UNKNOWN>" yazma, mağaza çalışanını müşteri sanma. Kurallar: taraf tutma yok; söylenen ile yapılan ayrı (işlem yalnızca Lina ya da ekip mesajında geçiyorsa yazılır); tarihler müşterinin kendi sözleriyle, takvim günü hesaplanmaz; profil adı kart yazarına verilir; çalışan gibi yazan numara "mağaza ekibinden biri gibi görünüyor" diye işaretlenir. Eski kartlar yeni mesaj gelince yeni kurallarla güncellenir; hepsini baştan yazdırmak için kartlar silinip yeniden üretilebilir.
+
 ## MAIUS ayarları
 - Mesai: **Pazartesi–Cumartesi 10:00–17:00** (pazar kapalı)
 - Mesai dışı devir örneği: "Ekibimiz yarın saat 10:00'dan itibaren size buradan dönecek."

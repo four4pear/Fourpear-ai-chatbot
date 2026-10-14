@@ -13,6 +13,7 @@
  *   npm run tenant -- docs --slug maius          (Lina'nın kullandığı kaynaklar)
  *   npm run tenant -- doc --slug maius --id 3f2a --off | --on | --auto
  *   npm run tenant -- alerts --slug maius        (bilgi çelişkisi uyarıları)
+ *   npm run tenant -- reply-now --slug betulsaday --conversations 10e01550,63bee35c   (bu konuşmaların cevapsız mesajlarına Lina hemen cevap verir; kimliğin ilk 8 hanesi yeter)
  *   npm run tenant -- link --slug betulsaday --with maius [--off]   (çok markalı hat: --with mağazasını bu hatta bağlar/ayırır)
  *   npm run tenant -- list
  *   npm run tenant -- admin --email sen@ornek.com --name "Ad Soyad"   (yönetici + şifre linki)
@@ -45,6 +46,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { loadConfig } from "../config.js";
 import { exitIfLocked, openDatabase } from "../db/client.js";
 import {
+  conversations,
   integrations,
   knowledgeAlerts,
   knowledgeDocs,
@@ -107,6 +109,7 @@ const { values: args } = parseArgs({
     bot: { type: "string" },
     "test-numbers": { type: "string" },
     "bot-until": { type: "string" },
+    conversations: { type: "string" },
     test: { type: "boolean" },
     file: { type: "string" },
   },
@@ -458,6 +461,19 @@ try {
       console.log(`Arşivde güncel ${products.length} ürün ve ${site.length} site yazısı var.`);
       for (const s of site) console.log(`- ${s.title}: ${s.content.replace(/\s+/g, " ").slice(0, 200)}`);
     }
+  } else if (command === "reply-now") {
+    // Cevapsız konuşmalara Lina'yı şimdi cevap vermeye yönlendirir; sunucu 15 saniyede bir isteği alır.
+    const tenant = await tenantBySlug();
+    const prefixes = required("conversations").split(",").map((p) => p.trim().toLowerCase()).filter(Boolean);
+    const rows = await db.select({ id: conversations.id }).from(conversations).where(eq(conversations.tenantId, tenant.id));
+    const ids = prefixes.map((p) => {
+      const hits = rows.filter((r) => r.id.startsWith(p));
+      if (hits.length !== 1) throw new Error(`"${p}" ${hits.length ? "birden çok konuşmayla eşleşiyor" : "hiçbir konuşmayla eşleşmiyor"}`);
+      return hits[0]!.id;
+    });
+    const settings = resolveSettings(tenant.settings);
+    await db.update(tenants).set({ settings: { ...settings, replyNow: [...new Set([...settings.replyNow, ...ids])] } }).where(eq(tenants.id, tenant.id));
+    console.log(`${ids.length} konuşma sıraya alındı; sunucu en geç 15 saniyede Lina'yı cevap vermeye yönlendirir (Lina açık değilse cevap gitmez).`);
   } else if (command === "link") {
     // Çok markalı hat: ana mağaza (--slug) cevap hazırlarken --with mağazasının bilgilerini, siparişlerini ve
     // ürünlerini de okur. Konuşmalar ve panel ana mağazada kalır; bağlanan mağaza kendi Shopify bağlantısıyla çalışır.

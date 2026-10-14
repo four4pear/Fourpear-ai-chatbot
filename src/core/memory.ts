@@ -5,7 +5,7 @@ import { memoryWriterSystemPrompt } from "../agents/prompts.js";
 import type { Llm } from "../agents/runner.js";
 import { recordUsage } from "../agents/usage.js";
 import type { DB } from "../db/client.js";
-import { customerMemories, messages, type Tenant } from "../db/schema.js";
+import { customerMemories, customers, messages, type Tenant } from "../db/schema.js";
 
 /**
  * Müşteri kartı (docs/lina-davranis.md "Müşteri kartı"): Lina'nın her müşteri hakkında hatırladıkları.
@@ -53,6 +53,7 @@ export async function updateMemory(
 ): Promise<string | null> {
   const { db } = deps;
   const [current] = await db.select().from(customerMemories).where(eq(customerMemories.customerId, input.customerId));
+  const [profile] = await db.select({ name: customers.name }).from(customers).where(eq(customers.id, input.customerId));
   const fresh = await db
     .select({ sender: messages.sender, type: messages.type, text: messages.text, createdAt: messages.createdAt })
     .from(messages)
@@ -82,7 +83,7 @@ export async function updateMemory(
     messages: [
       {
         role: "user",
-        content: `Bugün: ${dayMonth(input.now, input.timeZone)}\n\n## Mevcut kart\n${current?.text || "(henüz kart yok)"}\n\n## Kartın son güncellemesinden sonraki mesajlar\n${lines}`,
+        content: `Bugün: ${dayMonth(input.now, input.timeZone)}\nWhatsApp profil adı: ${profile?.name?.trim() || "(yok)"}\n\n## Mevcut kart\n${current?.text || "(henüz kart yok)"}\n\n## Kartın son güncellemesinden sonraki mesajlar\n${lines}`,
       },
     ],
     tools: [SAVE_TOOL],

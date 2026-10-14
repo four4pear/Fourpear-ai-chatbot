@@ -5,6 +5,7 @@ import { createApp } from "./app.js";
 import { loadConfig, whatsappConfigured } from "./config.js";
 import { exitIfLocked, openDatabase } from "./db/client.js";
 import { botIsOn, resolveSettings, shopifyStores, tenants } from "./db/schema.js";
+import { takeReplyRequests } from "./core/reply-now.js";
 import { llmFromClient } from "./agents/runner.js";
 import { syncAllStores, syncStoreKnowledge } from "./knowledge/sync.js";
 import { archiveAllTenants } from "./archive/sync.js";
@@ -211,6 +212,16 @@ async function escalateOverdue() {
     if (waiting) console.log(`Bekleyen müşteri (${t.slug}): ${waiting} konuşma için ekibe uyarı düştü.`);
   }
 }
+// "Şimdi cevapla" istekleri (tenant reply-now): istenen konuşmaların cevapsız mesajlarına hemen cevap verilir.
+async function answerRequested() {
+  for (const t of await db.select().from(tenants)) {
+    for (const id of await takeReplyRequests(db, t)) {
+      scheduler.onCustomerMessage(id, { delayMs: 3_000, maxWaitMs: 3_000 });
+      console.log(`Şimdi cevapla (${t.slug}): bir konuşma sıraya alındı.`);
+    }
+  }
+}
+const replyNowTimer = setInterval(() => void answerRequested().catch((err) => console.error("Şimdi cevapla", err)), 15_000);
 const hoursTimer = setInterval(() => {
   void openPendingByHours().catch((err) => console.error("Mesai kontrolü", err));
   void escalateOverdue().catch((err) => console.error("Cevapsız soru kontrolü", err));
@@ -231,6 +242,7 @@ async function shutdown() {
   clearInterval(archiveTimer);
   clearInterval(memoryTimer);
   clearInterval(hoursTimer);
+  clearInterval(replyNowTimer);
   // Bekleyen cevaplar bir sonraki açılışta yeniden kurulur (findUnansweredConversations).
   scheduler.stop();
   server.close();

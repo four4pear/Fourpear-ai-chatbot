@@ -719,6 +719,17 @@ describe("sabit metinler ve ayarlar", () => {
     expect(typing).toHaveLength(typingBefore);
   });
 
+  it("'şimdi cevapla' istekleri: yalnızca bu mağazanın konuşmaları alınır, liste boşalır", async () => {
+    const { takeReplyRequests } = await import("../src/core/reply-now.js");
+    await post(text("merhaba"));
+    const [conv] = await database.db.select().from(conversations).where(eq(conversations.tenantId, tenantId));
+    const [tenant] = await database.db.select().from(tenants).where(eq(tenants.id, tenantId));
+    const foreign = "00000000-0000-4000-8000-000000000000";
+    await setSettings({ replyNow: [conv!.id, foreign] });
+    expect(await takeReplyRequests(database.db, tenant!)).toEqual([conv!.id]);
+    expect(await takeReplyRequests(database.db, tenant!)).toEqual([]);
+  });
+
   it("eski kayıtlardaki eksik ayarları varsayılanla tamamlar", async () => {
     await database.db.update(tenants).set({ settings: { botEnabled: true } }).where(eq(tenants.id, tenantId));
     await post(text("merhaba"));

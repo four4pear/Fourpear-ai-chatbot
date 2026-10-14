@@ -62,6 +62,11 @@ export type TenantSettings = {
    */
   deliveryDays: DeliveryRule | null;
   /**
+   * "Şimdi cevapla" isteği: bu konuşmaların cevapsız mesajlarına Lina hemen cevap verir; sunucu işi alınca liste boşalır.
+   * Komutla doldurulur (tenant reply-now); Lina bu müşteriye kapalıysa cevap gitmez.
+   */
+  replyNow: string[];
+  /**
    * Test numaraları (905321234567): Lina kapalıyken (botEnabled=false) yalnızca bu numaralara cevap verir;
    * diğer müşteriler için gözlem modunda kalır (mesajlar ve müşteri kartları oluşur). Lina açıkken etkisizdir.
    */
@@ -93,6 +98,7 @@ export const defaultTenantSettings: TenantSettings = {
   maxReplyWaitSeconds: 180,
   returnsFormUrl: "",
   linkedTenantIds: [],
+  replyNow: [],
   testNumbers: [],
   deliveryDays: null,
   phoneCountryCode: "90",
