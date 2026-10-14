@@ -2,7 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { knowledgeAlerts, type Tenant } from "../db/schema.js";
 import { readLegalDoc, type KnowledgeBase } from "../knowledge/base.js";
-import { knowledgeAgentSystemPrompt } from "./prompts.js";
+import { knowledgeAgentSystemPrompt, nowLine } from "./prompts.js";
 import { runAgent, type AgentContext, type AgentTool } from "./runner.js";
 
 const legalInput = z.object({ doc_id: z.string() });
@@ -17,7 +17,7 @@ export async function askKnowledgeAgent(ctx: AgentContext, tenant: Tenant, kb: K
 
   const result = await runAgent(ctx, {
     agent: "knowledge",
-    system: knowledgeAgentSystemPrompt(tenant, kb),
+    system: knowledgeAgentSystemPrompt(tenant, kb, ctx.now && ctx.timeZone ? nowLine(ctx.now, ctx.timeZone) : undefined),
     messages: [{ role: "user", content: question }],
     tools,
     effort: "low",

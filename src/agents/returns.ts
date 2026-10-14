@@ -3,7 +3,7 @@ import type { Tenant } from "../db/schema.js";
 import type { KnowledgeBase } from "../knowledge/base.js";
 import { legalDocumentTool, reportConflictTool } from "./knowledge.js";
 import { addIssue, orderLookup, type CustomerIdentity, type OrderAgentDeps, type OrderFindings } from "./order-lookup.js";
-import { returnsAgentSystemPrompt } from "./prompts.js";
+import { nowLine, returnsAgentSystemPrompt } from "./prompts.js";
 import { runAgent, type AgentContext, type AgentTool } from "./runner.js";
 
 /** Lina'nın iade uzmanına sorarken seçtiği konu. */
@@ -77,7 +77,7 @@ export async function askReturnsAgent(
 
   const result = await runAgent(ctx, {
     agent: "returns",
-    system: returnsAgentSystemPrompt(tenant, deps.knowledge, { orders: Boolean(deps.orders), returns: Boolean(deps.orders?.returns) }),
+    system: returnsAgentSystemPrompt(tenant, deps.knowledge, { orders: Boolean(deps.orders), returns: Boolean(deps.orders?.returns), now: ctx.now && ctx.timeZone ? nowLine(ctx.now, ctx.timeZone) : undefined }),
     messages: [{ role: "user", content: `Konu: ${TOPIC_LABELS[request.topic]}\nMüşterinin mesajı: ${request.question}\n\n${context}` }],
     tools,
     // Tasarruf (2 Ekim 2026 ölçümü): iade uzmanı harcamanın yarısıydı, çoğu düşünme tokenı. Düşük

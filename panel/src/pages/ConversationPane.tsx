@@ -56,6 +56,8 @@ export function ConversationPane({ store, conversationId, userId, backTo }: { st
   const [notice, setNotice] = useState("");
   const [justDone, setJustDone] = useState<ForwardedLite | null>(null);
   const [draft, setDraft] = useState("");
+  const [info, setInfo] = useState("");
+  const [infoNotice, setInfoNotice] = useState("");
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [teach, setTeach] = useState<Record<string, boolean>>({});
   const [sending, setSending] = useState<string | null>(null);
@@ -129,6 +131,22 @@ export function ConversationPane({ store, conversationId, userId, backTo }: { st
       setSending(null);
       await load();
       waitingChanged();
+    }
+  }
+
+  /** "Lina'ya bilgi ver": yazılan bilgi mağaza notlarına tarih, saat ve adınızla eklenir (Lina bütün konuşmalarda kullanır). */
+  async function saveInfo() {
+    const text = info.trim();
+    if (!text) return;
+    setError(""); setInfoNotice(""); setBusy(true);
+    try {
+      const res = await api<{ stamp: string }>(`${base}/lina-info`, { method: "POST", body: { text } });
+      setInfo("");
+      setInfoNotice(`Lina'nın notlarına eklendi (${res.stamp}).`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Bilgi kaydedilemedi");
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -279,6 +297,15 @@ export function ConversationPane({ store, conversationId, userId, backTo }: { st
           <h3>Lina’nın uzmanlara sordukları</h3>
           {detail.expertCalls.length === 0 && <p className="hint">Bu konuşmada uzmana soru sorulmadı.</p>}
           {detail.expertCalls.map((r, i) => <details key={i}><summary>{AGENT_LABELS[r.agent] ?? r.agent} · {dateTime(r.createdAt)}</summary><p>{r.question}</p><p>{r.answer}</p></details>)}
+        </section>
+        <section>
+          <h3>Lina’ya bilgi ver</h3>
+          {detail.teamQuestions[0] && <p className="hint">Lina’nın sorusu: {detail.teamQuestions[0].question}</p>}
+          <p className="hint">Yazdığınız bilgi Lina’nın notlarına tarih, saat ve adınızla eklenir; Lina bütün konuşmalarda kullanır.</p>
+          <label className="sr-only" htmlFor="lina-info">Lina’ya bilgi</label>
+          <textarea id="lina-info" rows={4} maxLength={1000} placeholder="Örn. Lexux Top 19 Ekim’de kargoya çıkıyor; atölyede kumaş hatası var." value={info} onChange={(e) => { setInfo(e.target.value); setInfoNotice(""); }} />
+          <button type="button" className="btn btn-primary btn-sm" disabled={busy || !info.trim()} onClick={() => void saveInfo()}>Lina’ya kaydet</button>
+          {infoNotice && <p role="status" className="hint">{infoNotice}</p>}
         </section>
         {pastHandoffs.length > 0 && <section>
           <h3>Önceki devirler</h3>

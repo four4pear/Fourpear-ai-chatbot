@@ -38,11 +38,16 @@ type Deps = {
   cancelPendingReply?: (conversationId: string) => void;
   /** Lina'ya geri verilince müşterinin cevapsız mesajı varsa Lina cevaplasın. */
   triggerReply?: (conversationId: string) => void;
+  /** Mağaza saat dilimi (notlara damgalanan saat için); yoksa İstanbul. */
+  timeZone?: string;
 };
 
 /** WhatsApp kuralı: müşterinin son mesajından sonra 24 saat serbest mesaj gönderilebilir. */
 export const REPLY_WINDOW_MS = 24 * 60 * 60 * 1000;
 const MAX_REPLY_CHARS = 4000;
+/** "Lina'ya bilgi ver": tek seferde en fazla karakter ve notların toplam sınırı (Ayarlar'daki sınırla aynı). */
+const MAX_LINA_INFO = 1000;
+const MAX_NOTES_LENGTH = 8000;
 const IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
 
 /** Müşterinin panelde görünen adı. Shopify'daki ad sipariş ajanıyla eklenecek (docs/panel.md). */
@@ -426,6 +431,39 @@ export function registerConversationRoutes(
     deps.log.info(`[${tenantId}] müşteri verisi silindi (mesaj=${erased.messages}, fotoğraf=${erased.photos})`);
     deps.events.publish(tenantId, { type: "conversation", conversationId });
     res.json({ ok: true, ...erased });
+  });
+
+  /**
+   * "Lina'ya bilgi ver": ekibin yazdığı bilgi mağaza notlarının sonuna tarih, saat ve yazan kişiyle eklenir; Lina bütün
+   * konuşmalarda kullanır ve bilginin ne zaman verildiğini bilir. Lina'nın ekibe sorusu açıksa satıra eklenir.
+   */
+  api.post("/tenants/:tenantId/conversations/:conversationId/lina-info", ...member, async (req, res) => {
+    const tenantId = param(req, "tenantId");
+    const conversationId = param(req, "conversationId");
+    if (!isUuid(conversationId)) return notFound(res);
+    const text = typeof req.body?.text === "string" ? req.body.text.replace(/\s+/g, " ").trim() : "";
+    if (text.length < 3 || text.length > MAX_LINA_INFO) return res.status(400).json({ error: `Bilgi 3 ile ${MAX_LINA_INFO} karakter arasında olmalı.` });
+    const [conv] = await db.select({ id: conversations.id }).from(conversations).where(and(eq(conversations.id, conversationId), eq(conversations.tenantId, tenantId)));
+    if (!conv) return notFound(res);
+    const [tenant] = await db.select({ notes: tenants.notes }).from(tenants).where(eq(tenants.id, tenantId));
+    if (!tenant) return notFound(res);
+    const user = (res.locals as Locals).user!;
+    const at = now();
+    const timeZone = deps.timeZone ?? "Europe/Istanbul";
+    const stamp = `${at.toLocaleDateString("tr-TR", { timeZone, day: "numeric", month: "long", year: "numeric" })}, ${at.toLocaleTimeString("tr-TR", { timeZone, hour: "2-digit", minute: "2-digit" })}`;
+    const [open] = await db
+      .select({ question: teamQuestions.question })
+      .from(teamQuestions)
+      .where(and(eq(teamQuestions.conversationId, conversationId), eq(teamQuestions.status, "open")))
+      .orderBy(desc(teamQuestions.createdAt))
+      .limit(1);
+    const about = open ? ` (Lina'nın sorusu: "${open.question.replace(/\s+/g, " ").slice(0, 120)}")` : "";
+    const line = `[${stamp} · ${user.name}] ${text}${about}`;
+    const notes = tenant.notes.trim() ? `${tenant.notes.trim()}\n${line}` : line;
+    if (notes.length > MAX_NOTES_LENGTH) return res.status(422).json({ error: "Lina'nın notları dolu. Ayarlar → Lina'ya notlar bölümünden eski satırları silin." });
+    await db.update(tenants).set({ notes }).where(eq(tenants.id, tenantId));
+    deps.log.info(`[${tenantId}] Lina'ya bilgi eklendi (${text.length} karakter)`);
+    res.json({ ok: true, line, stamp });
   });
 
   api.get("/tenants/:tenantId/media/:messageId", ...member, async (req, res) => {

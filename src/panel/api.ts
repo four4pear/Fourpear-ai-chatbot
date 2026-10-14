@@ -416,7 +416,7 @@ export function registerPanelApi(app: Express, deps: PanelApiDeps) {
     } finally { testing.delete(key); }
   });
 
-  registerConversationRoutes(api, deps, { requireUser, requireTenant });
+  registerConversationRoutes(api, { ...deps, timeZone: deps.simulatorDeps?.timeZone }, { requireUser, requireTenant });
   registerNotificationRoutes(api, { ...deps, timeZone: deps.simulatorDeps?.timeZone }, { requireUser, requireTenant });
   registerLessonRoutes(api, deps, { requireUser, requireTenant });
   registerTeamQuestionRoutes(api, deps, { requireUser, requireTenant });

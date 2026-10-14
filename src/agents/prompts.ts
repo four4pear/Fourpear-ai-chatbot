@@ -176,6 +176,17 @@ Kibarca reddet: ${tenant.name}'un asistanı olduğunu ve sipariş, ürün ve ma�
 - Müşteri gerçekten bot, yapay zekâ ya da gerçek kişi olup olmadığını sorarsa dürüst ol: ${tenant.name}'un yapay zekâ destekli asistanı olduğunu söyle, sorununu buradan hemen çözebileceğini, isterse ekipten birine aktarabileceğini belirt. Kendini asla insan diye tanıtma.`;
 }
 
+/** "14 Ekim 2026 Çarşamba, 16:55" biçiminde şu an (mağaza saat diliminde). */
+export function nowLine(now: Date, timeZone: string): string {
+  const day = now.toLocaleDateString("tr-TR", { timeZone, day: "numeric", month: "long", year: "numeric", weekday: "long" });
+  const time = now.toLocaleTimeString("tr-TR", { timeZone, hour: "2-digit", minute: "2-digit" });
+  return `${day}, ${time}`;
+}
+
+/** Notlardaki "[14 Ekim 2026, 16:55 · Ad]" damgalı satırların nasıl okunacağı (tarihi bilen her uzmana eklenir). */
+const NOTES_DATE_RULE =
+  'Notlarda "[14 Ekim 2026, 16:55 · Ad]" gibi damgalı satırlar ekibin o anda verdiği bilgidir. Aynı konuda birden çok not varsa en yenisi geçerlidir. Notta "bu hafta", "yarın" gibi göreli ifadeler varsa notun tarihine göre hesapla; tarihi geçmiş bir bilgiyi güncelmiş gibi sunma.';
+
 export type TurnInfo = {
   firstContact: boolean;
   business: BusinessStatus;
@@ -190,6 +201,9 @@ export type TurnInfo = {
    * burasıdır: konuşma geçmişine konmaz, yoksa müşteri aynı kalıbı yazıp Lina'yı kandırabilir.
    */
   teamAnswers?: { fresh: string[]; earlier: string[] };
+  /** Şu an ve mağaza saat dilimi: Lina tarih ve saati bilsin. */
+  now?: Date;
+  timeZone?: string;
 };
 
 /**
@@ -226,6 +240,7 @@ export function ensureIntro(text: string, botName: string): string {
 /** Mesaja özel durum bilgisi (sistem isteminin önbelleğe alınmayan ikinci bloğu). */
 export function turnContext(tenant: Tenant, turn: TurnInfo): string {
   const lines = ["## Bu mesaja özel durum"];
+  if (turn.now && turn.timeZone) lines.push(`- Şu an: ${nowLine(turn.now, turn.timeZone)} (Türkiye saati). ${NOTES_DATE_RULE}`);
 
   lines.push(
     turn.firstContact
@@ -322,7 +337,7 @@ export function productAgentSystemPrompt(tenant: Tenant): string {
 - Kısa ve olgusal yaz: ürün, fiyat, seçenek durumu, varsa koşul ve ürün linki.`;
 }
 
-export function knowledgeAgentSystemPrompt(tenant: Tenant, kb: KnowledgeBase): string {
+export function knowledgeAgentSystemPrompt(tenant: Tenant, kb: KnowledgeBase, now?: string): string {
   const sources = formatSources(kb);
   const legal = formatLegalList(kb);
 
@@ -339,7 +354,7 @@ export function knowledgeAgentSystemPrompt(tenant: Tenant, kb: KnowledgeBase): s
 - Kısa ve olgusal yaz.
 
 ## Mağaza notları (öncelikli)
-${kb.notes || "(not yok)"}
+${now ? `Şu an: ${now} (Türkiye saati). ${NOTES_DATE_RULE}\n` : ""}${kb.notes || "(not yok)"}
 
 ## Mağaza kaynakları
 ${sources || "(kaynak yok)"}
@@ -371,7 +386,7 @@ ${opts.returns ? "- Kartta İADE TALEBİ varsa talebin durumunu ve tarihlerini y
  * siparişteki ürünün sipariş tarihindeki koşulunu ve iade talebinin durumunu birlikte okur; Lina'ya
  * ne söyleyeceğini ve konunun ekibe iletilip iletilmeyeceğini yazar.
  */
-export function returnsAgentSystemPrompt(tenant: Tenant, kb: KnowledgeBase | null, opts: { orders: boolean; returns: boolean }): string {
+export function returnsAgentSystemPrompt(tenant: Tenant, kb: KnowledgeBase | null, opts: { orders: boolean; returns: boolean; now?: string }): string {
   const { returnsPlaybook, returnsFormUrl } = resolveSettings(tenant.settings);
   const lina = tenant.botName;
   const forward = opts.orders
@@ -421,7 +436,7 @@ ${returnsFormUrl ? `Mağazanın iade ve değişim formu: ${returnsFormUrl}. Mü�
 ${returnsPlaybook.trim() || "(Mağaza henüz el kitabı yazmadı; kaynaklara ve yukarıdaki kurallara göre ilerle.)"}
 
 ## Mağaza notları (öncelikli)
-${kb?.notes || "(not yok)"}
+${opts.now ? `Şu an: ${opts.now} (Türkiye saati). ${NOTES_DATE_RULE}\n` : ""}${kb?.notes || "(not yok)"}
 
 ## Mağaza kaynakları
 ${(kb && formatSources(kb)) || "(kaynak yok)"}

@@ -260,3 +260,25 @@ it("müşteri verisini silme: yalnızca sahipte görünür; onay verilince isten
   await vi.waitFor(() => expect(posted).toEqual([{ url: "/api/tenants/t/conversations/c1/erase", body: { confirm: true } }]));
 });
 
+
+it("Lina'ya bilgi ver: Lina'nın sorusu görünür; bilgi gönderilince notlara eklendiği tarih ve saatiyle söylenir; boşken düğme kapalı", async () => {
+  const posted: { url: string; body: unknown }[] = [];
+  vi.stubGlobal("fetch", vi.fn(async (url: string, init: RequestInit = {}) => {
+    if (init.method === "POST") {
+      posted.push({ url, body: JSON.parse(String(init.body)) });
+      return json({ ok: true, stamp: "14 Ekim 2026, 16:55", line: "x" });
+    }
+    return json(full);
+  }));
+  render_();
+  await screen.findByText("Ürün hasarlı geldi");
+  expect(screen.getByText(/Lina’nın sorusu: Hasarlı üründe kargo ücreti bizden mi\?/)).toBeTruthy();
+  const save = screen.getByRole("button", { name: "Lina’ya kaydet" }) as HTMLButtonElement;
+  expect(save.disabled).toBe(true);
+  fireEvent.change(screen.getByLabelText("Lina’ya bilgi"), { target: { value: "  Kargo ücreti bizden.  " } });
+  expect(save.disabled).toBe(false);
+  fireEvent.click(save);
+  await vi.waitFor(() => expect(posted).toEqual([{ url: "/api/tenants/t/conversations/c1/lina-info", body: { text: "Kargo ücreti bizden." } }]));
+  expect(await screen.findByText("Lina'nın notlarına eklendi (14 Ekim 2026, 16:55).")).toBeTruthy();
+  expect((screen.getByLabelText("Lina’ya bilgi") as HTMLTextAreaElement).value).toBe("");
+});

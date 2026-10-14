@@ -452,6 +452,40 @@ describe("panel: konuşmayı devralma, yazma, Lina'ya geri verme", () => {
   });
 });
 
+describe("panel: Lina'ya bilgi ver", () => {
+  const info = (text: unknown, who = "zeynep", id: string = ids.conv!) => call(who, "POST", `/api/tenants/${tenantA}/conversations/${id}/lina-info`, { text });
+  const notesA = async () => (await database.db.select({ notes: tenants.notes }).from(tenants).where(eq(tenants.id, tenantA)))[0]!.notes;
+
+  it("çalışan da yazabilir; bilgi tarih, saat ve adıyla mağaza notlarının sonuna eklenir, eski notlar korunur", async () => {
+    await database.db.update(tenants).set({ notes: "Kargo Yurtiçi ile gider." }).where(eq(tenants.id, tenantA));
+    const res = await info("  Lexux Top 19 Ekim'de   kargoya çıkıyor.  ");
+    expect(res.status).toBe(200);
+    const notes = await notesA();
+    const lines = notes.split("\n");
+    expect(lines[0]).toBe("Kargo Yurtiçi ile gider.");
+    // Test saatinden (İstanbul) damga: [tarih, saat · ad] bilgi
+    expect(lines[1]).toMatch(/^\[\d{1,2} \p{L}+ 2026, \d{2}:\d{2} · Zeynep\] Lexux Top 19 Ekim'de kargoya çıkıyor\.$/u);
+    expect(res.body.line).toBe(lines[1]);
+  });
+
+  it("Lina'nın açık sorusu varsa satıra eklenir; çok kısa ya da çok uzun bilgi, yabancı konuşma ve geçersiz kimlik reddedilir", async () => {
+    await database.db.insert(teamQuestions).values({ tenantId: tenantA, conversationId: ids.conv!, question: "Lexux Top ne zaman gelir?" });
+    expect((await info("Lexux 19 Ekim")).status).toBe(200);
+    expect((await notesA()).split("\n").at(-1)).toContain("(Lina'nın sorusu: \"Lexux Top ne zaman gelir?\")");
+    expect((await info("ab")).status).toBe(400);
+    expect((await info("x".repeat(1001))).status).toBe(400);
+    expect((await info(42)).status).toBe(400);
+    expect((await info("Geçerli bilgi", "zeynep", ids.other!)).status).toBe(404); // başka mağazanın konuşması
+    expect((await info("Geçerli bilgi", "zeynep", "yok")).status).toBe(404);
+  });
+
+  it("notlar dolduysa 422 verir ve hiçbir şey eklenmez", async () => {
+    await database.db.update(tenants).set({ notes: "a".repeat(7990) }).where(eq(tenants.id, tenantA));
+    expect((await info("Bu satır sığmaz, notlar zaten dolu.")).status).toBe(422);
+    expect((await notesA()).length).toBe(7990);
+  });
+});
+
 describe("panel: müşteri verisini silme (silme talebi)", () => {
   it("yalnızca sahip siler, onay ister; kişi, mesajlar, fotoğraf ve kayıtlar gider, maliyet kaydı kalır; başka mağaza ve müşteriler dokunulmaz", async () => {
     const { db } = database;

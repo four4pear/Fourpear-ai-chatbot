@@ -731,6 +731,7 @@ textarea {
 .cc-orders { display: flex; flex-wrap: wrap; gap: 6px; }
 .cp-card details { margin: 8px 0; font-size: 13px; overflow-wrap: anywhere; }
 .cp-card details p { white-space: pre-wrap; }
+.cp-card textarea { display: block; width: 100%; margin: 6px 0 8px; font: inherit; font-size: 13px; resize: vertical; }
 
 @media (max-width: 1279px) {
   .cp { grid-template-columns: minmax(0, 1fr); }

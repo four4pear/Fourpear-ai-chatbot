@@ -34,6 +34,9 @@ export type AgentContext = {
   signal?: AbortSignal;
   /** Araç hataları (ör. Shopify erişimi) sessiz kalmasın diye. */
   log?: Pick<Console, "warn">;
+  /** Şu an ve mağaza saat dilimi: uzmanlar notlardaki tarihleri bununla karşılaştırır. */
+  now?: Date;
+  timeZone?: string;
 };
 
 /** Claude isteği hatasının ekip ve kayıtlar için kısa Türkçe açıklaması. */
